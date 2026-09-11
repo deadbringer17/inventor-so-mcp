@@ -18,9 +18,9 @@ public sealed class InventorMcpConfig
     public List<string> Toolsets { get; set; } = new();
 
     public string DescriptorDirectory { get; set; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Bimwright", "ipt-mcp");
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InventorSO", "inventor-so-mcp");
     public string BakeDirectory { get; set; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Bimwright", "ipt-mcp", "baked");
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InventorSO", "inventor-so-mcp", "baked");
 
     public static InventorMcpConfig Load(string[] args)
     {

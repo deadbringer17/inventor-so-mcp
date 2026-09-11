@@ -35,7 +35,7 @@ public static class TransportFactory
     /// To keep the descriptor port authoritative regardless, use
     /// <see cref="CreateStarted(int, string, Action{string, System.Threading.Tasks.TaskCompletionSource{string}}, out TargetDescriptor)"/>.
     /// </summary>
-    public static ITransportServer Create(int year, string descriptorDir, out TargetDescriptor descriptor)
+    public static ITransportServer Create(int year, string descriptorDir, out TargetDescriptor descriptor, string pipePrefix = "BimwrightInventor")
     {
         if (descriptorDir is null) throw new ArgumentNullException(nameof(descriptorDir));
 
@@ -60,7 +60,7 @@ public static class TransportFactory
         }
         else
         {
-            pipeName = $"BimwrightInventor-{pid}";
+            pipeName = $"{pipePrefix}-{pid}";
             server = new PipeTransportServer(pipeName, token);
             transportKind = "pipe";
         }
@@ -90,11 +90,11 @@ public static class TransportFactory
         int year,
         string descriptorDir,
         Action<string, System.Threading.Tasks.TaskCompletionSource<string>> onRequest,
-        out TargetDescriptor descriptor)
+        out TargetDescriptor descriptor, string pipePrefix = "BimwrightInventor")
     {
         if (onRequest is null) throw new ArgumentNullException(nameof(onRequest));
 
-        var server = Create(year, descriptorDir, out descriptor);
+        var server = Create(year, descriptorDir, out descriptor, pipePrefix);
         server.Start(onRequest);
 
         if (server is TcpTransportServer tcp)

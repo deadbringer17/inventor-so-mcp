@@ -69,10 +69,49 @@ public sealed class MetaToolsTests : IDisposable
         Assert.True(client.SwitchTarget("2024"));
         Assert.Equal(2024, client.CurrentTarget!.InventorYear);
 
-        Assert.True(client.SwitchTarget(pid.ToString()));
-        Assert.Equal(pid, client.CurrentTarget!.ProcessId);
+        // The fixtures share PID and pipe name: ambiguous aliases must fail.
+        Assert.False(client.SwitchTarget(pid.ToString()));
+        Assert.False(client.SwitchTarget("BimwrightInventor-" + pid));
+        Assert.Equal(2024, client.CurrentTarget!.InventorYear);
+    }
 
-        Assert.True(client.SwitchTarget("BimwrightInventor-" + pid));
-        Assert.Equal("pipe", client.CurrentTarget!.Transport);
+    [Fact]
+    public void MissingConfiguredTargetDoesNotFallback()
+    {
+        WriteDescriptor("live.json", 2025, Environment.ProcessId, DateTimeOffset.UtcNow, "token");
+        var client = new PluginClient(new InventorMcpConfig { DescriptorDirectory = _dir, TargetId = "2027" });
+        Assert.Null(client.CurrentTarget);
+    }
+
+    [Fact]
+    public void SelectedTargetDisappearanceDoesNotRedirect()
+    {
+        WriteDescriptor("selected.json", 2027, Environment.ProcessId, DateTimeOffset.UtcNow, "token");
+        var client = new PluginClient(new InventorMcpConfig { DescriptorDirectory = _dir, TargetId = "2027" });
+        Assert.Equal(2027, client.CurrentTarget!.InventorYear);
+        File.Delete(Path.Combine(_dir, "selected.json"));
+        WriteDescriptor("other.json", 2025, Environment.ProcessId, DateTimeOffset.UtcNow, "other-token");
+        Assert.Null(client.CurrentTarget);
+        Assert.True(client.SwitchTarget("2025"));
+        Assert.Equal(2025, client.CurrentTarget!.InventorYear);
+    }
+
+    [Fact]
+    public void SelectedTargetRefreshesDescriptor()
+    {
+        WriteDescriptor("live.json", 2027, Environment.ProcessId, DateTimeOffset.UtcNow, "old-token");
+        var client = new PluginClient(new InventorMcpConfig { DescriptorDirectory = _dir });
+        Assert.Equal("old-token", client.CurrentTarget!.AuthToken);
+        WriteDescriptor("live.json", 2027, Environment.ProcessId, DateTimeOffset.UtcNow, "new-token");
+        Assert.Equal("new-token", client.CurrentTarget!.AuthToken);
+    }
+
+    [Fact]
+    public void MultipleTargetsRequireSelection()
+    {
+        WriteDescriptor("one.json", 2025, Environment.ProcessId, DateTimeOffset.UtcNow, "a");
+        WriteDescriptor("two.json", 2027, Environment.ProcessId, DateTimeOffset.UtcNow, "b");
+        var client = new PluginClient(new InventorMcpConfig { DescriptorDirectory = _dir });
+        Assert.Null(client.CurrentTarget);
     }
 }

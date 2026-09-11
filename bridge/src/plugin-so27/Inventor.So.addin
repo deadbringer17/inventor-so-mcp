@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Addin Type="Standard">
+  <ClassId>{7EE3B69B-8A24-42DD-9422-50E8C5279F40}</ClassId>
+  <ClientId>{7EE3B69B-8A24-42DD-9422-50E8C5279F40}</ClientId>
+  <DisplayName>Inventor SO MCP (2027)</DisplayName>
+  <Description>Semantic CAD bridge for Inventor 2027. Based on Apache-2.0 ipt-mcp.</Description>
+  <Assembly>Inventor.So.AddIn.dll</Assembly>
+  <LoadOnStartUp>1</LoadOnStartUp>
+  <LoadAutomatically>1</LoadAutomatically>
+  <UserUnloadable>1</UserUnloadable>
+  <Hidden>0</Hidden>
+  <SupportedSoftwareVersionGreaterThan>30..</SupportedSoftwareVersionGreaterThan>
+  <SupportedSoftwareVersionLessThan>32..</SupportedSoftwareVersionLessThan>
+  <UseInventorAssemblyContext>0</UseInventorAssemblyContext>
+</Addin>

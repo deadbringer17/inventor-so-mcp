@@ -12,11 +12,15 @@ public sealed class McpProtocolSmokeTests
 
         var initialize = Assert.Single(responses, r => (int?)r["id"] == 1);
         Assert.NotNull(initialize["result"]?["capabilities"]?["tools"]);
+        Assert.NotNull(initialize["result"]?["capabilities"]?["resources"]);
 
         var toolsList = Assert.Single(responses, r => (int?)r["id"] == 2);
         var tools = Assert.IsAssignableFrom<JArray>(toolsList["result"]?["tools"]);
         Assert.NotEmpty(tools);
         Assert.Contains(tools, t => (string?)t["name"] == "inventor_list_available_targets");
+        var resources = Assert.IsType<JArray>(responses[2]["result"]?["resources"]);
+        foreach (var uri in new[] { "inventor://application", "inventor://active-document", "inventor://active-document/parameters", "inventor://active-document/mass" })
+            Assert.Contains(resources, r => (string?)r["uri"] == uri);
     }
 
     private static async Task<JObject[]> RunProtocolHandshake()
@@ -36,13 +40,16 @@ public sealed class McpProtocolSmokeTests
 
         using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start ipt-mcp server.");
         var stderrTask = process.StandardError.ReadToEndAsync();
-
+        try
+        {
         await process.StandardInput.WriteLineAsync("""{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke-test","version":"0.0"}}}""");
         var initialize = await ReadJsonResponse(process, "initialize");
 
         await process.StandardInput.WriteLineAsync("""{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}""");
         await process.StandardInput.WriteLineAsync("""{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}""");
         var toolsList = await ReadJsonResponse(process, "tools/list");
+        await process.StandardInput.WriteLineAsync("""{"jsonrpc":"2.0","id":3,"method":"resources/list","params":{}}""");
+        var resourcesList = await ReadJsonResponse(process, "resources/list");
         process.StandardInput.Close();
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -59,16 +66,22 @@ public sealed class McpProtocolSmokeTests
         var stderr = await stderrTask;
         Assert.True(process.ExitCode == 0, "ipt-mcp server exited with code " + process.ExitCode + ". Stderr: " + stderr);
 
-        var responses = new[] { initialize, toolsList };
+        var responses = new[] { initialize, toolsList, resourcesList };
 
         Assert.DoesNotContain(responses, r => r["error"]?["code"]?.Value<int>() == -32601);
         Assert.DoesNotContain(responses, r => r["error"] is not null);
         return responses;
+        }
+        finally
+        {
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync();
+        }
     }
 
     private static async Task<JObject> ReadJsonResponse(Process process, string label)
     {
-        var line = await process.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        var line = await process.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(30));
         if (string.IsNullOrWhiteSpace(line))
         {
             throw new InvalidOperationException("No MCP response received for " + label + ".");

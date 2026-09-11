@@ -1,4 +1,34 @@
-# inventor-mcp
+# inventor-so-mcp
+
+Development target: **Autodesk Inventor 2027, Windows x64**.
+
+The C# implementation is in [`bridge/`](bridge/), derived from Apache-2.0
+[bimwright/ipt-mcp](https://github.com/bimwright/ipt-mcp). Its license and
+attribution are preserved separately from this original MIT Python project.
+The server and add-in are separate processes. The new 2027 add-in has its own
+GUID, pipe namespace and discovery directory.
+
+Current verified progress and outstanding scope: [development status](docs/DEVELOPMENT.md).
+Detailed requirements comparison: [80-point analysis](docs/analisi-spec-inventor-so-mcp.md).
+
+Build with .NET 10 SDK and the installed Inventor 2027 interop:
+
+```powershell
+./scripts/build-inventor-so.ps1
+dotnet test bridge/tests/Bimwright.Ipt.Tests
+```
+
+Build output goes to a fresh `artifacts/inventor-so-mcp-<timestamp>/` directory.
+This builds a package; it does not install an add-in or modify CAD documents.
+The server entry point is `Inventor.So.Mcp.Server.dll` (requires .NET 8 runtime).
+For initial inspection, launch with `--target 2027 --read-only --disable-toolbaker`.
+The add-in requires Inventor 2027/.NET 10. Live CAD validation remains pending.
+
+## Original NeonGlay project documentation
+
+The Python source below is preserved as a modeling reference, not the new
+production entry point. Its unrestricted `execute_python` tool is unsuitable
+for the controlled production mode described in the specification.
 
 **MCP server for parametric 3D modeling in Autodesk Inventor — drive Inventor with Claude (or any MCP client) in natural language.**
 

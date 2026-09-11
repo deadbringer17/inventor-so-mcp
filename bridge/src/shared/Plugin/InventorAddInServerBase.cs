@@ -31,6 +31,8 @@ public abstract class InventorAddInServerBase : InvApi.ApplicationAddInServer
     private TargetDescriptor? _descriptor;
     private int _year;
     private string _descriptorDir = "";
+    protected virtual string ProductDirectory => Path.Combine("Bimwright", "ipt-mcp");
+    protected virtual string PipePrefix => "BimwrightInventor";
 
     public void Activate(InvApi.ApplicationAddInSite site, bool firstTime)
     {
@@ -42,7 +44,7 @@ public abstract class InventorAddInServerBase : InvApi.ApplicationAddInServer
         var readOnly = EnvFlag("BIMWRIGHT_INVENTOR_PLUGIN_READ_ONLY") || EnvFlag("BIMWRIGHT_INVENTOR_READ_ONLY");
         _descriptorDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Bimwright", "ipt-mcp");
+            ProductDirectory);
 
         var options = new PluginOptions(_year, enableSendCode, readOnly, 0);
         var handlers = InventorCommandRegistry.Build(options);
@@ -52,7 +54,7 @@ public abstract class InventorAddInServerBase : InvApi.ApplicationAddInServer
         _server = TransportFactory.CreateStarted(
             _year, _descriptorDir,
             (line, tcs) => HandleLine(line, dispatcher, options, _descriptor!, tcs),
-            out var descriptor);
+            out var descriptor, PipePrefix);
         _descriptor = descriptor;
 
         // Fill the active-document title/path (caller holds the Inventor.Application) + persist + heartbeat.

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Bimwright.Ipt.Server;
 using Bimwright.Ipt.Server.Tools;
+using Bimwright.Ipt.Server.Resources;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -19,7 +20,8 @@ builder.Services.AddSingleton<PluginClient>();
 
 var mcp = builder.Services
     .AddMcpServer(o => o.ServerInstructions = ServerInstructions.Text)
-    .WithStdioServerTransport();
+    .WithStdioServerTransport()
+    .WithResources<CadResources>();
 mcp = Program.RegisterToolsets(mcp, Program.ResolveToolTypesForRegistration(cfg));
 
 await builder.Build().RunAsync();

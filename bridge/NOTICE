@@ -1,0 +1,8 @@
+Inventor SO MCP incorporates ipt-mcp by Khoa Le / bimwright.
+Source: https://github.com/bimwright/ipt-mcp
+Imported revision: d539a2ee7295747c7ef3b44a64aa870e8889deac
+Copyright 2026 Khoa Le. Licensed under Apache License 2.0 (see LICENSE).
+
+Modified in inventor-so-mcp: product identity, target selection, resources,
+protocol tests and further changes recorded in Git history.
+The original C# namespaces are retained for attribution and mergeability.

@@ -30,6 +30,7 @@ public sealed class PluginClient
     private readonly InventorMcpConfig _config;
     private readonly TargetRegistry _registry;
     private TargetDescriptor? _current;
+    private string? _selectedTargetId;
 
     public PluginClient(InventorMcpConfig config)
     {
@@ -44,8 +45,15 @@ public sealed class PluginClient
         get
         {
             var live = _registry.List();
-            if (_current is not null && live.Any(t => t.TargetId == _current.TargetId)) return _current;
-            _current = (_config.TargetId is { } id ? live.FirstOrDefault(t => t.TargetId == id) : null) ?? live.FirstOrDefault();
+            // Never silently redirect CAD writes when an explicitly selected instance disappears.
+            // Refresh descriptors on every read so credentials and active-document metadata are current.
+            if (_selectedTargetId is { } selected)
+                return _current = live.FirstOrDefault(t => t.TargetId == selected);
+            if (!string.IsNullOrWhiteSpace(_config.TargetId))
+                _current = ResolveUnique(live, _config.TargetId!);
+            else
+                _current = live.Count == 1 ? live[0] : null;
+            if (_current is not null) _selectedTargetId = _current.TargetId;
             return _current;
         }
     }
@@ -56,27 +64,28 @@ public sealed class PluginClient
         if (string.IsNullOrWhiteSpace(key)) return false;
 
         var live = _registry.List();
-        TargetDescriptor? match = live.FirstOrDefault(t =>
-            string.Equals(t.TargetId, key, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(t.PipeName, key, StringComparison.OrdinalIgnoreCase));
-
-        if (match is null && int.TryParse(key, out var numeric))
-        {
-            match = numeric is >= 2022 and <= 2027
-                ? live.FirstOrDefault(t => t.InventorYear == numeric)
-                : live.FirstOrDefault(t => t.ProcessId == numeric);
-        }
-
+        var match = ResolveUnique(live, key);
         if (match is null) return false;
         _current = match;
+        _selectedTargetId = match.TargetId;
         return true;
+    }
+
+    private static TargetDescriptor? ResolveUnique(IReadOnlyList<TargetDescriptor> live, string key)
+    {
+        var exact = live.Where(t => string.Equals(t.TargetId, key, StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (exact.Length != 0) return exact.Length == 1 ? exact[0] : null;
+        var matches = live.Where(t => string.Equals(t.PipeName, key, StringComparison.OrdinalIgnoreCase) ||
+            (int.TryParse(key, out var numeric) && (numeric is >= 2022 and <= 2027
+                ? t.InventorYear == numeric : t.ProcessId == numeric))).ToArray();
+        return matches.Length == 1 ? matches[0] : null;
     }
 
     public async Task<JToken> SendAsync(string command, object parameters, CancellationToken ct)
     {
         var target = CurrentTarget ?? throw new InventorGatewayException(
             InventorErrorCodes.NO_TARGET,
-            "No live Inventor target. Start Inventor with the bimwright add-in loaded.");
+            "No unique live Inventor target. Load the Inventor SO add-in and explicitly select an instance when several are available.");
 
         var env = new InventorCommandEnvelope
         {
