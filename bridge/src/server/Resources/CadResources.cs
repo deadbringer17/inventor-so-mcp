@@ -31,6 +31,14 @@ public sealed class CadResources
     [Description("Mass and physical properties of the active document; units are specified by the add-in response.")]
     public Task<string> Mass(CancellationToken ct) => Read("get_mass_properties", ct);
 
+    [McpServerResource(UriTemplate = "inventor://selection", MimeType = "application/json")]
+    [Description("Current user selection and portable entity references. Requires Inventor SO 2027.")]
+    public Task<string> Selection(CancellationToken ct) => Read("get_selection", ct);
+
+    [McpServerResource(UriTemplate = "inventor://events", MimeType = "application/json")]
+    [Description("Bounded document-event journal with epoch, cursor and resync_required flag. Snapshot only; push subscriptions are not implemented yet.")]
+    public Task<string> Events(CancellationToken ct) => Read("get_events", ct);
+
     private async Task<string> Read(string command, CancellationToken ct)
     {
         // Propagate failures to MCP: never disguise a failed read as a valid CAD snapshot.

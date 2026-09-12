@@ -1,6 +1,7 @@
 namespace Bimwright.Ipt.Shared.Infrastructure;
 
 using System.Collections.Generic;
+using Bimwright.Ipt.Shared.Contracts;
 
 /// <summary>
 /// Per-request execution context handed to every <see cref="IInventorCommand"/>.
@@ -8,6 +9,7 @@ using System.Collections.Generic;
 /// </summary>
 public sealed class InventorCommandContext
 {
+    public CadEventJournal? Events { get; init; }
     /// <summary>The add-in's view of read-only mode (the server also enforces this by tool filtering).</summary>
     public bool ReadOnly { get; init; }
 

@@ -37,6 +37,10 @@ public sealed class GetDocumentInfoHandler : IInventorCommand
             ["title"] = doc.DisplayName,
             ["path"] = string.IsNullOrEmpty(path) ? null : path,
             ["document_type"] = doc.DocumentType.ToString(),
+            ["id"] = "doc_" + doc.InternalName,
+            ["database_revision"] = doc.DatabaseRevisionId,
+            ["dirty"] = doc.Dirty,
+            ["revision"] = ctx.Events?.Revision("doc_" + doc.InternalName),
         };
         return InventorCommandResult.Success(Guid.Empty, data, meta);
     }

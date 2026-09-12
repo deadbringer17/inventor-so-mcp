@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <DefineConstants>INVENTOR2027</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Autodesk.Inventor.Interop">
+      <HintPath>C:\Program Files\Common Files\Autodesk Shared\Extensions 2027\Framework\Interop\Autodesk.Inventor.Interop.dll</HintPath>
+      <EmbedInteropTypes>false</EmbedInteropTypes>
+      <Private>false</Private>
+    </Reference>
+    <Compile Include="../../src/shared/Contracts/PersistentEntityReference.cs" Link="PersistentEntityReference.cs" />
+    <Compile Include="../../src/shared/Handlers/Core/EntityReferences.cs" Link="EntityReferences.cs" />
+    <Compile Include="../../src/shared/Contracts/CadEventJournal.cs" Link="CadEventJournal.cs" />
+    <Compile Include="../../src/shared/Plugin/CadEventTracker.cs" Link="CadEventTracker.cs" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+</Project>

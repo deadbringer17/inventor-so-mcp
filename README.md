@@ -22,7 +22,17 @@ Build output goes to a fresh `artifacts/inventor-so-mcp-<timestamp>/` directory.
 This builds a package; it does not install an add-in or modify CAD documents.
 The server entry point is `Inventor.So.Mcp.Server.dll` (requires .NET 8 runtime).
 For initial inspection, launch with `--target 2027 --read-only --disable-toolbaker`.
-The add-in requires Inventor 2027/.NET 10. Live CAD validation remains pending.
+The add-in requires Inventor 2027/.NET 10.
+Read-only live connection and reference lifecycle probes have now passed; the full
+functional scope still requires validation. To install a freshly built package:
+
+```powershell
+./scripts/install-inventor-so.ps1 -Package ./artifacts/inventor-so-mcp-<timestamp>
+```
+
+Installation uses a unique version directory and preserves the previous manifest.
+An already loaded add-in may require a normal Inventor restart to pick up the new
+assembly. The installer never closes documents or restarts Inventor.
 
 ## Original NeonGlay project documentation
 

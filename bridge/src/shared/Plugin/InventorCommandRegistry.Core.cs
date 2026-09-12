@@ -18,6 +18,11 @@ public static partial class InventorCommandRegistry
     {
         add(new HealthHandler());
         add(new GetDocumentInfoHandler());
+#if INVENTOR2027
+        add(new SelectionHandler());
+        add(new ResolveEntityHandler());
+        add(new EventsHandler());
+#endif
     }
 }
 #endif

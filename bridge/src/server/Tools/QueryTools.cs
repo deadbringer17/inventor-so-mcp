@@ -44,4 +44,11 @@ public sealed class QueryTools
             return JsonConvert.SerializeObject(new { ok = false, error = new { code = ex.Code, message = ex.Message } }, Formatting.Indented);
         }
     }
+
+    [McpServerTool(Name = "inventor_get_selection"), Description("Read user-selected entities with portable Inventor reference keys. Requires the Inventor SO 2027 add-in. Does not change selection.")]
+    public Task<string> Selection(CancellationToken ct = default) => Call("get_selection", new JObject(), ct);
+
+    [McpServerTool(Name = "inventor_resolve_entity"), Description("Resolve a previously returned entity id against open documents. Reports unresolved or ambiguous references rather than selecting an arbitrary match. Inventor SO 2027 only.")]
+    public Task<string> ResolveEntity(string entity_id, CancellationToken ct = default)
+        => Call("resolve_entity", new JObject { ["entity_id"] = entity_id }, ct);
 }

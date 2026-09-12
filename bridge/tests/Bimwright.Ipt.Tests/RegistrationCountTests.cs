@@ -38,7 +38,7 @@ public sealed class RegistrationCountTests
     };
 
     [Fact]
-    public void All_toolsets_with_send_code_register_exactly_59_tools()
+    public void All_toolsets_with_send_code_register_exactly_61_tools()
     {
         var names = ToolNames(AllEnabled());
 
@@ -46,11 +46,11 @@ public sealed class RegistrationCountTests
         var distinct = names.Distinct(StringComparer.Ordinal).ToArray();
         Assert.Equal(distinct.Length, names.Length);
 
-        Assert.Equal(59, names.Length);
+        Assert.Equal(61, names.Length);
     }
 
     [Fact]
-    public void The_59_tools_match_the_frozen_surface()
+    public void Tools_match_the_declared_surface()
     {
         var names = new HashSet<string>(ToolNames(AllEnabled()), StringComparer.Ordinal);
 
@@ -60,6 +60,7 @@ public sealed class RegistrationCountTests
             "inventor_list_available_targets", "inventor_get_current_target", "inventor_switch_target",
             // core + document (10): health + 9 doc
             "inventor_health", "inventor_list_open_documents", "inventor_get_document_info",
+            "inventor_get_selection", "inventor_resolve_entity",
             "inventor_new_part", "inventor_new_assembly", "inventor_open_document",
             "inventor_save_document", "inventor_close_document", "inventor_set_units", "inventor_set_material",
             // parameters (4)
@@ -89,7 +90,7 @@ public sealed class RegistrationCountTests
             "inventor_get_assembly_bom", "inventor_list_constraints",
         };
 
-        Assert.Equal(59, expected.Length);
+        Assert.Equal(61, expected.Length);
         foreach (var e in expected)
             Assert.True(names.Contains(e), $"missing expected tool: {e}");
         // and nothing extra beyond the 59 expected
@@ -144,11 +145,11 @@ public sealed class RegistrationCountTests
     }
 
     [Fact]
-    public void Default_config_registers_58_tools_without_send_code()
+    public void Default_config_registers_60_tools_without_send_code()
     {
         // Default (no --enable-send-code) drops the single `code` tool, leaving 58.
         var names = ToolNames(new InventorMcpConfig());
         Assert.False(names.Contains("inventor_send_code"), "send_code must be off by default");
-        Assert.Equal(58, names.Length);
+        Assert.Equal(60, names.Length);
     }
 }

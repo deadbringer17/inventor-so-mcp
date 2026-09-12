@@ -19,7 +19,7 @@ public sealed class McpProtocolSmokeTests
         Assert.NotEmpty(tools);
         Assert.Contains(tools, t => (string?)t["name"] == "inventor_list_available_targets");
         var resources = Assert.IsType<JArray>(responses[2]["result"]?["resources"]);
-        foreach (var uri in new[] { "inventor://application", "inventor://active-document", "inventor://active-document/parameters", "inventor://active-document/mass" })
+        foreach (var uri in new[] { "inventor://application", "inventor://active-document", "inventor://active-document/parameters", "inventor://active-document/mass", "inventor://selection", "inventor://events" })
             Assert.Contains(resources, r => (string?)r["uri"] == uri);
     }
 

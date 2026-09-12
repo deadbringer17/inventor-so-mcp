@@ -4,6 +4,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Bimwright.Ipt.Shared.Infrastructure;
 
 /// <summary>
 /// Marshals work onto Inventor's main STA thread. Inventor has no <c>ExternalEvent</c> (unlike Revit),
@@ -25,15 +26,13 @@ public sealed class InventorStaDispatcher : IDisposable
 
     public Task<T> InvokeAsync<T>(Func<T> work, int timeoutMs)
     {
-        var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-        if (!_marshal.IsHandleCreated) { tcs.TrySetException(new InvalidOperationException("STA dispatcher not ready")); return tcs.Task; }
-        _marshal.BeginInvoke((Action)(() =>
-        {
-            try { tcs.TrySetResult(work()); }
-            catch (Exception ex) { tcs.TrySetException(ex); }
-        }));
-        // caller applies its own timeout around the returned task
-        return tcs.Task;
+        if (!_marshal.IsHandleCreated) return Task.FromException<T>(new InvalidOperationException("STA dispatcher not ready"));
+        var operation = new DeadlineOperation<T>(work, timeoutMs);
+        var timer = new System.Threading.Timer(_ => operation.Expire(), null, timeoutMs, Timeout.Infinite);
+        _ = operation.Task.ContinueWith(_ => timer.Dispose(), TaskScheduler.Default);
+        try { _marshal.BeginInvoke((Action)operation.Execute); }
+        catch { timer.Dispose(); throw; }
+        return operation.Task;
     }
 
     public void Dispose()

@@ -31,6 +31,9 @@ public abstract class InventorAddInServerBase : InvApi.ApplicationAddInServer
     private TargetDescriptor? _descriptor;
     private int _year;
     private string _descriptorDir = "";
+#if INVENTOR2027
+    private CadEventTracker? _events;
+#endif
     protected virtual string ProductDirectory => Path.Combine("Bimwright", "ipt-mcp");
     protected virtual string PipePrefix => "BimwrightInventor";
 
@@ -38,6 +41,9 @@ public abstract class InventorAddInServerBase : InvApi.ApplicationAddInServer
     {
         _app = site.Application;                    // stable API entry point (spec)
         _sta = new InventorStaDispatcher();         // created on the STA thread
+#if INVENTOR2027
+        _events = new CadEventTracker(_app);
+#endif
 
         _year = InventorVersion.Year;
         var enableSendCode = EnvFlag("BIMWRIGHT_INVENTOR_PLUGIN_ENABLE_SEND_CODE");
@@ -78,6 +84,11 @@ public abstract class InventorAddInServerBase : InvApi.ApplicationAddInServer
                 tcs.TrySetResult(Err(env.Id, InventorErrorCodes.UNAUTHORIZED, "Invalid or missing authorization token."));
                 return;
             }
+            if (env.TimeoutMs < 1 || env.TimeoutMs > 30000)
+            {
+                tcs.TrySetResult(Err(env.Id, InventorErrorCodes.INVALID_ARGUMENT, "timeout_ms must be between 1 and 30000."));
+                return;
+            }
 
             var ctx = new InventorCommandContext
             {
@@ -87,14 +98,15 @@ public abstract class InventorAddInServerBase : InvApi.ApplicationAddInServer
                 TargetId = descriptor.TargetId,
                 Application = _app,
                 Commands = dispatcher.Commands,
+#if INVENTOR2027
+                Events = _events?.Journal,
+#endif
             };
 
             // Marshal the actual API work onto the STA thread.
             var task = _sta!.InvokeAsync(() => dispatcher.Dispatch(ctx, env), env.TimeoutMs);
-            if (task.Wait(env.TimeoutMs))
-                tcs.TrySetResult(JsonConvert.SerializeObject(task.Result));
-            else
-                tcs.TrySetResult(Err(env.Id, InventorErrorCodes.TIMEOUT, "STA dispatch timed out"));
+            try { tcs.TrySetResult(JsonConvert.SerializeObject(task.GetAwaiter().GetResult())); }
+            catch (TimeoutException ex) { tcs.TrySetResult(Err(env.Id, InventorErrorCodes.TIMEOUT, ex.Message)); }
         }
         catch (Exception ex)
         {
@@ -124,6 +136,10 @@ public abstract class InventorAddInServerBase : InvApi.ApplicationAddInServer
 
     public void Deactivate()
     {
+#if INVENTOR2027
+        try { _events?.Dispose(); } catch { }
+        _events = null;
+#endif
         try { _server?.Dispose(); } catch { }
         try { _descriptorWriter?.Dispose(); } catch { }
         try { _sta?.Dispose(); } catch { }
