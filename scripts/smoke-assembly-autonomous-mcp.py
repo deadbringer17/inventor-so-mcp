@@ -158,6 +158,91 @@ def main():
         print('Assembly saved (' + str(saved_assembly['bytes']) + ' bytes); BOM rows: ' +
               str(summary['bom_rows']), flush=True)
 
+        # --- insert constraint: a pin into a hole, both found by geometry ----------------------------
+        pin = client.tool('inventor_new_document_safe', name='sotest pin ' + stamp, kind='part')
+        created.append(Path(pin['path']))
+        pin_sketch = batch(
+            dict(command='create_sketch', arguments=dict(plane='XY')),
+            dict(command='draw_circle', arguments=dict(cx=0, cy=0, radius=5)),
+            dict(command='close_sketch', arguments={}))['steps'][0]['data']['sketch_name']
+        batch(dict(command='extrude', arguments=dict(sketch_name=pin_sketch, distance_mm=40, operation='join')))
+        current = state()
+        client.tool('inventor_save_document_safe', document_id=current['id'], expected_revision=current['revision'])
+
+        block = client.tool('inventor_new_document_safe', name='sotest block ' + stamp, kind='part')
+        created.append(Path(block['path']))
+        block_sketch = batch(
+            dict(command='create_sketch', arguments=dict(plane='XY')),
+            dict(command='draw_rectangle', arguments=dict(x1=-30, y1=-30, x2=30, y2=30)),
+            dict(command='close_sketch', arguments={}))['steps'][0]['data']['sketch_name']
+        batch(dict(command='extrude', arguments=dict(sketch_name=block_sketch, distance_mm=12, operation='join')))
+        hole_sketch = batch(
+            dict(command='create_sketch', arguments=dict(plane='XY')),
+            dict(command='draw_circle', arguments=dict(cx=12, cy=0, radius=5.2)),
+            dict(command='close_sketch', arguments={}))['steps'][0]['data']['sketch_name']
+        batch(dict(command='extrude', arguments=dict(sketch_name=hole_sketch, distance_mm=12, operation='cut')))
+        current = state()
+        client.tool('inventor_save_document_safe', document_id=current['id'], expected_revision=current['revision'])
+
+        fit = client.tool('inventor_new_document_safe', name='sotest asm fit ' + stamp, kind='assembly')
+        created.append(Path(fit['path']))
+        for source, offset in ((block, [0, 0, 0]), (pin, [0, 0, 80])):
+            inserted = client.tool('inventor_insert_component_safe', document_id=state()['id'],
+                expected_revision=state()['revision'], source_document_id=source['document_id'],
+                translation_mm=offset, minimum_clearance_mm=0, preview=False)
+            assert inserted.get('status') == 'committed', inserted
+
+        parts = client.tool('inventor_list_topology', kind='occurrence')['items']
+        block_component = min(parts, key=lambda c: c['position_mm'][2])
+        pin_component = max(parts, key=lambda c: c['position_mm'][2])
+
+        def circles(component_id):
+            listed = client.tool('inventor_list_topology', kind='edge', component_id=component_id,
+                geometry='Circle', limit=200)['items']
+            return [e for e in listed if e['length_mm']]
+
+        # The hole rim is the small circle on the block's top face; the pin rim is its lower circle.
+        hole_rim = min(circles(block_component['id']), key=lambda e: e['length_mm'])
+        pin_rim = min(circles(pin_component['id']), key=lambda e: e['start_mm'][2])
+
+        current = state()
+        wrong_kind = client.tool('inventor_create_constraint_safe', document_id=current['id'],
+            expected_revision=current['revision'], type='insert', face_a_id=base_top['id'],
+            face_b_id=top_bottom['id'], offset_mm=0, minimum_clearance_mm=0, preview=False)
+        assert wrong_kind.get('ok') is False, wrong_kind
+
+        current = state()
+        fitted = client.tool('inventor_create_constraint_safe', document_id=current['id'],
+            expected_revision=current['revision'], type='insert', face_a_id=pin_rim['id'],
+            face_b_id=hole_rim['id'], offset_mm=0, minimum_clearance_mm=0, axes_opposed=True, preview=False)
+        assert fitted.get('status') == 'committed', fitted
+        fit_document = app.Documents.ItemByName(str(Path(fit['path'])))
+        placed = [o for o in fit_document.ComponentDefinition.Occurrences
+                  if 'pin' in o.Name.lower()][0].Transformation.Translation
+        assert abs(placed.X * 10 - 12) < 1e-3 and abs(placed.Y * 10) < 1e-3,             'the pin did not centre in the hole: ' + str((placed.X * 10, placed.Y * 10, placed.Z * 10))
+        summary['insert_pin_xy_mm'] = [round(placed.X * 10, 4), round(placed.Y * 10, 4)]
+        print('Insert constraint centred the pin in the hole at x=' + str(round(placed.X * 10, 3)) +
+              ', y=' + str(round(placed.Y * 10, 3)), flush=True)
+
+        # --- angle constraint on two planar faces -----------------------------------------------------
+        block_faces = [f for f in client.tool('inventor_list_topology', kind='face',
+                                              component_id=block_component['id'], geometry='Plane',
+                                              limit=200)['items'] if f['outward_normal']]
+        side = next(f for f in block_faces if abs(abs(f['outward_normal'][0]) - 1) < 1e-6)
+        pin_faces = [f for f in client.tool('inventor_list_topology', kind='face',
+                                            component_id=pin_component['id'], geometry='Plane',
+                                            limit=200)['items'] if f['outward_normal']]
+        pin_flat = max(pin_faces, key=lambda f: f['point_on_face_mm'][2])
+        current = state()
+        angled = client.tool('inventor_create_constraint_safe', document_id=current['id'],
+            expected_revision=current['revision'], type='angle', face_a_id=side['id'],
+            face_b_id=pin_flat['id'], angle_degrees=90, minimum_clearance_mm=0, preview=True)
+        summary['angle_preview'] = angled.get('status') or angled.get('error', {}).get('message', '')[:80]
+        print('Angle constraint preview: ' + str(summary['angle_preview']), flush=True)
+
+        current = state()
+        client.tool('inventor_save_document_safe', document_id=current['id'], expected_revision=current['revision'])
+
         summary['assembly_autonomous'] = 'passed'
         print(json.dumps(summary), flush=True)
     finally:

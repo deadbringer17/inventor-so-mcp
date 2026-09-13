@@ -5,6 +5,7 @@ using Inventor;
 using Newtonsoft.Json.Linq;
 using Bimwright.Ipt.Shared.Contracts;
 using Bimwright.Ipt.Shared.Infrastructure;
+using Bimwright.Ipt.Shared.Handlers;
 
 namespace Bimwright.Ipt.Shared.Handlers.Core;
 
@@ -20,20 +21,27 @@ public sealed class CreateConstraintHandler : HandlerBase, IInventorCommand
         string id = EntityReferences.DocumentId(doc);
         if ((string?)p["document_id"] != id) return Fail(ctx, "INVALID_ARGUMENT", "DOCUMENT_CHANGED");
         if (ctx.Events == null || (string?)p["expected_revision"] != ctx.Events.Revision(id)) return Fail(ctx, "INVALID_ARGUMENT", "STALE_REVISION");
-        var request = ConstraintCreateRequest.Parse(p);
-        var a = EntityReferences.ResolvePlanarAssemblyFace(doc, request.FaceA);
-        var b = EntityReferences.ResolvePlanarAssemblyFace(doc, request.FaceB);
+        ConstraintCreateRequest request;
+        object a, b;
+        ComponentOccurrence occurrenceA, occurrenceB;
+        try
+        {
+            request = ConstraintCreateRequest.Parse(p);
+            (a, occurrenceA) = ResolveEntity(doc, request, request.FaceA);
+            (b, occurrenceB) = ResolveEntity(doc, request, request.FaceB);
+        }
+        catch (ArgumentException ex) { return Fail(ctx, "INVALID_ARGUMENT", ex.Message); }
+
         var def = assembly.ComponentDefinition;
         var direct = def.Occurrences.Cast<ComponentOccurrence>().ToArray();
-        foreach (var face in new[] { a, b })
+        foreach (var occurrence in new[] { occurrenceA, occurrenceB })
         {
-            var occurrence = face.ContainingOccurrence;
             if (!direct.Any(o => ReferenceEquals(o, occurrence)) || occurrence.Suppressed || occurrence.Adaptive ||
                 occurrence.DefinitionDocumentType != DocumentTypeEnum.kPartDocumentObject)
                 return Fail(ctx, "INVALID_ARGUMENT", "Only unsuppressed nonadaptive direct part occurrences are supported.");
         }
-        if (ReferenceEquals(a.ContainingOccurrence, b.ContainingOccurrence))
-            return Fail(ctx, "INVALID_ARGUMENT", "Faces must belong to different occurrences.");
+        if (ReferenceEquals(occurrenceA, occurrenceB))
+            return Fail(ctx, "INVALID_ARGUMENT", "The two references must belong to different occurrences.");
         bool priorUi = app.UserInterfaceManager.UserInteractionDisabled;
         Transaction? transaction = null;
         void Owned()
@@ -47,9 +55,17 @@ public sealed class CreateConstraintHandler : HandlerBase, IInventorCommand
             app.UserInterfaceManager.UserInteractionDisabled = true;
             transaction = app.TransactionManager.StartTransaction((Inventor._Document)doc, "Inventor SO create constraint");
             if (transaction.HasParentTransaction) throw new InvalidOperationException("TRANSACTION_BUSY");
-            AssemblyConstraint created = request.Type == "flush"
-                ? (AssemblyConstraint)def.Constraints.AddFlushConstraint(a, b, request.OffsetMm / 10)
-                : (AssemblyConstraint)def.Constraints.AddMateConstraint(a, b, request.OffsetMm / 10);
+            var constraints = def.Constraints;
+            AssemblyConstraint created = request.Type switch
+            {
+                "flush" => (AssemblyConstraint)constraints.AddFlushConstraint(a, b, UnitConvert.MmToCm(request.OffsetMm)),
+                // A cylinder passed to AddMateConstraint mates the axes, which is the intent of mate_axis.
+                "mate" or "mate_axis" => (AssemblyConstraint)constraints.AddMateConstraint(a, b, UnitConvert.MmToCm(request.OffsetMm)),
+                "insert" => (AssemblyConstraint)constraints.AddInsertConstraint(a, b, request.AxesOpposed, UnitConvert.MmToCm(request.OffsetMm)),
+                "angle" => (AssemblyConstraint)constraints.AddAngleConstraint(a, b, UnitConvert.DegToRad(request.AngleDegrees)),
+                "tangent" => (AssemblyConstraint)constraints.AddTangentConstraint(a, b, request.InsideTangency, UnitConvert.MmToCm(request.OffsetMm)),
+                _ => throw new ArgumentException("Unsupported constraint type.")
+            };
             if (!doc.Update2()) throw new InvalidOperationException("Assembly rebuild failed.");
             foreach (AssemblyConstraint c in def.Constraints)
                 if (!c.Suppressed && c.HealthStatus != HealthStatusEnum.kUpToDateHealth)
@@ -66,7 +82,12 @@ public sealed class CreateConstraintHandler : HandlerBase, IInventorCommand
                     throw new InvalidOperationException("CLEARANCE_FAILED: " + distance);
                 checks++;
             }
-            var result = new JObject { ["type"] = request.Type, ["offset_mm"] = request.OffsetMm, ["pairs_checked"] = checks,
+            var result = new JObject { ["type"] = request.Type,
+                ["offset_mm"] = request.Type == "angle" ? null : (JToken)request.OffsetMm,
+                ["angle_degrees"] = request.Type == "angle" ? (JToken)request.AngleDegrees : null,
+                ["axes_opposed"] = request.Type == "insert" ? (JToken)request.AxesOpposed : null,
+                ["inside_tangency"] = request.Type == "tangent" ? (JToken)request.InsideTangency : null,
+                ["pairs_checked"] = checks,
                 ["constraint_id"] = request.Preview ? null : EntityReferences.Describe(doc, created)["id"] };
             Owned();
             if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired before commit.");
@@ -88,6 +109,33 @@ public sealed class CreateConstraintHandler : HandlerBase, IInventorCommand
             throw;
         }
         finally { app.UserInterfaceManager.UserInteractionDisabled = priorUi; }
+    }
+
+    /// <summary>
+    /// Resolves one reference and checks it is the kind of geometry the constraint actually needs.
+    /// Inventor would otherwise infer an axis from a plane, or a plane from a cylinder, and build a
+    /// constraint the caller never asked for.
+    /// </summary>
+    private static (object Entity, ComponentOccurrence Occurrence) ResolveEntity(
+        global::Inventor.Document doc, ConstraintCreateRequest request, string id)
+    {
+        if (request.NeedsEdges)
+        {
+            var edge = EntityReferences.ResolveAssemblyEdge(doc, id);
+            if (edge.GeometryType != CurveTypeEnum.kCircleCurve && edge.GeometryType != CurveTypeEnum.kCircularArcCurve)
+                throw new ArgumentException("INSERT_NEEDS_CIRCULAR_EDGE: an insert constraint joins circular edges; " +
+                    "this one is " + edge.GeometryType + ". List edges with inventor_list_topology on the assembly.");
+            return (edge, edge.ContainingOccurrence);
+        }
+        var face = EntityReferences.ResolveAssemblyFace(doc, id);
+        if (request.NeedsPlanarFaces && face.SurfaceType != SurfaceTypeEnum.kPlaneSurface)
+            throw new ArgumentException("MATE_NEEDS_PLANAR_FACE: " + request.Type + " joins planar faces; this one is " +
+                face.SurfaceType + ". Use mate_axis for cylinders.");
+        if (request.Type == "mate_axis" && face.SurfaceType != SurfaceTypeEnum.kCylinderSurface &&
+            face.SurfaceType != SurfaceTypeEnum.kConeSurface)
+            throw new ArgumentException("MATE_AXIS_NEEDS_CYLINDER: mate_axis joins the axes of cylindrical or conical " +
+                "faces; this one is " + face.SurfaceType + ".");
+        return (face, face.ContainingOccurrence);
     }
 }
 #endif

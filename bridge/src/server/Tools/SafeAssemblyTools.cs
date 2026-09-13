@@ -20,14 +20,24 @@ public sealed class SafeAssemblyTools
           ["translation_mm"] = new JArray(translation_mm), ["minimum_clearance_mm"] = minimum_clearance_mm, ["preview"] = preview }, ct)).ToString(); }
         catch (InventorGatewayException ex) { return JsonConvert.SerializeObject(new { ok = false, error = new { code = ex.Code, message = ex.Message } }); }
     }
-    [McpServerTool(Name = "inventor_create_constraint_safe"), Description("Create planar mate or flush between persistent face_proxy IDs from selection in an active assembly. Only different, direct, unsuppressed, nonadaptive part occurrences. Offset in mm. Requires document_id/revision; owned transaction with preview=true by default. All unsuppressed top-level pairs must pass interference and minimum_clearance_mm checks; no contact exemptions or swept-path validation. Preview returns no persistent constraint ID because the temporary constraint is removed.")]
+    [McpServerTool(Name = "inventor_create_constraint_safe"), Description("Create an assembly constraint between persistent proxy IDs from inventor_list_topology (kind=face or edge on an active assembly) or from inventor_get_selection. type: mate or flush join planar faces (offset_mm); mate_axis joins the axes of cylindrical or conical faces (offset_mm); insert joins two circular EDGES and centres them (offset_mm as the distance, axes_opposed default true); angle orients two faces (angle_degrees, no offset); tangent makes two faces touch (offset_mm, inside=false for outside tangency). The geometry kind is checked against the type rather than inferred, so a plane is never silently treated as an axis. Only different, direct, unsuppressed, nonadaptive part occurrences. Requires document_id/revision; owned transaction with preview=true by default. All unsuppressed top-level pairs must pass interference and minimum_clearance_mm checks; no contact exemptions or swept-path validation. Preview returns no persistent constraint ID because the temporary constraint is removed.")]
     public async Task<string> CreateConstraint(string document_id, string expected_revision, string type,
-        string face_a_id, string face_b_id, double offset_mm, double minimum_clearance_mm, bool preview = true, CancellationToken ct = default)
+        string face_a_id, string face_b_id, double minimum_clearance_mm, double offset_mm = 0,
+        double? angle_degrees = null, bool axes_opposed = true, bool inside = false,
+        bool preview = true, CancellationToken ct = default)
     {
-        try { return (await _client.SendAsync("create_constraint_safe", new JObject
-        { ["document_id"] = document_id, ["expected_revision"] = expected_revision, ["type"] = type,
-          ["face_a_id"] = face_a_id, ["face_b_id"] = face_b_id, ["offset_mm"] = offset_mm,
-          ["minimum_clearance_mm"] = minimum_clearance_mm, ["preview"] = preview }, ct)).ToString(); }
+        try
+        {
+            var request = new JObject
+            { ["document_id"] = document_id, ["expected_revision"] = expected_revision, ["type"] = type,
+              ["face_a_id"] = face_a_id, ["face_b_id"] = face_b_id,
+              ["minimum_clearance_mm"] = minimum_clearance_mm, ["preview"] = preview,
+              ["axes_opposed"] = axes_opposed, ["inside"] = inside };
+            // An angle takes degrees and no offset; every other type takes the offset.
+            if (angle_degrees.HasValue) request["angle_degrees"] = angle_degrees.Value;
+            else request["offset_mm"] = offset_mm;
+            return (await _client.SendAsync("create_constraint_safe", request, ct)).ToString();
+        }
         catch (InventorGatewayException ex) { return JsonConvert.SerializeObject(new { ok = false, error = new { code = ex.Code, message = ex.Message } }); }
     }
     [McpServerTool(Name = "inventor_edit_constraint_safe"), Description("Edit a persistent assembly constraint_id obtained from inventor_list_constraints. Supports mate/flush/insert offsets in mm and angle in deg. Requires document_id and expected_revision. Owned transaction with preview rollback by default; validates rebuild, constraint health, interference and minimum_clearance_mm for ALL unsuppressed top-level pairs. No contact exemptions; endpoint validation only. Does not validate motion paths.")]

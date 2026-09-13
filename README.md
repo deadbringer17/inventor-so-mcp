@@ -299,9 +299,13 @@ to work on yet; the command is implemented and refuses an open section explicitl
 
 `inventor_insert_component_safe` inserts a saved, clean, already-open part by
 document ID. `inventor_move_component_safe` translates/rotates unconstrained
-direct occurrences. `inventor_create_constraint_safe` creates planar mate/flush
-constraints from persistent selected face proxies; `inventor_edit_constraint_safe`
-edits existing driving offsets/angles. These require current document/revision,
+direct occurrences. `inventor_create_constraint_safe` creates mate and flush
+between planar faces, `mate_axis` between cylindrical or conical faces, `insert`
+between two circular edges, `angle` between faces and `tangent` for touching faces —
+all from portable proxy ids, which `inventor_list_topology` supplies for an assembly,
+so nothing has to be picked by hand. The geometry kind is checked against the requested
+type instead of being inferred, so a plane is never silently used as an axis.
+`inventor_edit_constraint_safe` edits existing driving offsets/angles. These require current document/revision,
 explicit minimum clearance and owned transactions. Preview defaults true.
 Checks are endpoint-only, not collision-free motion planning. Assembly constraint
 validation checks all top-level unsuppressed pairs, with no contact exemptions.

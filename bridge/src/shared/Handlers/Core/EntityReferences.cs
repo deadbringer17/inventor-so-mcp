@@ -90,6 +90,16 @@ internal static class EntityReferences
         => ResolvePartEntity(document, id, "assembly_constraint") as AssemblyConstraint
             ?? throw new ArgumentException("REFERENCE_TYPE_MISMATCH: resolved object is not an assembly constraint.");
 
+    /// <summary>Any assembly face proxy: the axis constraints work on cylinders, not planes.</summary>
+    public static FaceProxy ResolveAssemblyFace(global::Inventor.Document document, string id)
+        => ResolvePartEntity(document, id, "face_proxy") as FaceProxy
+            ?? throw new ArgumentException("REFERENCE_TYPE_MISMATCH: an assembly face proxy is required.");
+
+    /// <summary>An assembly edge proxy, which is what an insert constraint joins.</summary>
+    public static EdgeProxy ResolveAssemblyEdge(global::Inventor.Document document, string id)
+        => ResolvePartEntity(document, id, "edge_proxy") as EdgeProxy
+            ?? throw new ArgumentException("REFERENCE_TYPE_MISMATCH: an assembly edge proxy is required.");
+
     public static FaceProxy ResolvePlanarAssemblyFace(global::Inventor.Document document, string id)
     {
         var face = ResolvePartEntity(document, id, "face_proxy") as FaceProxy
