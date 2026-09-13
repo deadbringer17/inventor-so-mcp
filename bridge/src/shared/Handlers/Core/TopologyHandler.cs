@@ -10,11 +10,12 @@ using Bimwright.Ipt.Shared.Infrastructure;
 namespace Bimwright.Ipt.Shared.Handlers.Core;
 
 /// <summary>
-/// <c>list_topology</c> — read-only inventory of a part body's edges or faces with the same portable
-/// reference tokens the modeling commands accept. Without it, edges could only be named by a human
-/// selecting them in Inventor, which leaves flanges and fillets unreachable for an unattended caller.
-/// Geometry is reported in millimetres; the listing is bounded and reports truncation rather than
-/// streaming a whole body.
+/// <c>list_topology</c> — read-only inventory of the active document's geometry with the same portable
+/// reference tokens the modeling commands accept. On a part it lists a body's edges or faces; on an
+/// assembly it lists direct occurrences, or their faces and edges as assembly-context proxies.
+/// Without it, geometry could only be named by a human selecting it in Inventor, which leaves flanges,
+/// fillets and assembly constraints unreachable for an unattended caller. Geometry is reported in
+/// millimetres; the listing is bounded and reports truncation rather than streaming a whole model.
 /// </summary>
 public sealed class TopologyHandler : HandlerBase, IInventorCommand
 {
@@ -23,14 +24,31 @@ public sealed class TopologyHandler : HandlerBase, IInventorCommand
 
     public InventorCommandResult Execute(InventorCommandContext ctx, JObject p)
     {
-        if (!ActiveDocumentSupport.TryGetActivePart(ctx, Name, out _, out var part, out var failure)) return failure!;
+        var app = (Application)ctx.Application!;
+        global::Inventor.Document? active;
+        try { active = app.ActiveDocument; } catch { active = null; }
+        if (active == null) return Fail(ctx, InventorErrorCodes.NO_DOCUMENT, "No active document.");
         string kind = ((string?)p["kind"] ?? "edge").Trim().ToLowerInvariant();
-        if (kind != "edge" && kind != "face")
-            return Fail(ctx, InventorErrorCodes.INVALID_ARGUMENT, "kind must be 'edge' or 'face'.");
-        int body = p["body"] == null ? 1 : p.Value<int>("body");
-        int limit = p["limit"] == null ? 50 : p.Value<int>("limit");
-        if (limit < 1 || limit > 200)
+        if (kind != "edge" && kind != "face" && kind != "occurrence")
+            return Fail(ctx, InventorErrorCodes.INVALID_ARGUMENT, "kind must be 'edge', 'face' or 'occurrence'.");
+        int listLimit = p["limit"] == null ? 50 : p.Value<int>("limit");
+        if (listLimit < 1 || listLimit > 200)
             return Fail(ctx, InventorErrorCodes.INVALID_ARGUMENT, "limit must be between 1 and 200.");
+
+        if (active is AssemblyDocument assembly)
+        {
+            try
+            {
+                return Ok(ctx, AssemblyTopology.List(ctx, assembly, kind, (string?)p["component_id"],
+                    (string?)p["geometry"], listLimit, ctx.IsDeadlineExceeded));
+            }
+            catch (ArgumentException ex) { return Fail(ctx, InventorErrorCodes.INVALID_ARGUMENT, ex.Message); }
+        }
+        if (kind == "occurrence")
+            return Fail(ctx, InventorErrorCodes.WRONG_DOCUMENT_TYPE, "kind='occurrence' requires an active assembly.");
+        if (!ActiveDocumentSupport.TryGetActivePart(ctx, Name, out _, out var part, out var failure)) return failure!;
+        int body = p["body"] == null ? 1 : p.Value<int>("body");
+        int limit = listLimit;
         double? minLength = p["min_length_mm"]?.Type is JTokenType.Float or JTokenType.Integer
             ? p.Value<double>("min_length_mm") : null;
         string? geometry = (string?)p["geometry"];
@@ -90,10 +108,15 @@ public sealed class TopologyHandler : HandlerBase, IInventorCommand
                 {
                     try
                     {
+                        // The surface normal and the face's own direction differ when the face
+                        // parameterization is reversed; outward_normal is the one to reason with.
                         var plane = (Plane)face.Geometry;
+                        double sign = face.IsParamReversed ? -1 : 1;
                         item["normal"] = new JArray(plane.Normal.X, plane.Normal.Y, plane.Normal.Z);
+                        item["param_reversed"] = face.IsParamReversed;
+                        item["outward_normal"] = new JArray(plane.Normal.X * sign, plane.Normal.Y * sign, plane.Normal.Z * sign);
                     }
-                    catch { item["normal"] = null; }
+                    catch { item["normal"] = null; item["param_reversed"] = null; item["outward_normal"] = null; }
                 }
                 items.Add(item);
             }
@@ -102,6 +125,7 @@ public sealed class TopologyHandler : HandlerBase, IInventorCommand
         return Ok(ctx, new JObject
         {
             ["kind"] = kind,
+            ["document_type"] = "part",
             ["body"] = body,
             ["body_count"] = def.SurfaceBodies.Count,
             ["matched"] = matched,

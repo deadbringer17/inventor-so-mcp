@@ -6,6 +6,7 @@ public static class ServerInstructions
         "Use inventor_atomic_batch for supported part edits, validated and committed together or rolled back. " +
         "inventor_move_component_safe translates/rotates an unconstrained direct occurrence in an owned transaction with mandatory endpoint clearance and interference checks, not swept-path checks. " +
         "inventor_edit_constraint_safe changes existing driving offsets/angles; inventor_create_constraint_safe creates planar mate/flush constraints between direct part face proxies. These validate all unsuppressed top-level pairs with no intended-contact exemptions. " +
+        "inventor_list_topology also works on an assembly: kind=occurrence lists components, kind=face returns their assembly face proxies, and a planar proxy is what inventor_create_constraint_safe takes, so constraining needs no user selection. Use outward_normal, not normal, to reason about which way a face points. " +
         "inventor_insert_component_safe inserts an already-open saved clean single-model-state part into the active assembly with endpoint validation and rollback; it accepts a source document ID, not arbitrary paths. " +
         "Checkpoint create/list/restore supports standalone single-state parts. Restore verifies the snapshot hash and opens a new recovery copy, not an in-place overwrite; refuses while the source identity is open. Never close unsaved user documents to bypass this guard. " +
         "preview=true makes temporary changes and aborts; it is not a read-only simulation. " +

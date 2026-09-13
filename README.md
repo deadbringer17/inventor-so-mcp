@@ -273,15 +273,20 @@ AutoCAD version and the layer option keys limited to allowlists and layer names 
 if they carry the option string's own separators; it is refused for a folded model or a part that is
 not sheet metal.
 
-`inventor_list_topology(kind='edge'|'face')` lists a body's edges or faces with the
-same portable ids the modeling commands take, so flange edges can be chosen without
-a human selecting them in Inventor. Reproduce the whole chain, on host-owned
+`inventor_list_topology` lists geometry with the same portable ids the modeling commands
+take, so nothing has to be selected by hand in Inventor. On a part: `kind='edge'` or
+`'face'` of one body. On an assembly: `kind='occurrence'` for the components, or
+`kind='face'`/`'edge'` for one component's assembly-context proxies — and a planar face
+proxy is exactly what `inventor_create_constraint_safe` accepts, which is what makes an
+assembly constrainable unattended. Planar faces report `outward_normal` alongside the raw
+surface `normal`, because the two differ whenever the face parameterization is reversed. Reproduce the whole chain, on host-owned
 documents only:
 
 ```powershell
 python scripts/smoke-sheetmetal-mcp.py --server <path-to-Inventor.So.Mcp.Server.dll>
 python scripts/smoke-sheetmetal-features-mcp.py --server <path-to-Inventor.So.Mcp.Server.dll>
 python scripts/smoke-sheetmetal-shop-mcp.py --server <path-to-Inventor.So.Mcp.Server.dll>
+python scripts/smoke-assembly-autonomous-mcp.py --server <path-to-Inventor.So.Mcp.Server.dll>
 ```
 
 Two sheet-metal capabilities are **not** available through the API, established by
