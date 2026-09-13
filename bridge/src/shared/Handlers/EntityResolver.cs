@@ -57,6 +57,10 @@ internal static class EntityResolver
     /// <summary>Resolve a model edge from a part component definition by positional id.</summary>
     public static Edge ResolveEdge(PartComponentDefinition def, string edgeId)
     {
+#if INVENTOR2027
+        if (edgeId.StartsWith("ent_", StringComparison.Ordinal))
+            return Core.EntityReferences.ResolvePartEdge((global::Inventor.Document)def.Document, edgeId);
+#endif
         var bodies = def.SurfaceBodies;
         if (bodies.Count < 1)
             throw new ArgumentException("the part has no solid bodies to select edges from");

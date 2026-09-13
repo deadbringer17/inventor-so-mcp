@@ -88,6 +88,18 @@ public sealed class ListConstraintsHandler : HandlerBase, IInventorCommand
                 };
 
                 constraintsArr.Add(item);
+#if INVENTOR2027
+                item["id"] = Core.EntityReferences.Describe((global::Inventor.Document)assemblyDoc, c)["id"];
+                Parameter? driving = c switch { MateConstraint m => m.Offset, FlushConstraint f => f.Offset,
+                    InsertConstraint i => i.Distance, AngleConstraint a => a.Angle, _ => null };
+                if (driving != null)
+                {
+                    item["expression"] = driving.Expression;
+                    item["parameter_name"] = driving.Name;
+                    item["value"] = Convert.ToDouble(driving.Value) * (c is AngleConstraint ? 180 / Math.PI : 10);
+                    item["units"] = c is AngleConstraint ? "deg" : "mm";
+                }
+#endif
             }
 
             return Ok(context, new JObject

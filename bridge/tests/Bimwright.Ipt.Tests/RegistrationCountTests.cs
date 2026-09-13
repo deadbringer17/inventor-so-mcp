@@ -38,7 +38,7 @@ public sealed class RegistrationCountTests
     };
 
     [Fact]
-    public void All_toolsets_with_send_code_register_exactly_61_tools()
+    public void All_toolsets_with_send_code_contain_80_underlying_tools()
     {
         var names = ToolNames(AllEnabled());
 
@@ -46,7 +46,7 @@ public sealed class RegistrationCountTests
         var distinct = names.Distinct(StringComparer.Ordinal).ToArray();
         Assert.Equal(distinct.Length, names.Length);
 
-        Assert.Equal(61, names.Length);
+        Assert.Equal(80, names.Length);
     }
 
     [Fact]
@@ -58,13 +58,16 @@ public sealed class RegistrationCountTests
         {
             // meta (3)
             "inventor_list_available_targets", "inventor_get_current_target", "inventor_switch_target",
-            // core + document (10): health + 9 doc
+            // core + document (16): health + 10 doc + 5 workspace lifecycle
             "inventor_health", "inventor_list_open_documents", "inventor_get_document_info",
-            "inventor_get_selection", "inventor_resolve_entity",
+            "inventor_get_selection", "inventor_resolve_entity", "inventor_plan_native_package",
+            "inventor_list_workspace_documents", "inventor_get_sheet_metal_info", "inventor_list_topology",
+            "inventor_new_document_safe", "inventor_open_document_safe", "inventor_save_document_safe", "inventor_close_document_safe",
             "inventor_new_part", "inventor_new_assembly", "inventor_open_document",
             "inventor_save_document", "inventor_close_document", "inventor_set_units", "inventor_set_material",
             // parameters (4)
             "inventor_list_parameters", "inventor_get_parameter", "inventor_set_parameter", "inventor_create_parameter",
+            "inventor_atomic_batch",
             // properties (3)
             "inventor_get_iproperty", "inventor_set_iproperty", "inventor_get_mass_properties",
             // sketch (9)
@@ -78,6 +81,16 @@ public sealed class RegistrationCountTests
             // export (6)
             "inventor_capture_view", "inventor_export_step", "inventor_export_stl", "inventor_export_dxf",
             "inventor_view_fit", "inventor_set_view_orientation",
+            "inventor_save_artifact",
+            "inventor_move_component_safe",
+            "inventor_edit_constraint_safe",
+            "inventor_create_constraint_safe",
+            "inventor_insert_component_safe",
+            "inventor_checkpoint_create",
+            "inventor_checkpoint_list",
+            "inventor_checkpoint_restore",
+            "inventor_diff_checkpoint",
+            "inventor_create_drawing_safe",
             // code (1)
             "inventor_send_code",
             // toolbaker (6)
@@ -90,10 +103,10 @@ public sealed class RegistrationCountTests
             "inventor_get_assembly_bom", "inventor_list_constraints",
         };
 
-        Assert.Equal(61, expected.Length);
+        Assert.Equal(80, expected.Length);
         foreach (var e in expected)
             Assert.True(names.Contains(e), $"missing expected tool: {e}");
-        // and nothing extra beyond the 59 expected
+        // and nothing extra beyond the expected surface
         foreach (var n in names)
             Assert.True(expected.Contains(n), $"unexpected extra tool: {n}");
     }
@@ -145,11 +158,11 @@ public sealed class RegistrationCountTests
     }
 
     [Fact]
-    public void Default_config_registers_60_tools_without_send_code()
+    public void Default_config_contains_79_underlying_tools_without_send_code()
     {
         // Default (no --enable-send-code) drops the single `code` tool, leaving 58.
         var names = ToolNames(new InventorMcpConfig());
         Assert.False(names.Contains("inventor_send_code"), "send_code must be off by default");
-        Assert.Equal(60, names.Length);
+        Assert.Equal(79, names.Length);
     }
 }

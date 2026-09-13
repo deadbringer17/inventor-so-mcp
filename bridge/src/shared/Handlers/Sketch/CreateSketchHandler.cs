@@ -59,6 +59,10 @@ public sealed class CreateSketchHandler : HandlerBase, IInventorCommand
     /// </summary>
     private static object ResolvePlane(PartComponentDefinition def, string plane)
     {
+#if INVENTOR2027
+        if (plane.StartsWith("ent_", StringComparison.Ordinal))
+            return Core.EntityReferences.ResolvePlanarPartFace((global::Inventor.Document)def.Document, plane);
+#endif
         switch (plane.ToUpperInvariant())
         {
             case "XY": return def.WorkPlanes["XY Plane"];

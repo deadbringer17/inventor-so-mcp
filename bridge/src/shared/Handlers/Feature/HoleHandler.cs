@@ -22,6 +22,9 @@ public sealed class HoleHandler : HandlerBase, IInventorCommand
         }
 
         var selObj = parameters["face"] as JObject;
+        string? faceId = parameters["face_id"]?.Value<string>();
+        if (parameters["face_id"] != null && (string.IsNullOrWhiteSpace(faceId) || parameters["face"] != null))
+            return Fail(context, "INVALID_ARGUMENT", "Provide either a non-empty face_id or a legacy face selector, not both.");
         FaceSelectorSpec? spec = null;
         string specErr = "required";
         bool parsed = false;
@@ -29,7 +32,7 @@ public sealed class HoleHandler : HandlerBase, IInventorCommand
         {
             parsed = FaceSelectorSpec.TryParse(selObj, out spec, out specErr);
         }
-        if (!parsed || spec == null)
+        if (faceId == null && (!parsed || spec == null))
         {
             return Fail(context, "INVALID_ARGUMENT", "Invalid face selector: " + specErr);
         }
@@ -41,6 +44,8 @@ public sealed class HoleHandler : HandlerBase, IInventorCommand
         }
 
         string kind = ((string?)parameters["kind"] ?? "").Trim().ToLowerInvariant();
+        try { HolePointValidation.Validate(pointsMm); }
+        catch (ArgumentException ex) { return Fail(context, "INVALID_ARGUMENT", ex.Message); }
         if (kind is not ("drilled" or "counterbore" or "countersink"))
         {
             return Fail(context, "INVALID_ARGUMENT", "kind must be drilled|counterbore|countersink");
@@ -115,7 +120,18 @@ public sealed class HoleHandler : HandlerBase, IInventorCommand
         }
 
         // Select the face
-        var face = FaceSelector.SelectFace(def, spec, out var candidates);
+        var candidates = new JArray();
+        Face? face;
+        if (faceId != null)
+        {
+#if INVENTOR2027
+            try { face = Core.EntityReferences.ResolvePlanarPartFace((global::Inventor.Document)partDoc, faceId); }
+            catch (ArgumentException ex) { return Fail(context, "INVALID_ARGUMENT", ex.Message); }
+#else
+            return Fail(context, "INVALID_ARGUMENT", "Persistent face IDs require Inventor SO 2027.");
+#endif
+        }
+        else face = FaceSelector.SelectFace(def, spec!, out candidates);
         if (face == null)
         {
             string errMessage = candidates.Count == 0
@@ -136,6 +152,14 @@ public sealed class HoleHandler : HandlerBase, IInventorCommand
             // Create a Sketch on the face
             var sketch = def.Sketches.Add(face);
             var pointsColl = app.TransientObjects.CreateObjectCollection();
+            bool parametricPositioning = (bool?)parameters["parametric_positioning"] ?? false;
+            var positionParameters = new JArray();
+            SketchPoint? anchor = null;
+            if (parametricPositioning)
+            {
+                anchor = sketch.SketchPoints.Add(app.TransientGeometry.CreatePoint2d(0, 0), false);
+                sketch.GeometricConstraints.AddGround((SketchEntity)anchor);
+            }
 
             foreach (var ptToken in pointsMm)
             {
@@ -196,6 +220,23 @@ public sealed class HoleHandler : HandlerBase, IInventorCommand
 
                 var skPt2d = sketch.ModelToSketchSpace(modelPt);
                 var skPt = sketch.SketchPoints.Add(skPt2d);
+                if (parametricPositioning)
+                {
+                    // Initial signed quadrant is retained by the solver; dimensions are magnitudes.
+                    // Zero offsets require a different constraint strategy, so fail explicitly for now.
+                    if (Math.Abs(skPt2d.X) < 1e-8 || Math.Abs(skPt2d.Y) < 1e-8)
+                        return Fail(context, "INVALID_ARGUMENT", "Parametric centers on a sketch axis are not supported yet.");
+                    var x = sketch.DimensionConstraints.AddTwoPointDistance(anchor!, skPt,
+                        DimensionOrientationEnum.kHorizontalDim,
+                        app.TransientGeometry.CreatePoint2d(skPt2d.X / 2, skPt2d.Y + 0.2), false).Parameter;
+                    var y = sketch.DimensionConstraints.AddTwoPointDistance(anchor!, skPt,
+                        DimensionOrientationEnum.kVerticalDim,
+                        app.TransientGeometry.CreatePoint2d(skPt2d.X + 0.2, skPt2d.Y / 2), false).Parameter;
+                    positionParameters.Add(new JObject { ["point_index"] = positionParameters.Count,
+                        ["x_parameter"] = x.Name, ["y_parameter"] = y.Name,
+                        ["initial_sketch_x_mm"] = UnitConvert.CmToMm(skPt2d.X),
+                        ["initial_sketch_y_mm"] = UnitConvert.CmToMm(skPt2d.Y) });
+                }
                 pointsColl.Add(skPt);
             }
 
@@ -277,7 +318,10 @@ public sealed class HoleHandler : HandlerBase, IInventorCommand
             {
                 ["feature_names"] = new JArray(holeFeature.Name),
                 ["hole_count"] = pointsMm.Count,
-                ["tapped"] = wantTapped
+                ["tapped"] = wantTapped,
+                ["sketch_name"] = sketch.Name,
+                ["position_parameters"] = positionParameters,
+                ["position_frame"] = "sketch-local; parameters are unsigned distances from a grounded sketch origin point"
             });
         }
         catch (Exception ex)

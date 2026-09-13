@@ -19,6 +19,22 @@ public sealed class CommandDispatcher
     private readonly IReadOnlyDictionary<string, IInventorCommand> _commands;
     private readonly int _maxResponseBytes;
 
+    /// <summary>Writes migrated to the reviewed safe workflow. Everything else fails closed under
+    /// <see cref="InventorCommandContext.RequireAtomicWrites"/>, including new handlers added later.</summary>
+    private static readonly HashSet<string> SafeWriteCommands = new(StringComparer.Ordinal)
+    {
+        "atomic_batch", "save_artifact", "create_drawing_safe",
+        "move_component_safe", "insert_component_safe", "edit_constraint_safe", "create_constraint_safe",
+        "checkpoint_create", "checkpoint_restore",
+        "workspace_new_document", "workspace_open_document", "workspace_save_document", "workspace_close_document",
+    };
+
+    /// <summary>Read-only-flagged legacy exports that still write files; they stay blocked.</summary>
+    private static readonly HashSet<string> LegacyExportCommands = new(StringComparer.Ordinal)
+    {
+        "export_step", "export_stl", "export_dxf", "capture_view",
+    };
+
     public CommandDispatcher(IReadOnlyDictionary<string, IInventorCommand> commands, int maxResponseBytes)
     {
         _commands = commands;
@@ -42,6 +58,13 @@ public sealed class CommandDispatcher
 
         if (!cmd.IsReadOnly && ctx.ReadOnly)
             return InventorCommandResult.Fail(env.Id, InventorErrorCodes.READ_ONLY, $"{env.Command} is a write command and the server is read-only", meta);
+
+        // Host-owned policy, never taken from the request. Fail closed for new writes,
+        // scripting and baked command aggregators until explicitly migrated.
+        if (ctx.RequireAtomicWrites &&
+            ((!cmd.IsReadOnly && !SafeWriteCommands.Contains(cmd.Name)) || LegacyExportCommands.Contains(cmd.Name)))
+            return InventorCommandResult.Fail(env.Id, InventorErrorCodes.ATOMIC_REQUIRED,
+                "Direct writes are disabled in Inventor SO. Use inventor_atomic_batch for supported part edits. Other writes await a safe workflow.", meta);
 
         try
         {

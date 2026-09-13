@@ -13,10 +13,28 @@
       <EmbedInteropTypes>false</EmbedInteropTypes>
       <Private>false</Private>
     </Reference>
-    <Compile Include="../../src/shared/Contracts/PersistentEntityReference.cs" Link="PersistentEntityReference.cs" />
+    <Compile Include="../../src/shared/Contracts/*.cs" LinkBase="Contracts" />
     <Compile Include="../../src/shared/Handlers/Core/EntityReferences.cs" Link="EntityReferences.cs" />
-    <Compile Include="../../src/shared/Contracts/CadEventJournal.cs" Link="CadEventJournal.cs" />
     <Compile Include="../../src/shared/Plugin/CadEventTracker.cs" Link="CadEventTracker.cs" />
+    <Compile Include="../../src/shared/Infrastructure/*.cs" LinkBase="Infrastructure" />
+    <Compile Include="../../src/shared/Security/*.cs" LinkBase="Security" />
+    <Compile Include="../../src/shared/Handlers/Core/AtomicBatchHandler.cs" Link="AtomicBatchHandler.cs" />
+    <Compile Include="../../src/shared/Handlers/Parameters/*.cs" LinkBase="Parameters" />
+    <Compile Include="../../src/shared/Handlers/HandlerBase.cs" Link="HandlerBase.cs" />
+    <Compile Include="../../src/shared/Handlers/UnitConvert.cs" Link="UnitConvert.cs" />
+    <Compile Include="../../src/shared/Handlers/EntityResolver.cs" Link="EntityResolver.cs" />
+    <Compile Include="../../src/shared/Handlers/ActiveDocumentSupport.cs" Link="ActiveDocumentSupport.cs" />
+    <Compile Include="../../src/shared/Handlers/Feature/FeatureSupport.cs" Link="FeatureSupport.cs" />
+    <Compile Include="../../src/shared/Handlers/Feature/FilletHandler.cs" Link="FilletHandler.cs" />
+    <Compile Include="../../src/shared/Handlers/Feature/ChamferHandler.cs" Link="ChamferHandler.cs" />
+    <Compile Include="../../src/shared/Handlers/Sketch/CreateSketchHandler.cs" Link="CreateSketchHandler.cs" />
+    <Compile Include="../../src/shared/Handlers/Feature/HoleHandler.cs" Link="HoleHandler.cs" />
+    <Compile Include="../../src/shared/Handlers/Assembly/FaceSelector.cs" Link="FaceSelector.cs" />
+    <Compile Include="../../src/shared/Handlers/Assembly/AssemblyRefResolver.cs" Link="AssemblyRefResolver.cs" />
+    <Compile Include="../../src/shared/Handlers/Core/SaveArtifactHandler.cs" Link="SaveArtifactHandler.cs" />
+    <Compile Include="../../src/shared/Handlers/Core/MoveComponentHandler.cs" Link="MoveComponentHandler.cs" />
+    <Compile Include="../../src/shared/Handlers/Core/EditConstraintHandler.cs" Link="EditConstraintHandler.cs" />
+    <Compile Include="../../src/shared/Handlers/Export/ExportSupport.cs" Link="ExportSupport.cs" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
 </Project>

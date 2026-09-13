@@ -50,4 +50,9 @@ public sealed class ParameterTools
             return JsonConvert.SerializeObject(new { ok = false, error = new { code = ex.Code, message = ex.Message } }, Formatting.Indented);
         }
     }
+
+    [McpServerTool(Name = "inventor_atomic_batch"), Description("Execute up to 32 typed part-modeling operations in one reversible transaction. Requires document_id and revision from inventor://active-document. Validates rebuild/feature health before commit. preview=true executes then rolls back; it is not a read-only operation. Each operation has command (wire name, e.g. set_parameter) and arguments. No scripting, file export or document lifecycle allowed. Inventor SO 2027 only.")]
+    public Task<string> AtomicBatch(string document_id, string expected_revision, System.Text.Json.JsonElement operations, bool preview = false, CancellationToken ct = default)
+        => Call("atomic_batch", new JObject { ["document_id"] = document_id, ["expected_revision"] = expected_revision,
+            ["operations"] = JToken.Parse(operations.GetRawText()), ["preview"] = preview }, ct);
 }

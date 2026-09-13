@@ -18,6 +18,20 @@ internal static class ExportSupport
     public const string StepTranslatorId = "{90AF7F40-0C01-11D5-8E83-0010B541CD80}";
     public const string StlTranslatorId  = "{533E9A98-FC3B-11D4-8E7E-0010B541CD80}";
 
+    public static void SavePdf(Application app, object source, string outputPath)
+    {
+        var translator = GetTranslator(app, "{0AC6FD96-2F4D-42CE-8BE0-8AEA580399E4}", "PDF");
+        var context = app.TransientObjects.CreateTranslationContext();
+        context.Type = IOMechanismEnum.kFileBrowseIOMechanism;
+        var options = app.TransientObjects.CreateNameValueMap();
+        if (!translator.HasSaveCopyAsOptions[source, context, options]) throw new InvalidOperationException("PDF export options unavailable.");
+        options.Value["All_Color_AS_Black"] = 1;
+        options.Value["Vector_Resolution"] = 400;
+        options.Value["Sheet_Range"] = PrintRangeEnum.kPrintAllSheets;
+        var medium = app.TransientObjects.CreateDataMedium(); medium.FileName = outputPath;
+        translator.SaveCopyAs(source, context, options, medium);
+    }
+
     /// <summary>Look up a built-in translator add-in by ClassId GUID, or throw a friendly error.</summary>
     public static TranslatorAddIn GetTranslator(Application app, string classId, string label)
     {

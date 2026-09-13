@@ -20,8 +20,26 @@ public static partial class InventorCommandRegistry
         add(new GetDocumentInfoHandler());
 #if INVENTOR2027
         add(new SelectionHandler());
+        add(new TopologyHandler());
         add(new ResolveEntityHandler());
         add(new EventsHandler());
+        add(new AtomicBatchHandler());
+        add(new SaveArtifactHandler());
+        add(new NativePackagePlanHandler());
+        add(new CreateDrawingHandler());
+        add(new CheckpointHandler("create"));
+        add(new CheckpointHandler("list"));
+        add(new CheckpointHandler("diff"));
+        add(new CheckpointHandler("restore"));
+        add(new MoveComponentHandler());
+        add(new MoveComponentHandler(insert: true));
+        add(new EditConstraintHandler());
+        add(new CreateConstraintHandler());
+        add(new WorkspaceDocumentHandler("new"));
+        add(new WorkspaceDocumentHandler("open"));
+        add(new WorkspaceDocumentHandler("save"));
+        add(new WorkspaceDocumentHandler("close"));
+        add(new WorkspaceDocumentHandler("list"));
 #endif
     }
 }

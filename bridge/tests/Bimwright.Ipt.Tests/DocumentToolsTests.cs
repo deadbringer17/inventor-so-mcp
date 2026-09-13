@@ -20,6 +20,12 @@ public sealed class DocumentToolsTests
         "inventor_get_document_info",
         "inventor_get_selection",
         "inventor_resolve_entity",
+        "inventor_plan_native_package",
+        "inventor_list_workspace_documents",
+        "inventor_get_sheet_metal_info",
+        "inventor_list_topology",
+        "inventor_checkpoint_list",
+        "inventor_diff_checkpoint",
     };
 
     private static readonly string[] ExpectedDocumentWriteTools =

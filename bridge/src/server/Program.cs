@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Bimwright.Ipt.Server;
 using Bimwright.Ipt.Server.Tools;
 using Bimwright.Ipt.Server.Resources;
@@ -32,7 +33,10 @@ internal static partial class Program
     {
         foreach (var toolType in toolTypes)
         {
-            mcp = RegisterToolType(mcp, toolType);
+            var methods = toolType.GetMethods().Where(method =>
+                SoToolPolicy.IsExposed(method.GetCustomAttribute<McpServerToolAttribute>()?.Name));
+            mcp = mcp.WithTools(methods.Select(method => McpServerTool.Create(method,
+                context => ActivatorUtilities.CreateInstance(context.Services!, toolType))));
         }
 
         return mcp;
@@ -69,15 +73,18 @@ internal static partial class Program
         Add("meta",            typeof(MetaTools));
         Add("query",           typeof(QueryTools));
         Add("document",        typeof(DocumentTools));
+        Add("document",        typeof(SafeDocumentTools));
         Add("parameters",      typeof(ParameterTools));
         Add("properties",      typeof(PropertyTools));
         Add("sketch",          typeof(SketchTools));
         Add("feature",         typeof(FeatureTools));
         Add("export",          typeof(ExportTools));
+        Add("export",          typeof(SafeArtifactTools));
         Add("code",            typeof(CodeTools));
         Add("toolbaker",       typeof(ToolBakerTools));
         Add("toolbaker_write", typeof(ToolBakerWriteTools));
         Add("assembly",        typeof(AssemblyTools));
+        Add("assembly",        typeof(SafeAssemblyTools));
         Add("assembly_query",  typeof(AssemblyQueryTools));
         return types;
     }

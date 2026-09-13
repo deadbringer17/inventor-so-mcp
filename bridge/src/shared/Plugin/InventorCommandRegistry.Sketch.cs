@@ -18,6 +18,7 @@ public static partial class InventorCommandRegistry
         add(new CreateSketchHandler());
         add(new ProjectGeometryHandler());
         add(new DrawLineHandler());
+        add(new DrawPointHandler());
         add(new DrawCircleHandler());
         add(new DrawRectangleHandler());
         add(new DrawArcHandler());

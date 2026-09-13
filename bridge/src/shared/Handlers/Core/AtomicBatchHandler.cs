@@ -1,0 +1,91 @@
+#if INVENTOR2027
+using System;
+using Bimwright.Ipt.Shared.Contracts;
+using Bimwright.Ipt.Shared.Infrastructure;
+using Inventor;
+using Newtonsoft.Json.Linq;
+
+namespace Bimwright.Ipt.Shared.Handlers.Core;
+
+public sealed class AtomicBatchHandler : IInventorCommand
+{
+    public string Name => "atomic_batch";
+    public bool IsReadOnly => false;
+    public InventorCommandResult Execute(InventorCommandContext ctx, JObject p)
+    {
+        if (ctx.ReadOnly) return InventorCommandResult.Fail(Guid.Empty, InventorErrorCodes.READ_ONLY, "Batch requires write permission", new());
+        if (p["operations"] is not JArray operations) return InventorCommandResult.Fail(Guid.Empty, InventorErrorCodes.INVALID_ARGUMENT, "operations must be an array", new());
+        using var backend = new InventorBatchBackend(ctx);
+        var data = AtomicCadBatch.Run(backend, (string?)p["document_id"] ?? "", (string?)p["expected_revision"] ?? "",
+            operations, (bool?)p["preview"] ?? false, ctx.IsDeadlineExceeded);
+        return InventorCommandResult.Success(Guid.Empty, data, new());
+    }
+}
+
+internal sealed class InventorBatchBackend : ICadBatchBackend, IDisposable
+{
+    private readonly InventorCommandContext _ctx;
+    private readonly Application _app;
+    private readonly global::Inventor.Document _doc;
+    private Transaction? _transaction;
+    private bool? _priorInteractionDisabled;
+    public InventorBatchBackend(InventorCommandContext ctx)
+    {
+        _ctx = ctx;
+        _app = (Application)ctx.Application!;
+        _doc = _app.ActiveDocument ?? throw new InvalidOperationException("NO_DOCUMENT");
+        if (_doc.DocumentType != DocumentTypeEnum.kPartDocumentObject) throw new InvalidOperationException("Atomic modeling batch currently requires a part document.");
+        if (ctx.Events == null) throw new InvalidOperationException("EVENTS_UNAVAILABLE: cannot verify concurrency.");
+    }
+    public string DocumentId => _app.ActiveDocument == null ? "" : EntityReferences.DocumentId(_app.ActiveDocument);
+    public string Revision => _ctx.Events!.Revision(EntityReferences.DocumentId(_doc));
+    public void Begin(string name)
+    {
+        _priorInteractionDisabled = _app.UserInterfaceManager.UserInteractionDisabled;
+        _app.UserInterfaceManager.UserInteractionDisabled = true;
+        _transaction = _app.TransactionManager.StartTransaction((_Document)_doc, name);
+        // Inventor returns an unidentified transaction even when idle. Only a newly
+        // started identified transaction can reliably report whether it is nested.
+        // Abort only our empty transaction; never end or abort the existing parent.
+        try
+        {
+            if (_transaction.HasParentTransaction)
+                throw new InvalidOperationException("TRANSACTION_BUSY: another Inventor transaction is active.");
+        }
+        catch
+        {
+            Rollback();
+            throw;
+        }
+    }
+    public JObject Execute(string command, JObject arguments)
+    {
+        EnsureOwned();
+        if (_ctx.Commands == null || !_ctx.Commands.TryGetValue(command, out var handler)) throw new ArgumentException("Unregistered batch command " + command);
+        var result = handler.Execute(_ctx, arguments);
+        if (!result.Ok) throw new InvalidOperationException(result.Error?.Code + ": " + result.Error?.Message);
+        return new JObject { ["command"] = command, ["data"] = result.Data };
+    }
+    public void Validate()
+    {
+        EnsureOwned();
+        if (!_doc.Update2()) throw new InvalidOperationException("Rebuild failed.");
+        var part = (PartDocument)_doc;
+        foreach (PartFeature feature in part.ComponentDefinition.Features)
+            if (!feature.Suppressed && feature.HealthStatus != HealthStatusEnum.kUpToDateHealth)
+                throw new InvalidOperationException("Feature is not healthy: " + feature.Name + " (" + feature.HealthStatus + ")");
+    }
+    private void EnsureOwned()
+    {
+        if (_transaction == null || !ReferenceEquals(_app.TransactionManager.CurrentTransaction, _transaction))
+            throw new InvalidOperationException("TRANSACTION_OWNERSHIP_LOST: refusing to end another transaction.");
+    }
+    public void Commit() { EnsureOwned(); _transaction!.End(); _transaction = null; }
+    public void Rollback() { if (_transaction != null) { EnsureOwned(); _transaction.Abort(); _transaction = null; } }
+    public void Dispose()
+    {
+        // The runner owns rollback; restore user interaction even if rollback itself failed.
+        if (_priorInteractionDisabled.HasValue) _app.UserInterfaceManager.UserInteractionDisabled = _priorInteractionDisabled.Value;
+    }
+}
+#endif

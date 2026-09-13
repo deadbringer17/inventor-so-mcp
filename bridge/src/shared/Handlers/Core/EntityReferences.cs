@@ -29,6 +29,7 @@ internal static class EntityReferences
                 case Vertex vertex: vertex.GetReferenceKey(ref key, context); type = "vertex"; break;
                 case ComponentOccurrenceProxy occurrence: occurrence.GetReferenceKey(ref key, context); type = "occurrence_proxy"; break;
                 case ComponentOccurrence occurrence: occurrence.GetReferenceKey(ref key, context); type = "occurrence"; break;
+                case AssemblyConstraint constraint: constraint.GetReferenceKey(ref key, context); type = "assembly_constraint"; break;
                 default: return new JObject { ["supported"] = false, ["reason"] = "Entity type is not supported by this reference adapter yet." };
             }
             byte[] data = Array.Empty<byte>();
@@ -73,6 +74,65 @@ internal static class EntityReferences
                 }
             }
             return result;
+        }
+        finally { manager.ReleaseKeyContext(context); }
+    }
+
+    public static Edge ResolvePartEdge(global::Inventor.Document document, string id)
+        => ResolvePartEntity(document, id, "edge") as Edge
+            ?? throw new ArgumentException("REFERENCE_TYPE_MISMATCH: resolved object is not an edge.");
+
+    public static ComponentOccurrence ResolveOccurrence(global::Inventor.Document document, string id)
+        => ResolvePartEntity(document, id, "occurrence") as ComponentOccurrence
+            ?? throw new ArgumentException("REFERENCE_TYPE_MISMATCH: resolved object is not an occurrence.");
+
+    public static AssemblyConstraint ResolveAssemblyConstraint(global::Inventor.Document document, string id)
+        => ResolvePartEntity(document, id, "assembly_constraint") as AssemblyConstraint
+            ?? throw new ArgumentException("REFERENCE_TYPE_MISMATCH: resolved object is not an assembly constraint.");
+
+    public static FaceProxy ResolvePlanarAssemblyFace(global::Inventor.Document document, string id)
+    {
+        var face = ResolvePartEntity(document, id, "face_proxy") as FaceProxy
+            ?? throw new ArgumentException("REFERENCE_TYPE_MISMATCH: an assembly face proxy is required.");
+        if (face.SurfaceType != SurfaceTypeEnum.kPlaneSurface)
+            throw new ArgumentException("REFERENCE_NOT_PLANAR: a planar assembly face is required.");
+        return face;
+    }
+
+    /// <summary>Any part face by portable id. Bend faces are cylindrical, so planarity is not required.</summary>
+    public static Face ResolvePartEntityFace(global::Inventor.Document document, string id)
+        => ResolvePartEntity(document, id, "face") as Face
+            ?? throw new ArgumentException("REFERENCE_TYPE_MISMATCH: resolved object is not a face.");
+
+    public static Face ResolvePlanarPartFace(global::Inventor.Document document, string id)
+    {
+        var face = ResolvePartEntity(document, id, "face") as Face
+            ?? throw new ArgumentException("REFERENCE_TYPE_MISMATCH: resolved object is not a face.");
+        if (face.SurfaceType != SurfaceTypeEnum.kPlaneSurface)
+            throw new ArgumentException("REFERENCE_NOT_PLANAR: sketch support must be planar.");
+        return face;
+    }
+
+    private static object ResolvePartEntity(global::Inventor.Document document, string id, string entityType)
+    {
+        var reference = PersistentEntityReference.Decode(id);
+        if (reference.DocumentId != DocumentId(document))
+            throw new ArgumentException("REFERENCE_DOCUMENT_MISMATCH: entity belongs to another document.");
+        if (reference.EntityType != entityType)
+            throw new ArgumentException("REFERENCE_TYPE_MISMATCH: a native part " + entityType + " is required.");
+        var manager = document.ReferenceKeyManager;
+        var bytes = reference.Context;
+        int context = manager.LoadContextFromArray(ref bytes);
+        try
+        {
+            var key = reference.Key;
+            object entity;
+            object details;
+            if (!manager.CanBindKeyToObject(ref key, context, out entity, out details))
+                throw new ArgumentException("REFERENCE_UNRESOLVED: inspect the model again.");
+            if (entity is ObjectCollection)
+                throw new ArgumentException("REFERENCE_AMBIGUOUS: refusing to choose an entity.");
+            return entity;
         }
         finally { manager.ReleaseKeyContext(context); }
     }

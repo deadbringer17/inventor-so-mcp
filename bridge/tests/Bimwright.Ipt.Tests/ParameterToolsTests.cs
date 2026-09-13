@@ -20,6 +20,7 @@ public sealed class ParameterToolsTests
         "inventor_get_parameter",
         "inventor_set_parameter",
         "inventor_create_parameter",
+        "inventor_atomic_batch",
     };
 
     private static string[] ToolNamesOf(Type t)

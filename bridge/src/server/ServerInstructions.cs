@@ -2,7 +2,27 @@ namespace Bimwright.Ipt.Server;
 
 public static class ServerInstructions
 {
-    public const string Text =
+    public const string Text = "Inventor SO MCP for Inventor 2027. Query the active document and its revision before planning. " +
+        "Use inventor_atomic_batch for supported part edits, validated and committed together or rolled back. " +
+        "inventor_move_component_safe translates/rotates an unconstrained direct occurrence in an owned transaction with mandatory endpoint clearance and interference checks, not swept-path checks. " +
+        "inventor_edit_constraint_safe changes existing driving offsets/angles; inventor_create_constraint_safe creates planar mate/flush constraints between direct part face proxies. These validate all unsuppressed top-level pairs with no intended-contact exemptions. " +
+        "inventor_insert_component_safe inserts an already-open saved clean single-model-state part into the active assembly with endpoint validation and rollback; it accepts a source document ID, not arbitrary paths. " +
+        "Checkpoint create/list/restore supports standalone single-state parts. Restore verifies the snapshot hash and opens a new recovery copy, not an in-place overwrite; refuses while the source identity is open. Never close unsaved user documents to bypass this guard. " +
+        "preview=true makes temporary changes and aborts; it is not a read-only simulation. " +
+        "Document lifecycle is limited to the host-owned InventorSO workspace: inventor_new_document_safe creates a part or assembly there, inventor_open_document_safe reopens one by file name, inventor_save_document_safe with a name writes a never-saved document such as a drawing draft into the workspace once, inventor_save_document_safe saves such a document in place, inventor_close_document_safe closes it without saving, inventor_list_workspace_documents lists them. " +
+        "Documents the user opened from anywhere else are never saved or closed in place: they fail with OUTSIDE_WORKSPACE and use inventor_save_artifact copies instead. Dependents are never saved automatically; save each referenced workspace document first. " +
+        "Sheet metal: create the part with inventor_new_document_safe kind='sheet_metal' (an ordinary part is never converted), then use atomic batch operations set_sheet_metal_rule, sheet_metal_face, sheet_metal_flange, sheet_metal_cut and create_flat_pattern. " +
+        "Also sheet_metal_hem, sheet_metal_fold, sheet_metal_contour_flange, sheet_metal_corner_round, sheet_metal_corner_chamfer, sheet_metal_unfold, sheet_metal_refold and sheet_metal_punch (catalog punches only, on a sketch made on the face, with draw_point model_point_mm). " +
+        "sheet_metal_rip and sheet_metal_lofted_flange are also available; unfold/refold take bend_face_ids to move only named bends, and save_artifact format=dxf takes dxf_version and allowlisted layer names. " +
+        "A fold bend line must end exactly on the edges of the face; a corner edge is as long as the sheet is thick; set_sheet_metal_rule also selects the unfold rule that decides developed length. " +
+        "Thickness comes from the active rule, so cuts stay correct when it changes; a library rule is copied locally before editing and the style library itself is never modified. Flange edges are portable entity ids from inventor_list_topology or inventor_get_selection, never indices; height is in mm and angle in degrees. " +
+        "inventor_get_sheet_metal_info reports the rule, thickness, bends and flat-pattern extents; inventor_save_artifact format=dxf exports the existing flat pattern only, and is refused for a folded model or a non-sheet-metal part. " +
+        "Read-only mode hides write tools. inventor_save_artifact creates a new part copy or part/assembly STEP in a host-controlled folder without overwriting; it is separate from CAD rollback. Native assembly dependency packaging, legacy direct writes, scripting and save-in-place outside the workspace are unavailable. " +
+        "Do not claim unsupported operations succeeded. Entity reference tokens are portable handles, not positional indices. " +
+        "Resources are snapshots; poll events with its cursor, not realtime MCP subscriptions. " +
+        "Select the intended Inventor instance explicitly if multiple targets exist.";
+
+    public const string LegacyReferenceText =
         "ipt-mcp - MCP gateway for Autodesk Inventor 2022-2027. " +
         "Tools are prefixed inventor_*. Use whenever the user works with Inventor, " +
         ".ipt part files, .iam assembly files, or .idw/.dwg drawings. " +

@@ -21,7 +21,7 @@ if (Test-Path -LiteralPath $installedManifest) {
     # Keep rollback metadata OUTSIDE Inventor's recursively scanned Addins directory.
     Copy-Item -LiteralPath $installedManifest -Destination (Join-Path $stage 'previous-manifest.xml')
 }
-$manifest.Addin.Assembly = Join-Path $stage 'addin\Inventor.So.AddIn.dll'
+$manifest.SelectSingleNode('/Addin/Assembly').InnerText = [string](Join-Path $stage 'addin\Inventor.So.AddIn.dll')
 $manifest.Save($installedManifest)
 Write-Output ('Installed manifest points to: ' + $manifest.Addin.Assembly)
 Write-Output ('MCP command: dotnet "' + (Join-Path $stage 'server\Inventor.So.Mcp.Server.dll') + '" --target 2027 --read-only --disable-toolbaker')

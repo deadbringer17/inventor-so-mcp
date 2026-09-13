@@ -10,4 +10,5 @@ public sealed class InventorAddInServer : Bimwright.Ipt.Shared.Plugin.InventorAd
 {
     protected override string ProductDirectory => Path.Combine("InventorSO", "inventor-so-mcp");
     protected override string PipePrefix => "InventorSO";
+    protected override bool RequireAtomicWrites => true;
 }

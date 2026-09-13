@@ -36,6 +36,7 @@ public abstract class InventorAddInServerBase : InvApi.ApplicationAddInServer
 #endif
     protected virtual string ProductDirectory => Path.Combine("Bimwright", "ipt-mcp");
     protected virtual string PipePrefix => "BimwrightInventor";
+    protected virtual bool RequireAtomicWrites => false;
 
     public void Activate(InvApi.ApplicationAddInSite site, bool firstTime)
     {
@@ -90,9 +91,12 @@ public abstract class InventorAddInServerBase : InvApi.ApplicationAddInServer
                 return;
             }
 
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
             var ctx = new InventorCommandContext
             {
+                IsDeadlineExceeded = () => elapsed.ElapsedMilliseconds >= env.TimeoutMs,
                 ReadOnly = o.ReadOnly || env.ReadOnly,
+                RequireAtomicWrites = RequireAtomicWrites,
                 EnableSendCode = o.EnableSendCode,
                 InventorYear = o.Year,
                 TargetId = descriptor.TargetId,

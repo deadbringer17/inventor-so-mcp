@@ -42,6 +42,68 @@ public sealed class DispatcherTests
         Assert.Equal(InventorErrorCodes.INVALID_ARGUMENT, r.Error!.Code);
     }
 
+    [Theory]
+    [InlineData("extrude")]
+    [InlineData("save_document")]
+    [InlineData("send_code")]
+    [InlineData("run_baked_tool")]
+    [InlineData("future_write")]
+    [InlineData("workspace_delete_document")]
+    [InlineData("new_part")]
+    [InlineData("close_document")]
+    public void AtomicPolicyBlocksUnmigratedWrites(string name)
+    {
+        var d = Make(new FakeCmd { Name = name, Body = () => throw new Exception("must not execute") });
+        var r = d.Dispatch(new InventorCommandContext { RequireAtomicWrites = true, EnableSendCode = true }, new InventorCommandEnvelope { Command = name });
+        Assert.Equal(InventorErrorCodes.ATOMIC_REQUIRED, r.Error!.Code);
+    }
+
+    [Theory]
+    [InlineData("export_step")]
+    [InlineData("export_stl")]
+    [InlineData("export_dxf")]
+    [InlineData("capture_view")]
+    public void LegacyFileWritesBlockedEvenIfMarkedReadOnly(string name)
+    {
+        var d = Make(new FakeCmd { Name = name, IsReadOnly = true, Body = () => throw new Exception("must not execute") });
+        var r = d.Dispatch(new InventorCommandContext { RequireAtomicWrites = true }, new InventorCommandEnvelope { Command = name });
+        Assert.Equal(InventorErrorCodes.ATOMIC_REQUIRED, r.Error!.Code);
+    }
+
+    [Theory]
+    [InlineData("atomic_batch", false, false, true)]
+    [InlineData("atomic_batch", false, true, false)]
+    [InlineData("create_constraint_safe", false, false, true)]
+    [InlineData("create_constraint_safe", false, true, false)]
+    [InlineData("insert_component_safe", false, false, true)]
+    [InlineData("insert_component_safe", false, true, false)]
+    [InlineData("checkpoint_create", false, false, true)]
+    [InlineData("checkpoint_create", false, true, false)]
+    [InlineData("checkpoint_restore", false, false, true)]
+    [InlineData("workspace_new_document", false, false, true)]
+    [InlineData("workspace_new_document", false, true, false)]
+    [InlineData("workspace_save_document", false, false, true)]
+    [InlineData("workspace_save_document", false, true, false)]
+    [InlineData("workspace_close_document", false, false, true)]
+    [InlineData("workspace_close_document", false, true, false)]
+    [InlineData("workspace_open_document", false, false, true)]
+    [InlineData("workspace_open_document", false, true, false)]
+    [InlineData("workspace_list_documents", true, true, true)]
+    [InlineData("checkpoint_restore", false, true, false)]
+    [InlineData("checkpoint_list", true, true, true)]
+    [InlineData("create_drawing_safe", false, false, true)]
+    [InlineData("create_drawing_safe", false, true, false)]
+    [InlineData("edit_constraint_safe", false, false, true)]
+    [InlineData("edit_constraint_safe", false, true, false)]
+    [InlineData("get_document_info", true, true, true)]
+    public void AtomicPolicyRespectsReadOnly(string name, bool readCommand, bool readMode, bool expected)
+    {
+        var d = Make(new FakeCmd { Name = name, IsReadOnly = readCommand,
+            Body = () => InventorCommandResult.Success(Guid.Empty, new JObject(), new InventorResponseMeta()) });
+        var r = d.Dispatch(new InventorCommandContext { RequireAtomicWrites = true, ReadOnly = readMode }, new InventorCommandEnvelope { Command = name });
+        Assert.Equal(expected, r.Ok);
+    }
+
     [Fact]
     public void WriteCommandBlockedInReadOnly()
     {

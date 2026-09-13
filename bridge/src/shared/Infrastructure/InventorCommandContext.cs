@@ -9,6 +9,8 @@ using Bimwright.Ipt.Shared.Contracts;
 /// </summary>
 public sealed class InventorCommandContext
 {
+    public bool RequireAtomicWrites { get; init; }
+    public System.Func<bool>? IsDeadlineExceeded { get; init; }
     public CadEventJournal? Events { get; init; }
     /// <summary>The add-in's view of read-only mode (the server also enforces this by tool filtering).</summary>
     public bool ReadOnly { get; init; }

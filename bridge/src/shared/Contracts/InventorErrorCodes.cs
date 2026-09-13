@@ -16,6 +16,7 @@ public static class InventorErrorCodes
     public const string TIMEOUT = "TIMEOUT";
     public const string RESPONSE_TOO_LARGE = "RESPONSE_TOO_LARGE";
     public const string READ_ONLY = "READ_ONLY";
+    public const string ATOMIC_REQUIRED = "ATOMIC_REQUIRED";
     public const string SEND_CODE_DISABLED = "SEND_CODE_DISABLED";
     public const string UNAUTHORIZED = "UNAUTHORIZED";
 }
