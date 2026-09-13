@@ -6,7 +6,8 @@ namespace Bimwright.Ipt.Shared.Infrastructure;
 /// <summary>Unique outputs only. Never overwrites or removes an existing file.</summary>
 public static class SafeArtifactWriter
 {
-    public static string Write(string root, string extension, Action<string> write, Func<bool>? expired = null)
+    public static string Write(string root, string extension, Action<string> write, Func<bool>? expired = null,
+        string? name = null)
     {
         if (extension != ".ipt" && extension != ".step" && extension != ".pdf" && extension != ".idw" &&
             extension != ".dwg" && extension != ".dxf") throw new ArgumentException("Unsupported artifact format.");
@@ -18,8 +19,11 @@ public static class SafeArtifactWriter
         if (Directory.Exists(directory) || File.Exists(directory)) throw new IOException("Artifact directory collision.");
         Directory.CreateDirectory(directory);
         CheckAncestors(directory);
+        // The file keeps its own directory, so a caller-chosen name can never overwrite an earlier
+        // artifact; it only saves the caller renaming ten exports that were all called "model".
+        string stem = name == null ? "model" : WorkspaceDocumentPolicy.ValidateName(name);
         string pending = Path.Combine(directory, "pending" + extension);
-        string final = Path.Combine(directory, "model" + extension);
+        string final = Path.Combine(directory, stem + extension);
         try
         {
             write(pending);

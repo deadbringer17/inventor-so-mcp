@@ -16,9 +16,18 @@ public sealed class AtomicBatchHandler : IInventorCommand
         if (ctx.ReadOnly) return InventorCommandResult.Fail(Guid.Empty, InventorErrorCodes.READ_ONLY, "Batch requires write permission", new());
         if (p["operations"] is not JArray operations) return InventorCommandResult.Fail(Guid.Empty, InventorErrorCodes.INVALID_ARGUMENT, "operations must be an array", new());
         using var backend = new InventorBatchBackend(ctx);
-        var data = AtomicCadBatch.Run(backend, (string?)p["document_id"] ?? "", (string?)p["expected_revision"] ?? "",
-            operations, (bool?)p["preview"] ?? false, ctx.IsDeadlineExceeded);
-        return InventorCommandResult.Success(Guid.Empty, data, new());
+        try
+        {
+            var data = AtomicCadBatch.Run(backend, (string?)p["document_id"] ?? "", (string?)p["expected_revision"] ?? "",
+                operations, (bool?)p["preview"] ?? false, ctx.IsDeadlineExceeded);
+            return InventorCommandResult.Success(Guid.Empty, data, new());
+        }
+        catch (CadBatchException failure)
+        {
+            // The batch already knows its own code, failing step and command; reporting that as a
+            // sanitized API_ERROR string would force the caller to parse the sentence back apart.
+            return InventorCommandResult.Fail(Guid.Empty, failure.Code, failure.Message, failure.Details(), new());
+        }
     }
 }
 
@@ -81,6 +90,7 @@ internal sealed class InventorBatchBackend : ICadBatchBackend, IDisposable
             throw new InvalidOperationException("TRANSACTION_OWNERSHIP_LOST: refusing to end another transaction.");
     }
     public void Commit() { EnsureOwned(); _transaction!.End(); _transaction = null; }
+    public void RestoreRevision(string revision) => _ctx.Events!.TryRestoreRevision(EntityReferences.DocumentId(_doc), revision);
     public void Rollback() { if (_transaction != null) { EnsureOwned(); _transaction.Abort(); _transaction = null; } }
     public void Dispose()
     {

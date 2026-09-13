@@ -78,6 +78,12 @@ public sealed class SaveArtifactHandler : HandlerBase, IInventorCommand
         bool dirty = doc.Dirty;
         string geometryVersion = Geometry(doc);
         string root = System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), "InventorSO", "artifacts");
+        string? artifactName = (string?)p["name"];
+        if (artifactName != null)
+        {
+            try { WorkspaceDocumentPolicy.ValidateName(artifactName); }
+            catch (ArgumentException ex) { return Fail(ctx, "INVALID_ARGUMENT", ex.Message); }
+        }
         string path;
         bool priorSilent = app.SilentOperation;
         try
@@ -108,10 +114,10 @@ public sealed class SaveArtifactHandler : HandlerBase, IInventorCommand
             foreach (var state in referenceStates)
                 if (state.Document.FullFileName != state.Path || state.Document.Dirty != state.Dirty || Geometry(state.Document) != state.Geometry)
                     throw new InvalidOperationException("Referenced source changed during export; inspect before continuing.");
-        }, ctx.IsDeadlineExceeded);
+        }, ctx.IsDeadlineExceeded, artifactName);
         }
         finally { app.SilentOperation = priorSilent; }
-        return Ok(ctx, new JObject { ["path"] = path, ["format"] = format, ["bytes"] = new FileInfo(path).Length,
+        return Ok(ctx, new JObject { ["path"] = path, ["file_name"] = System.IO.Path.GetFileName(path), ["format"] = format, ["bytes"] = new FileInfo(path).Length,
             ["document_id"] = id, ["revision"] = ctx.Events.Revision(id), ["source_saved_in_place"] = false, ["overwritten"] = false,
             ["native_dependencies_packaged"] = false,
             ["flat_pattern_source"] = format == "dxf",

@@ -132,7 +132,10 @@ Inventor has **no `ExternalEvent`** (unlike Revit). The add-in marshals every co
 `InventorMcpConfig.Load(args)`: JSON file (`--config`) < environment (`BIMWRIGHT_INVENTOR_*`) < CLI flags. Descriptor dir defaults to `%LOCALAPPDATA%\Bimwright\ipt-mcp`.
 
 ## Error Codes (`InventorErrorCodes`)
-`NO_TARGET, TARGET_UNAVAILABLE, NO_DOCUMENT, WRONG_DOCUMENT_TYPE, INVALID_ARGUMENT, UNSUPPORTED_HOST, API_ERROR, TIMEOUT, RESPONSE_TOO_LARGE, READ_ONLY, SEND_CODE_DISABLED, UNAUTHORIZED`.
+`NO_TARGET, TARGET_UNAVAILABLE, NO_DOCUMENT, WRONG_DOCUMENT_TYPE, INVALID_ARGUMENT, UNSUPPORTED_HOST, API_ERROR, TIMEOUT, RESPONSE_TOO_LARGE, READ_ONLY, ATOMIC_REQUIRED, SEND_CODE_DISABLED, UNAUTHORIZED`,
+plus the atomic-batch outcomes `STALE_REVISION, DOCUMENT_CHANGED, ROLLED_BACK, ROLLBACK_FAILED`. `InventorError.Details` carries the machine-readable specifics (`step_index`, `command`, `step_code`) so a caller never parses the message.
+
+**Atomic-batch vocabulary:** `shared/Contracts/CadBatchCommandCatalog.cs` is the single source of the batch command list. `AtomicCadBatch` enforces exactly its names and `inventor://batch-commands` publishes them with their arguments, so the discoverable and executable surfaces cannot drift. Adding a batch command means adding a catalogue entry (and updating the frozen list in `AtomicCadBatchTests`).
 
 ## Decision Log
 - **C# server over TypeScript** — single language, direct API access patterns shared with rvt-mcp / nwd-mcp.

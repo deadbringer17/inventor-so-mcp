@@ -28,6 +28,49 @@ public sealed class CadEventJournalTests
     }
 
     [Fact]
+    public void RestoringARevisionUndoesTheBumpOfAnUndoneChange()
+    {
+        var journal = new CadEventJournal();
+        journal.Append("document_changed", "doc");
+        string planned = journal.Revision("doc");
+        journal.Append("document_changed", "doc");   // the preview's own edits
+        journal.Append("document_changed", "doc");   // and its rollback
+        Assert.NotEqual(planned, journal.Revision("doc"));
+
+        Assert.True(journal.TryRestoreRevision("doc", planned));
+        Assert.Equal(planned, journal.Revision("doc"));
+        // The journal itself still records everything that happened.
+        Assert.Equal(3, ((JArray)journal.Read()["events"]!).Count);
+    }
+
+    [Fact]
+    public void RestoringNeverMovesARevisionForwardOrCrossesAnEpoch()
+    {
+        var journal = new CadEventJournal();
+        journal.Append("document_changed", "doc");
+        string current = journal.Revision("doc");
+
+        Assert.False(journal.TryRestoreRevision("doc", journal.Epoch + ":9"));      // would hide a later change
+        Assert.False(journal.TryRestoreRevision("doc", new CadEventJournal().Revision("doc")));  // other epoch
+        Assert.False(journal.TryRestoreRevision("doc", "nonsense"));
+        Assert.Equal(current, journal.Revision("doc"));
+    }
+
+    [Fact]
+    public void RestoringOneDocumentLeavesTheOthersAlone()
+    {
+        var journal = new CadEventJournal();
+        journal.Append("document_changed", "a");
+        string planned = journal.Revision("a");
+        journal.Append("document_changed", "a");
+        journal.Append("document_changed", "b");
+        string otherBefore = journal.Revision("b");
+
+        Assert.True(journal.TryRestoreRevision("a", planned));
+        Assert.Equal(otherBefore, journal.Revision("b"));
+    }
+
+    [Fact]
     public void DocumentRevisionIsIndependentAndReadReturnsCopies()
     {
         var journal = new CadEventJournal();

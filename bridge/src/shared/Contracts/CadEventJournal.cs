@@ -26,6 +26,28 @@ public sealed class CadEventJournal
         lock (_gate) return Epoch + ":" + (_revisions.TryGetValue(documentId, out var revision) ? revision : 0);
     }
 
+    /// <summary>
+    /// Put one document's revision token back to <paramref name="revision"/> after a change was undone
+    /// in full, so an operation that leaves the model untouched also leaves the caller's plan valid.
+    /// Refuses a token from another epoch and never moves a revision forward, so it cannot be used to
+    /// hide a change that is still on the model. The event journal itself keeps every entry.
+    /// </summary>
+    public bool TryRestoreRevision(string documentId, string revision)
+    {
+        if (documentId == null || revision == null) return false;
+        int separator = revision.LastIndexOf(':');
+        if (separator <= 0 || revision.Substring(0, separator) != Epoch) return false;
+        if (!long.TryParse(revision.Substring(separator + 1), out long target) || target < 0) return false;
+        lock (_gate)
+        {
+            long current = _revisions.TryGetValue(documentId, out var value) ? value : 0;
+            if (target > current) return false;
+            if (target == 0) _revisions.Remove(documentId);
+            else _revisions[documentId] = target;
+            return true;
+        }
+    }
+
     public void Append(string type, string? documentId)
     {
         lock (_gate)

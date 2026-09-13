@@ -17,12 +17,22 @@ public sealed class InventorCommandResult
 
     public static InventorCommandResult Fail(Guid id, string code, string message, InventorResponseMeta meta)
         => new() { Id = id, Ok = false, Error = new InventorError { Code = code, Message = message }, Meta = meta };
+
+    public static InventorCommandResult Fail(Guid id, string code, string message, JObject? details, InventorResponseMeta meta)
+        => new() { Id = id, Ok = false, Error = new InventorError { Code = code, Message = message, Details = details }, Meta = meta };
 }
 
 public sealed class InventorError
 {
     [JsonProperty("code")] public string Code { get; set; } = "";
     [JsonProperty("message")] public string Message { get; set; } = "";
+
+    /// <summary>
+    /// Machine-readable specifics for callers that must branch on the failure — the failing step index
+    /// and command of a batch, for example. Never carries free text that has not been sanitized.
+    /// </summary>
+    [JsonProperty("details", NullValueHandling = NullValueHandling.Ignore)]
+    public JObject? Details { get; set; }
 }
 
 public sealed class InventorResponseMeta

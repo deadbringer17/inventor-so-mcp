@@ -16,7 +16,27 @@ namespace Bimwright.Ipt.Server;
 public sealed class InventorGatewayException : Exception
 {
     public string Code { get; }
-    public InventorGatewayException(string code, string message) : base(message) => Code = code;
+
+    /// <summary>
+    /// Machine-readable specifics from the add-in, when it sent any (the failing step index and
+    /// command of a batch, for example). Carried through so a caller can branch on the failure
+    /// instead of parsing the message.
+    /// </summary>
+    public JObject? Details { get; }
+
+    public InventorGatewayException(string code, string message, JObject? details = null) : base(message)
+    {
+        Code = code;
+        Details = details;
+    }
+
+    /// <summary>The failure as the tool-level error envelope every tool returns.</summary>
+    public JObject ToErrorJson()
+    {
+        var error = new JObject { ["code"] = Code, ["message"] = Message };
+        if (Details != null) error["details"] = Details;
+        return new JObject { ["ok"] = false, ["error"] = error };
+    }
 }
 
 /// <summary>
@@ -103,7 +123,8 @@ public sealed class PluginClient
         var result = JsonConvert.DeserializeObject<InventorCommandResult>(response)
                      ?? throw new InventorGatewayException(InventorErrorCodes.API_ERROR, "unparseable response");
         if (!result.Ok)
-            throw new InventorGatewayException(result.Error?.Code ?? InventorErrorCodes.API_ERROR, result.Error?.Message ?? "unknown error");
+            throw new InventorGatewayException(result.Error?.Code ?? InventorErrorCodes.API_ERROR,
+                result.Error?.Message ?? "unknown error", result.Error?.Details);
         return result.Data ?? JValue.CreateNull();
     }
 

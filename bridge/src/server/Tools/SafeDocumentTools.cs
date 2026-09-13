@@ -43,6 +43,6 @@ public sealed class SafeDocumentTools
     {
         try { return (await _client.SendAsync(command, arguments, ct)).ToString(); }
         catch (InventorGatewayException ex)
-        { return JsonConvert.SerializeObject(new { ok = false, error = new { code = ex.Code, message = ex.Message } }); }
+        { return ex.ToErrorJson().ToString(Formatting.None); }
     }
 }

@@ -114,7 +114,7 @@ public sealed class ExportTools
         }
         catch (InventorGatewayException ex)
         {
-            return JsonConvert.SerializeObject(new { ok = false, error = new { code = ex.Code, message = ex.Message } }, Formatting.Indented);
+            return ex.ToErrorJson().ToString(Formatting.Indented);
         }
     }
 }

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Linq;
 using Newtonsoft.Json.Linq;
 
 namespace Bimwright.Ipt.Tests;
@@ -19,8 +20,30 @@ public sealed class McpProtocolSmokeTests
         Assert.NotEmpty(tools);
         Assert.Contains(tools, t => (string?)t["name"] == "inventor_list_available_targets");
         var resources = Assert.IsType<JArray>(responses[2]["result"]?["resources"]);
-        foreach (var uri in new[] { "inventor://application", "inventor://active-document", "inventor://active-document/parameters", "inventor://active-document/mass", "inventor://selection", "inventor://events" })
+        foreach (var uri in new[] { "inventor://application", "inventor://active-document", "inventor://active-document/parameters", "inventor://active-document/mass", "inventor://selection", "inventor://events", "inventor://batch-commands" })
             Assert.Contains(resources, r => (string?)r["uri"] == uri);
+    }
+
+    /// <summary>
+    /// A schema that omits a parameter the runtime validator then demands leaves the caller guessing
+    /// after a rejected call, so every argument without a default is listed as required.
+    /// </summary>
+    [Theory]
+    [InlineData("inventor_atomic_batch", "document_id", "expected_revision", "operations")]
+    [InlineData("inventor_new_document_safe", "name", "kind")]
+    [InlineData("inventor_save_document_safe", "document_id", "expected_revision")]
+    [InlineData("inventor_create_drawing_safe", "document_id", "expected_revision", "scale")]
+    [InlineData("inventor_save_artifact", "document_id", "expected_revision", "format")]
+    public async Task Tool_schemas_mark_every_argument_without_a_default_required(string tool, params string[] expected)
+    {
+        var responses = await RunProtocolHandshake();
+        var tools = Assert.IsAssignableFrom<JArray>(responses[1]["result"]?["tools"]);
+        var schema = Assert.Single(tools, t => (string?)t["name"] == tool)["inputSchema"]!;
+        var required = Assert.IsType<JArray>(schema["required"]).Select(r => (string?)r).ToArray();
+        foreach (var name in expected) Assert.Contains(name, required);
+        // Anything with a default stays optional so the caller is not forced to restate a default.
+        foreach (var property in ((JObject)schema["properties"]!).Properties())
+            if (property.Value["default"] != null) Assert.DoesNotContain(property.Name, required);
     }
 
     private static async Task<JObject[]> RunProtocolHandshake()

@@ -35,6 +35,10 @@ public sealed class CadResources
     [Description("Current user selection and portable entity references. Requires Inventor SO 2027.")]
     public Task<string> Selection(CancellationToken ct) => Read("get_selection", ct);
 
+    [McpServerResource(UriTemplate = "inventor://batch-commands", MimeType = "application/json")]
+    [Description("Command vocabulary of inventor_atomic_batch: every allowed wire command with its required and optional arguments. Static server-side contract, no Inventor round trip; a command absent here cannot run in a batch.")]
+    public string BatchCommands() => Bimwright.Ipt.Shared.Contracts.CadBatchCommandCatalog.Describe().ToString(Formatting.None);
+
     [McpServerResource(UriTemplate = "inventor://events", MimeType = "application/json")]
     [Description("Bounded document-event journal with epoch, cursor and resync_required flag. Snapshot only; push subscriptions are not implemented yet.")]
     public Task<string> Events(CancellationToken ct) => Read("get_events", ct);

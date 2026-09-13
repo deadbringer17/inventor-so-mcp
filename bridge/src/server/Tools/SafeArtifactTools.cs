@@ -29,17 +29,17 @@ public sealed class SafeArtifactTools
     private async Task<string> CheckpointCall(string command, JObject arguments, CancellationToken ct)
     {
         try { return (await _client.SendAsync(command, arguments, ct)).ToString(); }
-        catch (InventorGatewayException ex) { return JsonConvert.SerializeObject(new { ok = false, error = new { code = ex.Code, message = ex.Message } }); }
+        catch (InventorGatewayException ex) { return ex.ToErrorJson().ToString(Formatting.None); }
     }
 
-    [McpServerTool(Name = "inventor_save_artifact"), Description("Save a new part or drawing copy (native: IPT or current IDW/Inventor-DWG), part/assembly STEP (step), drawing PDF (pdf, all sheets) or the flat-pattern DXF of a sheet-metal part (dxf, optional dxf_version 2000/2004/2007/2010/2013/2018, default 2018, and optional dxf_layers_json, a JSON object naming layers such as OuterProfileLayer, InteriorProfilesLayer, BendUpLayer or BendDownLayer; the flat pattern must already exist) under host-controlled InventorSO/artifacts. Native drawings require saved clean referenced models inside the active Inventor project; required_project identifies that project for reopening. Dependencies are NOT copied, required_references lists their paths; this is NOT a portable package. Never saves sources/dependents in place, changes project settings or overwrites files. Requires document_id/revision; assembly/drawing must be updated with no missing references. Checks source/reference state. Filesystem output is not CAD rollback; failures can retain partial files. No manufacturing-completeness certification or assembly native packaging.")]
+    [McpServerTool(Name = "inventor_save_artifact"), Description("Save a new part or drawing copy (native: IPT or current IDW/Inventor-DWG), part/assembly STEP (step), drawing PDF (pdf, all sheets) or the flat-pattern DXF of a sheet-metal part (dxf, optional dxf_version 2000/2004/2007/2010/2013/2018, default 2018, and optional dxf_layers_json, a JSON object naming layers such as OuterProfileLayer, InteriorProfilesLayer, BendUpLayer or BendDownLayer; the flat pattern must already exist) under host-controlled InventorSO/artifacts. Each artifact gets its own directory, so name only chooses the file stem (1-60 letters, digits, space, underscore or hyphen; default 'model') and can never overwrite an earlier export. Native drawings require saved clean referenced models inside the active Inventor project; required_project identifies that project for reopening. Dependencies are NOT copied, required_references lists their paths; this is NOT a portable package. Never saves sources/dependents in place, changes project settings or overwrites files. Requires document_id/revision; assembly/drawing must be updated with no missing references. Checks source/reference state. Filesystem output is not CAD rollback; failures can retain partial files. No manufacturing-completeness certification or assembly native packaging.")]
     public async Task<string> Save(string document_id, string expected_revision, string format,
-        string? dxf_version = null, string? dxf_layers_json = null, CancellationToken ct = default)
+        string? dxf_version = null, string? dxf_layers_json = null, string? name = null, CancellationToken ct = default)
     {
         try
         {
             var request = new JObject { ["document_id"] = document_id, ["expected_revision"] = expected_revision,
-                ["format"] = format, ["dxf_version"] = dxf_version };
+                ["format"] = format, ["dxf_version"] = dxf_version, ["name"] = name };
             if (!string.IsNullOrWhiteSpace(dxf_layers_json))
             {
                 try { request["dxf_layers"] = JObject.Parse(dxf_layers_json!); }
@@ -49,6 +49,6 @@ public sealed class SafeArtifactTools
             return (await _client.SendAsync("save_artifact", request, ct)).ToString();
         }
         catch (InventorGatewayException ex)
-        { return JsonConvert.SerializeObject(new { ok = false, error = new { code = ex.Code, message = ex.Message } }); }
+        { return ex.ToErrorJson().ToString(Formatting.None); }
     }
 }

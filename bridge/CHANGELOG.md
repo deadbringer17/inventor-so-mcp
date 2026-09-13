@@ -6,6 +6,34 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **`inventor_atomic_batch` lost every argument value.** The MCP host binds tool arguments with
+  `System.Text.Json` and the add-in speaks Newtonsoft; a bound `JsonElement` handed to Newtonsoft
+  serialized as its own public surface (`{"ValueKind": N}`), so every batch step reached the add-in
+  with its values stripped while the call still looked well-formed. Arguments are now converted over
+  the raw JSON text. All 37 argument-taking batch commands were unusable.
+- Arguments sent as a JSON *string* (clients that cannot nest an object in a tool call) are unwrapped
+  instead of raising an unhandled exception; anything that is not an object is refused with
+  `INVALID_ARGUMENT` naming the step index and command.
+- An `inventor_atomic_batch` preview no longer bumps the document revision. A preview is defined as
+  leaving nothing behind, so its rollback also restores the revision token and the baseline a caller
+  planned against stays valid.
+
+### Added
+
+- **`inventor://batch-commands`** — the batch command vocabulary with each command's required and
+  optional arguments, served from `CadBatchCommandCatalog`, which is also the list `AtomicCadBatch`
+  enforces. The discoverable list and the executable list cannot drift apart.
+- Batch failures are structured: `error.code` is one of `INVALID_ARGUMENT`, `STALE_REVISION`,
+  `DOCUMENT_CHANGED`, `TIMEOUT`, `ROLLED_BACK`, `ROLLBACK_FAILED`, and `error.details` carries
+  `step_index`, `command` and the failing handler's own `step_code`. Previously the real code was
+  buried in the text of an `API_ERROR`.
+- A rejected operation names the step index, the rejected command and the allowed vocabulary,
+  instead of one sentence that fitted the whole batch.
+- `inventor_save_artifact` takes an optional `name` for the output file stem (default `model`). Each
+  artifact keeps its own directory, so a name can never overwrite an earlier export.
+
 ## [0.1.0] - 2026-08-28
 
 First GitHub Release. Client setup ZIP: `IptMcp.Setup-v0.1.0-win-x64.zip` (self-contained `ipt-mcp.exe`). **Plugin years in this ZIP:** Inventor **2025** and **2027**. Source still supports 2022–2027; other years need a local Inventor interop build (shape-only DLLs are not shipped).
