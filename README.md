@@ -186,7 +186,9 @@ that has never been on disk — a draft from `inventor_create_drawing_safe`, sav
 as IDW or Inventor DWG depending on the host template. `name` is refused for a
 document already on disk: nothing is renamed, copied or relocated.
 `inventor_open_document_safe(file)` reopens one workspace document by file name so
-a later session continues the work; `inventor_close_document_safe(document_id)`
+a later session continues the work; `inventor_activate_document_safe(document_id)`
+brings an open one to the front, which is what lets work move between documents —
+reading a dimension from one part and writing it into another; `inventor_close_document_safe(document_id)`
 closes one without ever saving it; `inventor_list_workspace_documents` lists the
 workspace and survives read-only mode.
 
@@ -305,6 +307,12 @@ between two circular edges, `angle` between faces and `tangent` for touching fac
 all from portable proxy ids, which `inventor_list_topology` supplies for an assembly,
 so nothing has to be picked by hand. The geometry kind is checked against the requested
 type instead of being inferred, so a plane is never silently used as an axis.
+`symmetry` mirrors two entities about a plane and `transitional` keeps a face in contact
+along another. `inventor_create_joint_safe` builds a joint instead — rigid, rotational,
+slide, cylindrical, planar or ball — stating the degrees of freedom that remain rather
+than stacking constraints; rotational and cylindrical joints take the circular edges
+whose centres define the axis, not the cylindrical face.
+`inventor_ground_component_safe` grounds or ungrounds a component, and
 `inventor_edit_constraint_safe` edits existing driving offsets/angles. These require current document/revision,
 explicit minimum clearance and owned transactions. Preview defaults true.
 Checks are endpoint-only, not collision-free motion planning. Assembly constraint

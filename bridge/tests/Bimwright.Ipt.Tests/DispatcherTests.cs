@@ -86,6 +86,8 @@ public sealed class DispatcherTests
     [InlineData("workspace_save_document", false, true, false)]
     [InlineData("workspace_close_document", false, false, true)]
     [InlineData("workspace_close_document", false, true, false)]
+    [InlineData("workspace_activate_document", false, false, true)]
+    [InlineData("workspace_activate_document", false, true, false)]
     [InlineData("workspace_open_document", false, false, true)]
     [InlineData("workspace_open_document", false, true, false)]
     [InlineData("workspace_list_documents", true, true, true)]

@@ -243,6 +243,105 @@ def main():
         current = state()
         client.tool('inventor_save_document_safe', document_id=current['id'], expected_revision=current['revision'])
 
+        # --- grounding, joint and symmetry ------------------------------------------------------------
+        current = state()
+        grounded = client.tool('inventor_ground_component_safe', document_id=current['id'],
+            expected_revision=current['revision'], component_id=block_component['id'], grounded=True)
+        assert grounded.get('status') in ('committed', 'unchanged'), grounded
+        summary['grounded'] = grounded.get('grounded_count', 'unchanged')
+        current = state()
+        again = client.tool('inventor_ground_component_safe', document_id=current['id'],
+            expected_revision=current['revision'], component_id=block_component['id'], grounded=True)
+        assert again.get('status') == 'unchanged', again
+        print('Block grounded; repeating the request reports unchanged', flush=True)
+
+        # A rotational joint on a fresh pair, so the insert constraint does not fight it.
+        joint_asm = client.tool('inventor_new_document_safe', name='sotest asm joint ' + stamp, kind='assembly')
+        created.append(Path(joint_asm['path']))
+        for source, offset in ((block, [0, 0, 0]), (pin, [0, 0, 80])):
+            client.tool('inventor_insert_component_safe', document_id=state()['id'],
+                expected_revision=state()['revision'], source_document_id=source['document_id'],
+                translation_mm=offset, minimum_clearance_mm=0, preview=False)
+        joint_parts = client.tool('inventor_list_topology', kind='occurrence')['items']
+        joint_block = min(joint_parts, key=lambda c: c['position_mm'][2])
+        joint_pin = max(joint_parts, key=lambda c: c['position_mm'][2])
+
+        def cylinders(component_id):
+            listed = client.tool('inventor_list_topology', kind='face', component_id=component_id,
+                geometry='Cylinder', limit=200)['items']
+            return [f for f in listed if f['area_mm2']]
+
+        def rims(component_id):
+            listed = client.tool('inventor_list_topology', kind='edge', component_id=component_id,
+                geometry='Circle', limit=200)['items']
+            return [e for e in listed if e['length_mm']]
+
+        hole_face = max(cylinders(joint_block['id']), key=lambda f: f['area_mm2'])
+        pin_face = max(cylinders(joint_pin['id']), key=lambda f: f['area_mm2'])
+        hole_rim_j = min(rims(joint_block['id']), key=lambda e: e['length_mm'])
+        pin_rim_j = min(rims(joint_pin['id']), key=lambda e: e['start_mm'][2])
+
+        current = state()
+        wrong_origin = client.tool('inventor_create_joint_safe', document_id=current['id'],
+            expected_revision=current['revision'], joint_type='hinge', origin_a_id=pin_rim_j['id'],
+            origin_b_id=hole_rim_j['id'], minimum_clearance_mm=0, preview=True)
+        assert wrong_origin.get('ok') is False and 'joint_type must be' in wrong_origin['error']['message'], wrong_origin
+
+        # A cylindrical face is not a valid origin, and the error says which geometry to use.
+        current = state()
+        face_origin = client.tool('inventor_create_joint_safe', document_id=current['id'],
+            expected_revision=current['revision'], joint_type='rotational', origin_a_id=pin_face['id'],
+            origin_b_id=hole_face['id'], minimum_clearance_mm=0, preview=True)
+        assert face_origin.get('ok') is False and 'JOINT_ORIGIN_REJECTED' in face_origin['error']['message'], face_origin
+
+        current = state()
+        joint = client.tool('inventor_create_joint_safe', document_id=current['id'],
+            expected_revision=current['revision'], joint_type='rotational', origin_a_id=pin_rim_j['id'],
+            origin_b_id=hole_rim_j['id'], minimum_clearance_mm=0, preview=False)
+        assert joint.get('status') == 'committed', joint
+        assert joint['degrees_of_freedom_remain'] is True and joint['motion_path_validated'] is False, joint
+        summary['joint'] = joint['joint_name']
+        joint_document = app.Documents.ItemByName(str(Path(joint_asm['path'])))
+        assert joint_document.ComponentDefinition.Joints.Count == 1, 'joint not recorded'
+        print('Rotational joint created: ' + str(joint['joint_name']), flush=True)
+
+        # Symmetry needs a plane, and refuses to run without one.
+        current = state()
+        no_plane = client.tool('inventor_create_constraint_safe', document_id=current['id'],
+            expected_revision=current['revision'], type='symmetry', face_a_id=pin_face['id'],
+            face_b_id=hole_face['id'], minimum_clearance_mm=0, preview=True)  # no symmetry_plane_id
+        assert no_plane.get('ok') is False, no_plane
+        summary['symmetry_without_plane_refused'] = True
+
+        current = state()
+        client.tool('inventor_save_document_safe', document_id=current['id'], expected_revision=current['revision'])
+
+        # --- carrying a dimension from one part into another -------------------------------------------
+        # Inventor has no cross-document parameter link outside iLogic or a derived part, so the value is
+        # read from one open part and written into the other.
+        block_parameters = client.tool('inventor_list_parameters', document_id=block['document_id'])
+        assert block_parameters['document_id'] == block['document_id'], block_parameters
+        assert block_parameters['count'] > 0, block_parameters
+        missing = client.tool('inventor_list_parameters', document_id='doc_{00000000-0000-0000-0000-000000000000}')
+        assert missing.get('ok') is False and 'DOCUMENT_NOT_OPEN' in missing['error']['message'], missing
+
+        thickness = next(prm for prm in block_parameters['parameters'] if prm['name'].lower() == 'd1')
+
+        activated = client.tool('inventor_activate_document_safe', document_id=pin['document_id'])
+        assert activated.get('status') in ('activated', 'already_active'), activated
+        current = state()
+        assert current['id'] == pin['document_id'], (current, activated)
+        carried_batch = client.tool('inventor_atomic_batch', document_id=current['id'],
+            expected_revision=current['revision'],
+            operations=[dict(command='create_parameter',
+                arguments=dict(name='BlockThickness', expression='12 mm', unit='mm'))])
+        assert carried_batch.get('status') == 'committed', carried_batch
+        carried = client.tool('inventor_list_parameters', document_id=pin['document_id'])
+        assert any(prm['name'] == 'BlockThickness' for prm in carried['parameters']), carried
+        summary['parameter_carried'] = 'BlockThickness'
+        summary['source_parameter'] = thickness['name']
+        print('Read parameters of a non-active part and carried a value into another part', flush=True)
+
         summary['assembly_autonomous'] = 'passed'
         print(json.dumps(summary), flush=True)
     finally:

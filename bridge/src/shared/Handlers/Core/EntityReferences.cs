@@ -100,6 +100,11 @@ internal static class EntityReferences
         => ResolvePartEntity(document, id, "edge_proxy") as EdgeProxy
             ?? throw new ArgumentException("REFERENCE_TYPE_MISMATCH: an assembly edge proxy is required.");
 
+    /// <summary>An assembly vertex proxy, usable as a joint origin.</summary>
+    public static VertexProxy ResolveAssemblyVertex(global::Inventor.Document document, string id)
+        => ResolvePartEntity(document, id, "vertex_proxy") as VertexProxy
+            ?? throw new ArgumentException("REFERENCE_TYPE_MISMATCH: an assembly vertex proxy is required.");
+
     public static FaceProxy ResolvePlanarAssemblyFace(global::Inventor.Document document, string id)
     {
         var face = ResolvePartEntity(document, id, "face_proxy") as FaceProxy

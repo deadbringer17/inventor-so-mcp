@@ -64,6 +64,10 @@ public sealed class CreateConstraintHandler : HandlerBase, IInventorCommand
                 "insert" => (AssemblyConstraint)constraints.AddInsertConstraint(a, b, request.AxesOpposed, UnitConvert.MmToCm(request.OffsetMm)),
                 "angle" => (AssemblyConstraint)constraints.AddAngleConstraint(a, b, UnitConvert.DegToRad(request.AngleDegrees)),
                 "tangent" => (AssemblyConstraint)constraints.AddTangentConstraint(a, b, request.InsideTangency, UnitConvert.MmToCm(request.OffsetMm)),
+                "symmetry" => (AssemblyConstraint)constraints.AddSymmetryConstraint(a, b,
+                    EntityReferences.ResolvePlanarAssemblyFace(doc, request.SymmetryPlane)),
+                "transitional" => (AssemblyConstraint)constraints.AddTransitionalConstraint(
+                    (Face)a, (Face)b),
                 _ => throw new ArgumentException("Unsupported constraint type.")
             };
             if (!doc.Update2()) throw new InvalidOperationException("Assembly rebuild failed.");

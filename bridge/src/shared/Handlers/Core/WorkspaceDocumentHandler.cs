@@ -40,6 +40,7 @@ public sealed class WorkspaceDocumentHandler : HandlerBase, IInventorCommand
             "list" => List(ctx, app, root),
             "new" => Create(ctx, app, root, p),
             "open" => Open(ctx, app, root, p),
+            "activate" => Activate(ctx, app, root, p),
             "save" => Save(ctx, app, root, p),
             "close" => Close(ctx, app, root, p),
             _ => throw new InvalidOperationException("Unknown workspace action.")
@@ -204,6 +205,41 @@ public sealed class WorkspaceDocumentHandler : HandlerBase, IInventorCommand
             ["missing_references"] = new JArray(missing),
             ["workspace_root"] = root,
             ["activated"] = app.ActiveDocument != null && EntityReferences.DocumentId(app.ActiveDocument) == id,
+        });
+    }
+
+    /// <summary>
+    /// Brings one open workspace document to the front. Modelling commands act on the active document,
+    /// so carrying a value from one part into another needs this rather than a user clicking a tab.
+    /// Documents outside the workspace are left alone, as everywhere else.
+    /// </summary>
+    private InventorCommandResult Activate(InventorCommandContext ctx, Application app, string root, JObject p)
+    {
+        string documentId = (string?)p["document_id"] ?? "";
+        var matches = app.Documents.Cast<global::Inventor.Document>()
+            .Where(d => EntityReferences.DocumentId(d) == documentId).ToArray();
+        if (matches.Length != 1)
+            return Fail(ctx, InventorErrorCodes.INVALID_ARGUMENT,
+                matches.Length == 0 ? "DOCUMENT_NOT_OPEN" : "AMBIGUOUS_DOCUMENT");
+        var doc = matches[0];
+        string path = doc.FullFileName;
+        if (!WorkspaceDocumentPolicy.IsInside(root, path))
+            return Fail(ctx, InventorErrorCodes.INVALID_ARGUMENT,
+                "OUTSIDE_WORKSPACE: only host-owned workspace documents are activated here.");
+        if (app.ActiveDocument != null && EntityReferences.DocumentId(app.ActiveDocument) == documentId)
+            return Ok(ctx, new JObject { ["status"] = "already_active", ["document_id"] = documentId,
+                ["path"] = path, ["revision"] = ctx.Events?.Revision(documentId) });
+        if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired before activation.");
+        doc.Activate();
+        if (app.ActiveDocument == null || EntityReferences.DocumentId(app.ActiveDocument) != documentId)
+            throw new InvalidOperationException("ACTIVATE_NOT_CONFIRMED: another document is in front; inspect before continuing.");
+        return Ok(ctx, new JObject
+        {
+            ["status"] = "activated",
+            ["document_id"] = documentId,
+            ["path"] = path,
+            ["dirty"] = doc.Dirty,
+            ["revision"] = ctx.Events?.Revision(documentId),
         });
     }
 

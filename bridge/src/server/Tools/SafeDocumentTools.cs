@@ -26,6 +26,10 @@ public sealed class SafeDocumentTools
     public Task<string> OpenDocument(string file, CancellationToken ct = default)
         => Call("workspace_open_document", new JObject { ["file"] = file }, ct);
 
+    [McpServerTool(Name = "inventor_activate_document_safe"), Description("Bring one open workspace document to the front, so the modelling commands act on it. Needed whenever work moves between documents, for example to carry a dimension read from one part into another. Refuses documents outside the managed workspace and reports already_active when nothing changes. Activation alone modifies nothing.")]
+    public Task<string> ActivateDocument(string document_id, CancellationToken ct = default)
+        => Call("workspace_activate_document", new JObject { ["document_id"] = document_id }, ct);
+
     [McpServerTool(Name = "inventor_save_document_safe"), Description("Save the active document in place, only when its file lives inside the managed InventorSO workspace; anything else fails with OUTSIDE_WORKSPACE. Requires document_id and expected_revision. Dependents are NEVER saved automatically: dirty or unsaved references fail with REFERENCE_NOT_SAVED so each one is saved explicitly first. Assemblies and drawings must be updated with no missing references. Returns the written size and SHA-256. Saving a file is not a rollbackable CAD transaction. A document that has never been saved, such as a draft from inventor_create_drawing_safe, needs name: it is written once into the workspace as a new file and the document is bound to it. name is refused for a document already on disk; it never renames, copies or relocates an existing file.")]
     public Task<string> SaveDocument(string document_id, string expected_revision, string? name = null, CancellationToken ct = default)
         => Call("workspace_save_document", new JObject { ["document_id"] = document_id,

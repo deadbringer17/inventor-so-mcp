@@ -120,4 +120,38 @@ public sealed class ConstraintCreateRequestTests
             Assert.True(ConstraintCreateRequest.Parse(p).NeedsPlanarFaces);
         }
     }
+
+    [Theory]
+    [InlineData("symmetry")]
+    [InlineData("transitional")]
+    public void MeasurelessTypesRefuseAMeasurement(string type)
+    {
+        var p = Valid(); p["type"] = type; p["symmetry_plane_id"] = "ent_plane";
+        Assert.Throws<ArgumentException>(() => ConstraintCreateRequest.Parse(p));
+
+        p.Remove("offset_mm");
+        var r = ConstraintCreateRequest.Parse(p);
+        Assert.Equal(type, r.Type);
+        Assert.Equal(0, r.OffsetMm);
+
+        p["angle_degrees"] = 30;
+        Assert.Throws<ArgumentException>(() => ConstraintCreateRequest.Parse(p));
+    }
+
+    [Fact]
+    public void SymmetryNeedsItsPlane()
+    {
+        var p = Valid(); p["type"] = "symmetry"; p.Remove("offset_mm");
+        Assert.Throws<ArgumentException>(() => ConstraintCreateRequest.Parse(p));
+
+        p["symmetry_plane_id"] = "ent_plane";
+        Assert.Equal("ent_plane", ConstraintCreateRequest.Parse(p).SymmetryPlane);
+    }
+
+    [Fact]
+    public void TransitionalNeedsNoPlane()
+    {
+        var p = Valid(); p["type"] = "transitional"; p.Remove("offset_mm");
+        Assert.Equal("", ConstraintCreateRequest.Parse(p).SymmetryPlane);
+    }
 }

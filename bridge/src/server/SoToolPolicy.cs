@@ -14,8 +14,8 @@ public static class SoToolPolicy
         "inventor_get_sheet_metal_info", "inventor_list_topology",
         "inventor_list_parameters", "inventor_get_parameter", "inventor_get_iproperty", "inventor_get_mass_properties",
         "inventor_list_interfaces", "inventor_check_interference", "inventor_measure_min_distance",
-        "inventor_get_assembly_bom", "inventor_list_constraints", "inventor_atomic_batch", "inventor_save_artifact", "inventor_move_component_safe", "inventor_edit_constraint_safe", "inventor_create_constraint_safe", "inventor_insert_component_safe",
-        "inventor_new_document_safe", "inventor_open_document_safe", "inventor_save_document_safe", "inventor_close_document_safe", "inventor_list_workspace_documents",
+        "inventor_get_assembly_bom", "inventor_list_constraints", "inventor_atomic_batch", "inventor_save_artifact", "inventor_move_component_safe", "inventor_edit_constraint_safe", "inventor_create_constraint_safe", "inventor_create_joint_safe", "inventor_ground_component_safe", "inventor_insert_component_safe",
+        "inventor_new_document_safe", "inventor_open_document_safe", "inventor_activate_document_safe", "inventor_save_document_safe", "inventor_close_document_safe", "inventor_list_workspace_documents",
         "inventor_checkpoint_create", "inventor_checkpoint_list", "inventor_checkpoint_restore", "inventor_diff_checkpoint", "inventor_create_drawing_safe"
     };
 

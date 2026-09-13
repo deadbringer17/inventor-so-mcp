@@ -19,9 +19,9 @@ public sealed class ParameterTools
     public ParameterTools(PluginClient client) => _client = client;
 
     [McpServerTool(Name = "inventor_list_parameters"),
-     Description("List the active part document's parameters (model + user): name, expression, evaluated value, unit, and kind.")]
-    public Task<string> ListParameters(CancellationToken ct = default)
-        => Call("list_parameters", new JObject(), ct);
+     Description("List a part document's parameters (model + user): name, expression, evaluated value, unit, and kind. Defaults to the active document; pass document_id to read any other OPEN part without activating it, which is how one part's dimension is carried into another. Inventor offers no cross-document parameter link outside iLogic or a derived part, so the propagation itself is done by writing the value into the other part with inventor_atomic_batch.")]
+    public Task<string> ListParameters(string? document_id = null, CancellationToken ct = default)
+        => Call("list_parameters", new JObject { ["document_id"] = document_id }, ct);
 
     [McpServerTool(Name = "inventor_get_parameter"),
      Description("Get a single parameter of the active part document by name: expression, evaluated value, and unit.")]

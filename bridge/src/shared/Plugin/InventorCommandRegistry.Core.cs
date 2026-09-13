@@ -35,8 +35,11 @@ public static partial class InventorCommandRegistry
         add(new MoveComponentHandler(insert: true));
         add(new EditConstraintHandler());
         add(new CreateConstraintHandler());
+        add(new CreateJointHandler());
+        add(new GroundComponentHandler());
         add(new WorkspaceDocumentHandler("new"));
         add(new WorkspaceDocumentHandler("open"));
+        add(new WorkspaceDocumentHandler("activate"));
         add(new WorkspaceDocumentHandler("save"));
         add(new WorkspaceDocumentHandler("close"));
         add(new WorkspaceDocumentHandler("list"));

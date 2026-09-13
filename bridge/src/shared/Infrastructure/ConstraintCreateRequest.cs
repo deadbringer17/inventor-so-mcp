@@ -11,7 +11,8 @@ namespace Bimwright.Ipt.Shared.Infrastructure;
 public sealed class ConstraintCreateRequest
 {
     /// <summary>mate and flush join planes; mate_axis and insert join axes; angle and tangent orient.</summary>
-    public static readonly string[] Types = { "mate", "flush", "mate_axis", "insert", "angle", "tangent" };
+    public static readonly string[] Types = { "mate", "flush", "mate_axis", "insert", "angle", "tangent",
+                                              "symmetry", "transitional" };
 
     public string Type { get; private set; } = "";
     public string FaceA { get; private set; } = "";
@@ -23,11 +24,17 @@ public sealed class ConstraintCreateRequest
     public bool AxesOpposed { get; private set; }
     public bool InsideTangency { get; private set; }
 
+    /// <summary>Third reference of a symmetry constraint: the plane the two entities mirror about.</summary>
+    public string SymmetryPlane { get; private set; } = "";
+
     /// <summary>True when the two ids must be edges (circles) rather than faces.</summary>
     public bool NeedsEdges => Type == "insert";
 
     /// <summary>True when the faces must be planar; the axis types need cylinders instead.</summary>
     public bool NeedsPlanarFaces => Type == "mate" || Type == "flush";
+
+    /// <summary>Transitional joins two faces, typically a cylinder running along a planar track.</summary>
+    public bool NeedsFaces => !NeedsEdges;
 
     public static ConstraintCreateRequest Parse(JObject p)
     {
@@ -72,6 +79,9 @@ public sealed class ConstraintCreateRequest
             InsideTangency = Flag("inside", false),
         };
 
+        if (type == "symmetry")
+            result.SymmetryPlane = Text("symmetry_plane_id");
+
         if (type == "angle")
         {
             result.AngleDegrees = Number("angle_degrees");
@@ -79,6 +89,14 @@ public sealed class ConstraintCreateRequest
                 throw new ArgumentException("angle_degrees must be between -360 and 360, exclusive.");
             if (p["offset_mm"] != null && p["offset_mm"]!.Type != JTokenType.Null)
                 throw new ArgumentException("angle takes angle_degrees, not offset_mm.");
+        }
+        else if (type == "symmetry" || type == "transitional")
+        {
+            // Neither carries a measurement: symmetry mirrors about a plane, transitional keeps a face
+            // in contact along another. An offset here would be silently ignored.
+            if ((p["offset_mm"] != null && p["offset_mm"]!.Type != JTokenType.Null) ||
+                (p["angle_degrees"] != null && p["angle_degrees"]!.Type != JTokenType.Null))
+                throw new ArgumentException(type + " takes no offset_mm or angle_degrees.");
         }
         else
         {

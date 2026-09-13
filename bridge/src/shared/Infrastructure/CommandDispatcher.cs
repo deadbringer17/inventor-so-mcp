@@ -25,8 +25,10 @@ public sealed class CommandDispatcher
     {
         "atomic_batch", "save_artifact", "create_drawing_safe",
         "move_component_safe", "insert_component_safe", "edit_constraint_safe", "create_constraint_safe",
+        "create_joint_safe", "ground_component_safe",
         "checkpoint_create", "checkpoint_restore",
-        "workspace_new_document", "workspace_open_document", "workspace_save_document", "workspace_close_document",
+        "workspace_new_document", "workspace_open_document", "workspace_activate_document",
+        "workspace_save_document", "workspace_close_document",
     };
 
     /// <summary>Read-only-flagged legacy exports that still write files; they stay blocked.</summary>
