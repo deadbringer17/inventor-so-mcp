@@ -343,7 +343,7 @@ tolerances. Matching is by exact name: renames appear as removal/addition.
 It does not prove B-Rep equivalence. Older checkpoints remain recoverable but
 cannot be compared if they lack a semantic snapshot.
 
-## Original NeonGlay project documentation
+## Original NeonGlay project documentation (reference only, not the install path)
 
 The Python source below is preserved as a modeling reference, not the new
 production entry point. Its unrestricted `execute_python` tool is unsuitable
@@ -359,7 +359,7 @@ Claude: creates sketch → hexagon → extrude → tapped M16×2 hole →
         revolve-cut chamfers → done. Fully parametric, dimensioned sketches.
 ```
 
-## Features
+### Features
 
 - **34 MCP tools**: sketching, extrude/revolve, native hole features (drilled / tapped / counterbore), fillets, chamfers, circular patterns, sheet metal (Face / Flange / Cut with Flat Pattern support), parameters
 - **`execute_python` power tool** — run arbitrary Python against the live COM connection with a persistent namespace (escape hatch for anything not covered by dedicated tools)
@@ -369,13 +369,13 @@ Claude: creates sketch → hexagon → extrude → tapped M16×2 hole →
 - **Topology helpers** — find edges/faces by coordinates instead of guessing indices
 - **Parametric discipline** — projected origin points, symmetry constraints, dimensioned sketches that survive parameter changes
 
-## Requirements
+### Requirements
 
 - Windows with **Autodesk Inventor** (developed and tested on Inventor 2026; older versions may need enum adjustments — see [docs/inventor-api-notes.md](docs/inventor-api-notes.md))
 - **Python 3.12+**
 - `pip install "mcp[cli]" pywin32`
 
-## Installation
+### Installation
 
 1. Clone this repository:
    ```
@@ -404,7 +404,7 @@ Claude: creates sketch → hexagon → extrude → tapped M16×2 hole →
 
 > **Do NOT use `win32com.client.gencache.EnsureDispatch`** in your own scripts against the same Python install — the generated `gen_py` cache breaks `GetActiveObject`. If it happens: delete `%LOCALAPPDATA%\Temp\gen_py`. See the API notes for the full story.
 
-## Skills (optional, recommended)
+### Skills (optional, recommended)
 
 The `skills/` directory contains two [Agent Skills](https://code.claude.com/docs/en/skills) that teach Claude the workflow and the Inventor 2026 API quirks:
 
@@ -417,7 +417,7 @@ cp -r skills/inventor-modeling ~/.claude/skills/
 cp -r skills/inventor-din-parts ~/.claude/skills/
 ```
 
-## Why this exists
+### Why this exists
 
 Inventor's COM API documentation is wrong or silent about many things in recent versions. This project encodes empirically verified knowledge:
 
@@ -428,7 +428,7 @@ Inventor's COM API documentation is wrong or silent about many things in recent 
 - Edge indices renumber after every feature; fillets shift adjacent edges
 - …and more in [docs/inventor-api-notes.md](docs/inventor-api-notes.md)
 
-## Architecture
+### Architecture
 
 ```
 src/server.py        FastMCP server — tool definitions (stdio transport)
@@ -437,7 +437,7 @@ skills/              Agent Skills for Claude
 docs/                Hard-won API knowledge
 ```
 
-## Contributing
+### Contributing
 
 Contributions welcome! Especially valuable:
 - Testing on Inventor 2024/2025 (enum values may differ — please report)
@@ -445,6 +445,6 @@ Contributions welcome! Especially valuable:
 - More DIN/ISO part recipes
 - Bug reports with the exact COM error and Inventor version
 
-## License
+### License
 
 MIT — see [LICENSE](LICENSE).
