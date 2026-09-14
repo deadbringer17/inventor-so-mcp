@@ -1,4 +1,3 @@
-#if INVENTOR2027
 using System;
 using System.Collections.Generic;
 using Bimwright.Ipt.Shared.Contracts;
@@ -9,8 +8,16 @@ namespace Bimwright.Ipt.Shared.Handlers.Core;
 
 internal static class EntityReferences
 {
+    /// <summary>
+    /// The stable id of an open document. <c>Document.InternalName</c> is present in every supported
+    /// Inventor version, so this member stays outside the 2027 gate below: legacy add-ins address
+    /// documents by this id even though they cannot mint persistent entity references.
+    /// </summary>
     public static string DocumentId(global::Inventor.Document doc) => "doc_" + doc.InternalName;
 
+#if INVENTOR2027
+    // Persistent entity references (the ent_* id space) ride on the ReferenceKeyManager contract that
+    // only the Inventor SO 2027 add-in ships. Consumers of anything below must gate to match.
     public static JObject Describe(global::Inventor.Document doc, object entity)
     {
         var manager = doc.ReferenceKeyManager;
@@ -151,5 +158,5 @@ internal static class EntityReferences
         }
         finally { manager.ReleaseKeyContext(context); }
     }
-}
 #endif
+}
