@@ -143,3 +143,51 @@ integration end to end.
     5. Run `inventor_set_view_orientation` for at least two orientations, `inventor_view_fit`, and
        `inventor_capture_view` in output-path mode. **Expected:** each orientation is echoed, fit reports
        `fitted: true`, and every PNG exists, has non-zero size, and is visually non-blank.
+
+## Drawing sheet layout (D1)
+
+Run against a live Inventor 2027 with a saved, up-to-date part open.
+
+1. **Reference-scale measurement.** Call `inventor_create_drawing_safe` with `preview=true` and the
+   defaults. It must return `scale_mode="auto"` and a scale from the ISO ladder. If the call fails
+   while measuring, views cannot be measured at 1:500 and the reference scale must be raised to the
+   smallest step that measures reliably.
+   **Expected:** the call succeeds and returns a valid scale from the ladder (e.g. 1:100, 1:50).
+
+2. **Linearity.** Call twice with `scale=1` and `scale=0.5` explicitly, and read the view extents
+   from the resulting drawing in the Inventor UI. Halving the scale must halve width and height.
+   If it does not, the closed-form solve is invalid: replace the single measurement pass with a
+   create-measure-retry loop per ladder step. `SheetPlanner` is unchanged either way — only the
+   handler's feeding of it changes.
+   **Expected:** both calls succeed; view extents scale linearly with the requested scale.
+
+3. **Projection is actually written.** Call with `projection="first"`, commit with `preview=false`,
+   and check in the Inventor UI that the drawing standard reports first-angle projection and that
+   the plan view sits **below** the front view. Repeat with `projection="third"` and confirm the
+   plan view sits above. If the standard cannot be written, the tool must fail with
+   `PROJECTION_UNAVAILABLE` rather than produce a drawing.
+   **Expected:** first-angle projection shows plan below front; third-angle shows plan above front.
+
+4. **Fit failure.** Call with `sheet_size="A4"` on a large assembly and confirm the error names a
+   larger sheet size instead of asking the caller to guess a scale.
+   **Expected:** the error code is `NO_FITTING_SCALE` and the response suggests a larger sheet
+   (e.g. "Try sheet_size='A3'").
+
+5. **Guards intact.** Confirm that a stale `expected_revision` still returns `STALE_REVISION`, and
+   that a failed call leaves no orphan drawing document open.
+   **Expected:** stale revision rejected with `STALE_REVISION`; failed calls do not leave unsaved
+   drawing documents behind.
+
+6. **View order preservation.** Call with `views="top,front,right"` (with `front` not first).
+   Confirm the tool succeeds and that the response's `views` field echoes the caller's order
+   (`top,front,right`), not an internal creation order. A defect found and fixed during Task 4
+   rejected this exact input with "Projected views require 'front'" despite `front` being present.
+   **Expected:** the call succeeds; the response `views` field reads `["top","front","right"]`.
+
+7. **Drawing standard write behaviour.** The handler sets `DrawingStandardStyle.FirstAngleProjection`.
+   Confirm it takes effect immediately without requiring an edit bracket or a local style. Test
+   against a read-only or library-resident style — the expected failure is `PROJECTION_UNAVAILABLE`,
+   not silently producing a drawing in the host's own convention.
+   **Expected:** on a writable standard, the setting takes effect immediately. On a read-only style,
+   the tool fails with `PROJECTION_UNAVAILABLE`.
+
