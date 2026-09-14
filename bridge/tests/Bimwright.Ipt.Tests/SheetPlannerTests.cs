@@ -166,6 +166,19 @@ public sealed class SheetPlannerTests
             Quad(1.0), ProjectionAngle.First, 0.1));
 
     [Fact]
+    public void ReservedBottomBelowTheTitleBlockFloorRejected()
+        => Assert.Throws<ArgumentException>(() => SheetPlanner.Plan(A3Width, A3Height,
+            SheetPlanner.MinReservedBottomCm - 0.1, Quad(1.0), ProjectionAngle.First, Gutter));
+
+    [Fact]
+    public void ReservedBottomAtTheTitleBlockFloorIsAccepted()
+    {
+        var result = SheetPlanner.Plan(A3Width, A3Height, SheetPlanner.MinReservedBottomCm,
+            Quad(1.0), ProjectionAngle.First, Gutter);
+        Assert.True(result.Fits);
+    }
+
+    [Fact]
     public void FixedScaleSkipsTheLadderSearch()
     {
         var result = SheetPlanner.Plan(A3Width, A3Height, Footer, Quad(1.0), ProjectionAngle.First, Gutter, 1.0);

@@ -59,6 +59,9 @@ public static class SheetPlanner
     /// <summary>Matches the sheet-edge rule in <see cref="DrawingLayout"/>.</summary>
     public const double MinMarginCm = 1.0;
 
+    /// <summary>Matches the title-block reserve floor in <see cref="DrawingLayout"/>.</summary>
+    public const double MinReservedBottomCm = 4.0;
+
     /// <param name="fixedScale">
     /// When set, the planner tries only this scale instead of searching the ladder. The handler needs
     /// it for an explicitly requested scale, and to re-plan positions against views it already scaled.
@@ -70,8 +73,8 @@ public static class SheetPlanner
             throw new ArgumentException("At least one view extent is required.");
         if (!ViewExtent.IsFinite(sheetWidth) || !ViewExtent.IsFinite(sheetHeight) || sheetWidth <= 0 || sheetHeight <= 0)
             throw new ArgumentException("Sheet size must be finite and positive.");
-        if (!ViewExtent.IsFinite(reservedBottom) || reservedBottom < 0)
-            throw new ArgumentException("Invalid title-block reserve.");
+        if (!ViewExtent.IsFinite(reservedBottom) || reservedBottom < MinReservedBottomCm)
+            throw new ArgumentException("reservedBottom must be at least " + MinReservedBottomCm + " cm.");
         if (!ViewExtent.IsFinite(gutter) || gutter < MinGutterCm)
             throw new ArgumentException("gutter must be at least " + MinGutterCm + " cm.");
         if (fixedScale.HasValue && (!ViewExtent.IsFinite(fixedScale.Value) || fixedScale.Value <= 0))
