@@ -974,7 +974,10 @@ Replace the block starting at the existing `var sheet = drawing.ActiveSheet;` li
 
             var created = new System.Collections.Generic.Dictionary<ViewKind, DrawingView>();
             DrawingView? baseView = null;
-            foreach (var kind in kinds)
+            // Ordered(), not kinds: a projected view needs its parent to exist already, and the
+            // caller may legitimately write `views=top,front,right`. Parse only guarantees that
+            // front is SOMEWHERE in the list, not that it comes first.
+            foreach (var kind in Ordered(kinds))
             {
                 var slot = DrawingViewSet.Slot(kind, projection, kinds);
                 var at = geo.CreatePoint2d(centerX + slot.Column * pitchX, centerY + slot.Row * pitchY);
