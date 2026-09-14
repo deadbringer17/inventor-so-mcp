@@ -209,8 +209,11 @@ tocca l'API. Tre cose da verificare lì, non deducibili a tavolino:
 
 1. che una vista creata alla scala di riferimento minima si misuri in modo affidabile;
 2. che `Width` / `Height` scalino davvero linearmente con `DrawingView.Scale`;
-3. che il nome esatto della proprietà di proiezione sullo standard attivo del disegno sia quello
-   previsto, e che sia scrivibile su un template di default.
+3. che la proprietà di proiezione sia scrivibile su un template di default. **Il nome è ora
+   verificato**: `DrawingStylesManager.ActiveStandardStyle` è un `DrawingStandardStyle` che espone
+   `FirstAngleProjection` di tipo `bool`; non esiste alcun `ProjectionType`, e `ProjectionTypeEnum`
+   riguarda ortografica/prospettica, non il diedro. Resta da verificare a runtime solo se lo stile
+   attivo accetta la scrittura o va reso locale al documento prima.
 
 Se la linearità non regge, si ripiega sull'approccio crea-misura-ripeti: `SheetPlanner` resta
 identico, cambia solo chi lo alimenta. Questo è il motivo per cui il planner è isolato.
