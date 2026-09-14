@@ -80,13 +80,18 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
 
             var created = new System.Collections.Generic.Dictionary<ViewKind, DrawingView>();
             DrawingView? baseView = null;
-            foreach (var kind in kinds)
+            // Base views first, then projected: DrawingViewSet.Parse only guarantees 'front' is
+            // present SOMEWHERE in the caller's list, not that it comes first (e.g. views=top,front
+            // is valid). Iterating in caller order would throw below on a valid, front-inclusive set.
+            foreach (var kind in Ordered(kinds))
             {
                 var slot = DrawingViewSet.Slot(kind, projection, kinds);
                 var at = geo.CreatePoint2d(centerX + slot.Column * pitchX, centerY + slot.Row * pitchY);
                 DrawingView view;
                 if (DrawingViewSet.IsProjected(kind))
                 {
+                    // Unreachable once Ordered() creates every base view first: Parse already
+                    // guarantees 'front' is present whenever a projected kind is requested.
                     if (baseView == null) throw new ArgumentException("Projected views require 'front'.");
                     view = sheet.DrawingViews.AddProjectedView(baseView, at, style);
                 }
