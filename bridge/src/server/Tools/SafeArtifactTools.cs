@@ -14,9 +14,22 @@ public sealed class SafeArtifactTools
     private readonly PluginClient _client;
     public SafeArtifactTools(PluginClient client) => _client = client;
 
-    [McpServerTool(Name = "inventor_create_drawing_safe"), Description("Create an unsaved A3 landscape drawing from the active up-to-date part or assembly using the host default drawing template. Front, two projected and isometric views at explicit scale. Requires source document_id/revision. Checks view bounds/overlap and source state; preview=true by default closes only the new draft. Commit leaves the draft active. No dimensions, tolerances or manufacturing approval are added; manufacturing_ready=false. Does not save sources. Export separately with inventor_save_artifact format=pdf.")]
-    public Task<string> CreateDrawing(string document_id, string expected_revision, double scale, bool preview = true, CancellationToken ct = default)
-        => CheckpointCall("create_drawing_safe", new JObject { ["document_id"] = document_id, ["expected_revision"] = expected_revision, ["scale"] = scale, ["preview"] = preview }, ct);
+    [McpServerTool(Name = "inventor_create_drawing_safe"), Description("Create an unsaved drawing from the active up-to-date part or assembly using the host default drawing template. Chooses sheet_size (A4/A3/A2/A1/A0, default A3) and orientation (landscape/portrait). Sets the projection convention explicitly: projection='first' (ISO/UNI, default) or 'third' (ANSI), so the same call produces the same drawing on any machine. views is a comma-separated list of front, back, top, bottom, left, right and iso (default 'front,top,right,iso'); projected views require front. Omit scale for automatic scaling: the largest ISO 5455 scale whose layout fits leaving gutter_mm (default 15) of free space around each view for dimensioning; pass scale to force one. Requires source document_id/revision. Checks view bounds/overlap and source state; preview=true by default closes only the new draft. Commit leaves the draft active. No dimensions, tolerances or manufacturing approval are added; manufacturing_ready=false. Does not save sources. Export separately with inventor_save_artifact format=pdf.")]
+    public Task<string> CreateDrawing(string document_id, string expected_revision, double? scale = null,
+        string? sheet_size = null, string? orientation = null, string? projection = null,
+        string? views = null, double? gutter_mm = null, bool preview = true, CancellationToken ct = default)
+        => CheckpointCall("create_drawing_safe", new JObject
+        {
+            ["document_id"] = document_id,
+            ["expected_revision"] = expected_revision,
+            ["scale"] = scale,
+            ["sheet_size"] = sheet_size,
+            ["orientation"] = orientation,
+            ["projection"] = projection,
+            ["views"] = views,
+            ["gutter_mm"] = gutter_mm,
+            ["preview"] = preview
+        }, ct);
 
     [McpServerTool(Name = "inventor_checkpoint_create"), Description("Create a persistent hash-verified native snapshot of the active standalone single-model-state part. Requires document_id, expected_revision and label (1-120 characters). Does not save the source in place. Stored under host-owned InventorSO/checkpoints; failures may retain partial files. Assemblies and external references are not supported yet.")]
     public Task<string> CreateCheckpoint(string document_id, string expected_revision, string label, CancellationToken ct = default)
