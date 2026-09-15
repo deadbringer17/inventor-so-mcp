@@ -137,7 +137,8 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
             foreach (DrawingView view in sheet.DrawingViews) view.ShowLabel = false;
             if (!drawing.Update2()) throw new InvalidOperationException("Drawing update failed.");
 
-            double footer = Math.Max(4, sheet.TitleBlock == null ? 4 : sheet.TitleBlock.RangeBox.MaxPoint.Y + 0.2);
+            double footer = Math.Max(SheetPlanner.MinReservedBottomCm,
+                sheet.TitleBlock == null ? SheetPlanner.MinReservedBottomCm : sheet.TitleBlock.RangeBox.MaxPoint.Y + 0.2);
 
             // View extents scale linearly with view scale, so normalising the measured reference-scale
             // extents to scale 1 lets the planner answer every candidate scale without another update.

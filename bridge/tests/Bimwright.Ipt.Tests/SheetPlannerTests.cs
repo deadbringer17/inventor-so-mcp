@@ -65,6 +65,23 @@ public sealed class SheetPlannerTests
     }
 
     [Fact]
+    public void BottomMostViewClearsReservedBottomByAtLeastTheGutter()
+    {
+        // Regression for the missing bottom-side corridor: the planner used to size usableHeight as
+        // sheetHeight - reservedBottom - outer (one margin, for the top) and start the row block
+        // exactly at reservedBottom, so a view block that exactly filled the usable height sat flush
+        // against the title-block band while top/left/right kept their margin. Spec decision 2 puts
+        // the dimensioning corridor around each view, on all four sides, not three.
+        var result = SheetPlanner.Plan(A3Width, A3Height, Footer, Quad(5.0), ProjectionAngle.First, Gutter);
+        Assert.True(result.Fits);
+        double half = 5.0 * result.Scale / 2;
+        double lowestBottomEdge = double.MaxValue;
+        foreach (var view in result.Views!)
+            lowestBottomEdge = Math.Min(lowestBottomEdge, view.CenterY - half);
+        Assert.True(lowestBottomEdge >= Footer + Gutter - 1e-9);
+    }
+
+    [Fact]
     public void GutterIsHonouredBetweenNeighbours()
     {
         var result = SheetPlanner.Plan(A3Width, A3Height, Footer, Quad(5.0), ProjectionAngle.First, Gutter);

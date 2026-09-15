@@ -85,7 +85,11 @@ public static class SheetPlanner
 
         double outer = Math.Max(gutter, MinMarginCm);
         double usableWidth = sheetWidth - 2 * outer;
-        double usableHeight = sheetHeight - reservedBottom - outer;
+        // The bottom-most view gets the same margin as the other three sides. Spec decision 2 calls
+        // the corridor "attorno a ciascuna" (around each view), not around three sides of it: without
+        // the second `outer` here, a view block that exactly fills the usable height sits flush
+        // against the title-block band while top/left/right keep their margin.
+        double usableHeight = sheetHeight - reservedBottom - 2 * outer;
         var result = new SheetPlanResult();
         double blockWidth = 0, blockHeight = 0;
 
@@ -109,7 +113,7 @@ public static class SheetPlanner
         result.RequiredWidthCm = blockWidth;
         result.RequiredHeightCm = blockHeight;
         result.SuggestedSheetSize = SheetSizes.SmallestContaining(
-            blockWidth + 2 * outer, blockHeight + reservedBottom + outer);
+            blockWidth + 2 * outer, blockHeight + reservedBottom + 2 * outer);
         return result;
     }
 
@@ -153,7 +157,9 @@ public static class SheetPlanner
         }
 
         var rowCenter = new Dictionary<int, double>();
-        cursor = reservedBottom + (usableHeight - blockHeight) / 2;
+        // + outer here is the bottom margin itself (mirrors the left margin's `outer` above); the
+        // remaining (usableHeight - blockHeight) is the slack centred between bottom and top margins.
+        cursor = reservedBottom + outer + (usableHeight - blockHeight) / 2;
         foreach (int row in rows)
         {
             rowCenter[row] = cursor + rowHeight[row] / 2;
