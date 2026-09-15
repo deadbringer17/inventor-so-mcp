@@ -41,6 +41,7 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
         string? templateName;
         string? templatePath = null;
         DrawingTemplateManifest? manifest = null;
+        bool addDimensions;
         System.Collections.Generic.IReadOnlyList<TitleBlockField> titleBlock;
         try
         {
@@ -63,6 +64,10 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
             }
             gutter = UnitConvert.MmToCm(gutterMm);
             titleBlock = TitleBlockFields.Parse(p["title_block"]);
+            string dimensionMode = ((string?)p["dimensions"] ?? "auto").Trim().ToLowerInvariant();
+            if (dimensionMode != "auto" && dimensionMode != "none")
+                throw new ArgumentException("dimensions must be 'auto' or 'none'.");
+            addDimensions = dimensionMode == "auto";
             templateName = (string?)p["template"];
             if (string.IsNullOrWhiteSpace(templateName)) templateName = null;
             if (templateName != null)
@@ -246,6 +251,9 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
             int fieldsSet = 0, fieldsCreated = 0;
             ApplyTitleBlock((global::Inventor.Document)drawing, titleBlock, ref fieldsSet, ref fieldsCreated);
 
+            int dimensionsAdded = addDimensions ? RetrieveAndArrangeDimensions(app, sheet, kinds, created, area) : 0;
+            if (!drawing.Update2()) throw new InvalidOperationException("Drawing update failed after dimensioning.");
+
             var views = sheet.DrawingViews.Cast<DrawingView>().ToArray();
             DrawingLayout.Validate(area,
                 views.Select(v => new[] { v.Position.X, v.Position.Y, v.Width, v.Height }).ToArray());
@@ -277,7 +285,9 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
                 ["gutter_mm"] = gutterMm,
                 ["document_id"] = preview ? null : drawingId,
                 ["manufacturing_ready"] = false,
-                ["dimensions_added"] = 0,
+                ["dimensions_mode"] = addDimensions ? "auto" : "none",
+                ["dimensions_added"] = dimensionsAdded,
+                ["dimension_source"] = dimensionsAdded == 0 ? null : "retrieved_model_dimensions",
                 ["reserved_footer_mm"] = UnitConvert.CmToMm(footer),
                 ["template"] = templateName,
                 ["usable_area_mm"] = new JObject
@@ -308,6 +318,57 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
             throw;
         }
         finally { app.UserInterfaceManager.UserInteractionDisabled = priorUi; }
+    }
+
+    /// <summary>
+    /// Retrieves only dimensions that already drive the model, so every displayed value remains
+    /// associative and correct after a rebuild. Inventor decides which dimensions are valid in each
+    /// orthographic view and performs its native arrangement. Isometric views are deliberately left
+    /// clean: production drawings conventionally dimension orthographic views, and dimensioning an
+    /// isometric duplicates information while making the sheet harder to read.
+    /// </summary>
+    private static int RetrieveAndArrangeDimensions(Application app, Sheet sheet, ViewKind[] kinds,
+        System.Collections.Generic.Dictionary<ViewKind, DrawingView> created, UsableArea area)
+    {
+        var arranged = app.TransientObjects.CreateObjectCollection();
+        foreach (var kind in Ordered(kinds))
+        {
+            if (kind == ViewKind.Iso) continue;
+            GeneralDimensionsEnumerator retrieved;
+            try
+            {
+                retrieved = sheet.DrawingDimensions.GeneralDimensions.Retrieve(
+                    created[kind], System.Reflection.Missing.Value);
+            }
+            catch (Exception ex)
+            {
+                throw new CodedFailureException("AUTO_DIMENSION_FAILED",
+                    "Inventor could not retrieve model dimensions for the "
+                      + kind.ToString().ToLowerInvariant() + " view: " + ex.Message);
+            }
+            for (int i = 1; i <= retrieved.Count; i++) arranged.Add(retrieved[i]);
+        }
+        if (arranged.Count == 0) return 0;
+        try { sheet.DrawingDimensions.Arrange(arranged, System.Reflection.Missing.Value); }
+        catch (Exception ex)
+        {
+            throw new CodedFailureException("AUTO_DIMENSION_FAILED",
+                "Inventor retrieved the model dimensions but could not arrange them: " + ex.Message);
+        }
+
+        const double tolerance = 0.01; // 0.1 mm: tolerate numerical noise at the declared boundary.
+        for (int i = 1; i <= arranged.Count; i++)
+        {
+            var dimension = (GeneralDimension)arranged[i];
+            var box = dimension.Text.RangeBox;
+            if (box.MinPoint.X < area.XMinCm - tolerance || box.MaxPoint.X > area.XMaxCm + tolerance
+                || box.MinPoint.Y < area.YMinCm - tolerance || box.MaxPoint.Y > area.YMaxCm + tolerance)
+                throw new CodedFailureException("DIMENSION_OUTSIDE_LAYOUT",
+                    "Automatically arranged dimension text falls outside the usable drawing area. "
+                      + "Use a larger sheet/template or increase gutter_mm.",
+                    new JObject { ["dimension_index"] = i, ["dimensions_added"] = arranged.Count });
+        }
+        return arranged.Count;
     }
 
     /// <summary>
