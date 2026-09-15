@@ -26,4 +26,11 @@ public static class InventorErrorCodes
     public const string DOCUMENT_CHANGED = "DOCUMENT_CHANGED";
     public const string ROLLED_BACK = "ROLLED_BACK";
     public const string ROLLBACK_FAILED = "ROLLBACK_FAILED";
+
+    // Drawing layout outcomes (create_drawing_safe). Previously these also travelled only as a
+    // prefix inside an API_ERROR message from a thrown exception; a caller could not tell a
+    // layout failure from a genuine Inventor API error without parsing prose.
+    public const string NO_FITTING_SCALE = "NO_FITTING_SCALE";
+    public const string VIEW_OUTSIDE_LAYOUT = "VIEW_OUTSIDE_LAYOUT";
+    public const string PROJECTION_UNAVAILABLE = "PROJECTION_UNAVAILABLE";
 }

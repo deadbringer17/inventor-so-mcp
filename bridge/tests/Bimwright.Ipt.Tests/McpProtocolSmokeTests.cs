@@ -32,7 +32,7 @@ public sealed class McpProtocolSmokeTests
     [InlineData("inventor_atomic_batch", "document_id", "expected_revision", "operations")]
     [InlineData("inventor_new_document_safe", "name", "kind")]
     [InlineData("inventor_save_document_safe", "document_id", "expected_revision")]
-    [InlineData("inventor_create_drawing_safe", "document_id", "expected_revision", "scale")]
+    [InlineData("inventor_create_drawing_safe", "document_id", "expected_revision")]
     [InlineData("inventor_save_artifact", "document_id", "expected_revision", "format")]
     public async Task Tool_schemas_mark_every_argument_without_a_default_required(string tool, params string[] expected)
     {

@@ -23,6 +23,7 @@ public static class ServerInstructions
         "Read-only mode hides write tools. inventor_save_artifact creates a new part copy or part/assembly STEP in a host-controlled folder without overwriting; it is separate from CAD rollback. Native assembly dependency packaging, legacy direct writes, scripting and save-in-place outside the workspace are unavailable. " +
         "Do not claim unsupported operations succeeded. Entity reference tokens are portable handles, not positional indices. " +
         "Resources are snapshots; poll events with its cursor, not realtime MCP subscriptions. " +
+        "inventor_create_drawing_safe lays out a production drawing sheet: sheet size A4 to A0, landscape or portrait, first-angle (ISO/UNI) or third-angle (ANSI) projection, a chosen set of front/back/top/bottom/left/right/iso views, and an automatic ISO scale that leaves a dimensioning gutter around every view. It adds no dimensions, no title-block content and no parts list. " +
         "Select the intended Inventor instance explicitly if multiple targets exist.";
 
     public const string LegacyReferenceText =

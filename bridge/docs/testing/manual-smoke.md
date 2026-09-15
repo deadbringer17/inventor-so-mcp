@@ -143,3 +143,72 @@ integration end to end.
     5. Run `inventor_set_view_orientation` for at least two orientations, `inventor_view_fit`, and
        `inventor_capture_view` in output-path mode. **Expected:** each orientation is echoed, fit reports
        `fitted: true`, and every PNG exists, has non-zero size, and is visually non-blank.
+
+## Drawing sheet layout (D1)
+
+Run against a live Inventor 2027 with a saved, up-to-date part open.
+
+1. **Reference-scale measurement.** Call `inventor_create_drawing_safe` with `preview=true` and the
+   defaults. It must return `scale_mode="auto"` and a scale from the ISO ladder. If the call fails
+   while measuring, views cannot be measured at 1:500 and the reference scale must be raised to the
+   smallest step that measures reliably.
+   **Expected:** the call succeeds and returns a valid scale from the ladder (e.g. 1:100, 1:50).
+
+2. **Linearity.** Call twice with `scale=1` and `scale=0.5` explicitly, and read the view extents
+   from the resulting drawing in the Inventor UI. Halving the scale must halve width and height.
+   If it does not, the closed-form solve is invalid: replace the single measurement pass with a
+   create-measure-retry loop per ladder step. `SheetPlanner` is unchanged either way — only the
+   handler's feeding of it changes.
+   **Expected:** both calls succeed; view extents scale linearly with the requested scale.
+
+3. **Projection is actually written.** Call with `projection="first"`, commit with `preview=false`,
+   and check in the Inventor UI that the drawing standard reports first-angle projection and that
+   the plan view sits **below** the front view. Repeat with `projection="third"` and confirm the
+   plan view sits above. If the standard cannot be written, the tool must fail with
+   `PROJECTION_UNAVAILABLE` rather than produce a drawing.
+   **Expected:** first-angle projection shows plan below front; third-angle shows plan above front.
+
+4. **Fit failure.** Call with `sheet_size="A4"` on a large assembly and confirm the error names a
+   larger sheet size instead of asking the caller to guess a scale.
+   **Expected:** the error code is `NO_FITTING_SCALE` and the response suggests a larger sheet
+   (e.g. "Try sheet_size='A3'").
+
+5. **Guards intact.** Confirm that a stale `expected_revision` still returns `STALE_REVISION`, and
+   that a failed call leaves no orphan drawing document open.
+   **Expected:** stale revision rejected with `STALE_REVISION`; failed calls do not leave unsaved
+   drawing documents behind.
+
+6. **View order preservation.** Call with `views="top,front,right"` (with `front` not first).
+   Confirm the tool succeeds and that the response's `views` field echoes the caller's order
+   (`top,front,right`), not an internal creation order. A defect found and fixed during Task 4
+   rejected this exact input with "Projected views require 'front'" despite `front` being present.
+   **Expected:** the call succeeds; the response `views` field reads `["top","front","right"]`.
+
+7. **Back is a real back view, not a second side view.** Call with `views="front,right,back"` under
+   `projection="first"` and check the resulting drawing in the Inventor UI. Before the fix, `back`
+   was routed through `AddProjectedView` off the front view, which derives orientation from the
+   *direction* to its parent, not the distance — so `back` and `right` landed as two identical
+   right-side views while the response still claimed a back view.
+   **Expected:** the drawing shows three distinct views — front, a right-side view, and a genuine
+   back view (mirrored front, not a duplicate right view).
+
+8. **Drawing standard write behaviour.** The handler sets `DrawingStandardStyle.FirstAngleProjection`.
+   Confirm it takes effect immediately without requiring an edit bracket. Test against a
+   library-resident style — it must be converted to a local copy automatically and the setting must
+   take effect, not fail. Test separately against a genuinely non-writable style (e.g. a read-only
+   style library on disk) — the expected failure there is `PROJECTION_UNAVAILABLE`, not silently
+   producing a drawing in the host's own convention.
+   **Expected:** on a writable or library-resident standard, the setting takes effect immediately
+   (a library-resident style is converted to local automatically, matching
+   `SetSheetMetalRuleHandler`'s guard). On a genuinely non-writable style, the tool fails with
+   `PROJECTION_UNAVAILABLE`.
+
+9. **Preview leaves the style library untouched.** With the active drawing standard style
+   library-resident, call `inventor_create_drawing_safe` with `preview=true` and any `projection`.
+   After the call returns, check the style in the Inventor UI (or open a fresh drawing from the same
+   template) rather than trusting the tool's own report.
+   **Expected:** the style is still library-resident, with its original projection convention. A
+   style-library write is not part of the document transaction, so `transaction.Abort()` alone does
+   not undo it — before the fix, `preview=true`, documented as leaving nothing behind, could
+   permanently flip the projection convention for every future drawing on this machine.
+

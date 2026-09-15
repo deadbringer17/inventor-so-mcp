@@ -570,13 +570,14 @@ public sealed class SheetPlannerTests
     [Fact]
     public void NothingFitsReportsRequiredSizeAndSuggestsASheet()
     {
-        // 10 m views: even 1:500 leaves a block wider than A4.
+        // A4 portrait leaves 18 cm of usable width, so a 200 m view still needs 40 cm at 1:500.
         var result = SheetPlanner.Plan(21.0, 29.7, Footer,
-            new[] { new ViewExtent(ViewKind.Front, 1000.0, 1000.0) }, ProjectionAngle.First, Gutter);
+            new[] { new ViewExtent(ViewKind.Front, 20000.0, 20000.0) }, ProjectionAngle.First, Gutter);
         Assert.False(result.Fits);
         Assert.Null(result.Views);
-        Assert.True(result.RequiredWidthCm > 0);
-        Assert.True(result.RequiredHeightCm > 0);
+        Assert.Equal(40.0, result.RequiredWidthCm, 6);
+        Assert.Equal(40.0, result.RequiredHeightCm, 6);
+        Assert.Equal("A1", result.SuggestedSheetSize);
     }
 
     [Theory]
@@ -937,10 +938,11 @@ Add these members to `CreateDrawingHandler`, after `Execute`:
     {
         try
         {
-            var standard = drawing.StylesManager.ActiveStandardStyle;
-            standard.ProjectionType = projection == ProjectionAngle.First
-                ? ProjectionTypeEnum.kFirstAngleProjectionType
-                : ProjectionTypeEnum.kThirdAngleProjectionType;
+            // DrawingStylesManager.ActiveStandardStyle is a DrawingStandardStyle, whose projection
+            // convention is the bool FirstAngleProjection. ProjectionTypeEnum is unrelated: it
+            // selects orthographic vs perspective, not first vs third angle.
+            drawing.StylesManager.ActiveStandardStyle.FirstAngleProjection =
+                projection == ProjectionAngle.First;
         }
         catch (Exception ex)
         {
@@ -952,7 +954,7 @@ Add these members to `CreateDrawingHandler`, after `Execute`:
 
 - [ ] **Step 3: Replace the view creation block**
 
-Replace the block from `sheet.Size = DrawingSheetSizeEnum.kA3DrawingSheetSize;` down to and including the `DrawingLayout.Validate(...)` call with:
+Replace the block starting at the existing `var sheet = drawing.ActiveSheet;` line, down to and including the `DrawingLayout.Validate(...)` call, with the code below. Cutting from `sheet.Size` instead would leave the old `var sheet` declaration in place and the replacement would not compile.
 
 ```csharp
             var sheet = drawing.ActiveSheet;
@@ -972,7 +974,10 @@ Replace the block from `sheet.Size = DrawingSheetSizeEnum.kA3DrawingSheetSize;` 
 
             var created = new System.Collections.Generic.Dictionary<ViewKind, DrawingView>();
             DrawingView? baseView = null;
-            foreach (var kind in kinds)
+            // Ordered(), not kinds: a projected view needs its parent to exist already, and the
+            // caller may legitimately write `views=top,front,right`. Parse only guarantees that
+            // front is SOMEWHERE in the list, not that it comes first.
+            foreach (var kind in Ordered(kinds))
             {
                 var slot = DrawingViewSet.Slot(kind, projection, kinds);
                 var at = geo.CreatePoint2d(centerX + slot.Column * pitchX, centerY + slot.Row * pitchY);
@@ -1107,7 +1112,7 @@ Expected: both PASS. The handler itself is excluded from these targets; this ste
 Run from `bridge/`: `dotnet build src/plugin-inv27 -c Debug`
 Expected: PASS. This is the first compilation of the handler changes.
 
-If `ProjectionTypeEnum` or `ActiveStandardStyle.ProjectionType` does not resolve, do not invent a workaround: report the actual member the interop exposes and stop. The spec flags this exact name as needing verification.
+The projection API above was verified against the installed 2027 interop by reflection before this task ran: `Inventor.DrawingStylesManager.ActiveStandardStyle` is typed `Inventor.DrawingStandardStyle`, which exposes a settable `FirstAngleProjection` property of type `bool` and has no `ProjectionType` member at all. Every other interop name this task uses was verified in the same pass: `kA0`-`kA4DrawingSheetSize`, `kLandscape`/`kPortraitPageOrientation`, the seven `ViewOrientationTypeEnum` members, and `DrawingView.Scale`/`Position` settable with `Width`/`Height` read-only.
 
 - [ ] **Step 8: Commit**
 
@@ -1234,4 +1239,4 @@ git commit -m "docs: live smoke-test procedure for the drawing sheet layout"
 
 **Deliberately out of scope**, restated so no task invents them: dimensions, title-block content, centrelines, section and detail views, parts lists, ballooning, multi-sheet, PDF export options.
 
-**Known risk.** Task 4 step 7 is the first time the handler compiles, and `ActiveStandardStyle.ProjectionType` / `ProjectionTypeEnum` is the one interop name this plan asserts without having verified it against the 2027 interop. The plan tells the implementer to stop and report rather than improvise if it does not resolve.
+**Known risk — RESOLVED before Task 4 ran.** This plan originally asserted `ActiveStandardStyle.ProjectionType` with `ProjectionTypeEnum.kFirstAngleProjectionType`, the one interop name written without verification. It does not exist: `ProjectionTypeEnum` is `kOrthographicProjection` / `kPerspectiveProjection` / `kPerspectiveProjectionWithOrthoFaces`, and `DrawingStandardStyle` carries a `bool FirstAngleProjection` instead. The implementer stopped and reported rather than guessing, as instructed; the controller confirmed by reflection against the installed interop and corrected the code above. Task 4 step 7 remains the first compilation of the handler.
