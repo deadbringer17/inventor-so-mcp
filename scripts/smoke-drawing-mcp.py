@@ -47,21 +47,53 @@ def main():
         source = (part.Dirty, part.ComponentDefinition.ModelGeometryVersion, part.FullFileName)
         def state():
             return json.loads(client.send('resources/read', dict(uri='inventor://active-document'))['contents'][0]['text'])
-        def create(scale, preview=True, stale=False):
+        def create(scale=None, preview=True, stale=False, **extra):
             s = state()
-            return client.tool('inventor_create_drawing_safe', document_id=s['id'], expected_revision='stale' if stale else s['revision'], scale=scale, preview=preview)
+            args = dict(document_id=s['id'], expected_revision='stale' if stale else s['revision'], preview=preview, **extra)
+            if scale is not None:
+                args['scale'] = scale
+            return client.tool('inventor_create_drawing_safe', **args)
+        def undisturbed():
+            assert app.Documents.Count == count and app.ActiveDocument.InternalName == part.InternalName
         result = create(2, stale=True)
         assert result.get('ok') is False and 'STALE_REVISION' in result['error']['message'], result
         count = app.Documents.Count
         result = create(2)
         assert result.get('status') == 'preview_rolled_back' and result['view_count'] == 4, result
-        assert app.Documents.Count == count and app.ActiveDocument.InternalName == part.InternalName
+        assert result['scale_mode'] == 'explicit' and result['projection'] == 'first', result
+        undisturbed()
+        # Layout failures are machine-readable codes, not prose prefixes: a caller must be able to
+        # branch on error.code without parsing the message.
         result = create(100, False)
-        assert result.get('ok') is False and any(code in result['error']['message'] for code in ('VIEW_', 'E_INVALIDARG')), result
-        assert app.Documents.Count == count and app.ActiveDocument.InternalName == part.InternalName
+        assert result.get('ok') is False, result
+        assert result['error']['code'] == 'VIEW_OUTSIDE_LAYOUT' or 'E_INVALIDARG' in result['error']['message'], result
+        undisturbed()
         result = create(4, False)
-        assert result.get('ok') is False and 'VIEW_OUTSIDE_LAYOUT' in result['error']['message'], result
-        assert app.Documents.Count == count and app.ActiveDocument.InternalName == part.InternalName
+        assert result.get('ok') is False and result['error']['code'] == 'VIEW_OUTSIDE_LAYOUT', result
+        assert result['error']['details']['required_width_mm'] > 0, result
+        undisturbed()
+        # Automatic scaling: the planner must pick a normalised ISO step on its own.
+        ladder = (10, 5, 2, 1, 0.5, 0.2, 0.1, 0.05, 0.02, 0.01, 0.005, 0.002)
+        result = create()
+        assert result.get('status') == 'preview_rolled_back' and result['scale_mode'] == 'auto', result
+        assert result['scale'] in ladder, result
+        auto_scale = result['scale']
+        undisturbed()
+        # A projected view written before 'front' is legal: order in the list must not matter, and
+        # the response must echo the caller's order rather than the internal creation order.
+        result = create(2, views='top,front,right')
+        assert result.get('status') == 'preview_rolled_back' and result['views'] == 'top,front,right', result
+        assert result['view_count'] == 3, result
+        undisturbed()
+        # 'back' is a base view, not a projected one: AddProjectedView derives direction, not distance.
+        result = create(2, views='front,right,back')
+        assert result.get('status') == 'preview_rolled_back' and result['view_count'] == 3, result
+        undisturbed()
+        # Argument validation must arrive as INVALID_ARGUMENT, distinguishable from an Inventor fault.
+        result = create(2, views='front,plan')
+        assert result.get('ok') is False and result['error']['code'] == 'INVALID_ARGUMENT', result
+        undisturbed()
+        print(json.dumps(dict(auto_scale=auto_scale, projection='first')), flush=True)
         result = create(2, False)
         assert result.get('status') == 'created' and result['manufacturing_ready'] is False, result
         assert 'doc_' + app.ActiveDocument.InternalName == result['document_id']

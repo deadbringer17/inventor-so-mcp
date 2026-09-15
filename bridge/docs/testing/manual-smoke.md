@@ -148,6 +148,24 @@ integration end to end.
 
 Run against a live Inventor 2027 with a saved, up-to-date part open.
 
+Most of this section is now automated and should be run first, from the repository root, against a
+live Inventor with **no documents open**:
+
+```
+python scripts/smoke-drawing-mcp.py --server <package>\server\Inventor.So.Mcp.Server.dll --format pdf
+python scripts/smoke-projection-mcp.py <package>\server\Inventor.So.Mcp.Server.dll
+```
+
+The first covers items 1, 4, 5, 6, 7 and the argument-validation half of 3. The second covers the
+geometry half of 3, plus 8 and 9: it creates one drawing per convention and asserts the plan view
+lands on opposite sides of the front view, and it snapshots every standard style's
+`FirstAngleProjection` before and after a `preview=true` call to prove the style library is
+untouched. Item 2 (linearity) remains a manual reading, though a passing auto-scale in the first
+script is strong indirect evidence.
+
+Both scripts require the add-in **installed and Inventor restarted afterwards** — a running Inventor
+keeps the previously loaded assembly, so a stale add-in silently answers with the old contract.
+
 1. **Reference-scale measurement.** Call `inventor_create_drawing_safe` with `preview=true` and the
    defaults. It must return `scale_mode="auto"` and a scale from the ISO ladder. If the call fails
    while measuring, views cannot be measured at 1:500 and the reference scale must be raised to the
