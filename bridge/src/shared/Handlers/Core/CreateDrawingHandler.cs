@@ -23,28 +23,47 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
         if ((string?)p["document_id"] != id) return Fail(ctx, "INVALID_ARGUMENT", "DOCUMENT_CHANGED");
         if (ctx.Events == null || (string?)p["expected_revision"] != ctx.Events.Revision(id)) return Fail(ctx, "INVALID_ARGUMENT", "STALE_REVISION");
         if (source.RequiresUpdate) return Fail(ctx, "INVALID_ARGUMENT", "Source requires a rebuild first.");
-        double? requestedScale = null;
-        if (p["scale"] != null && p["scale"]!.Type != JTokenType.Null)
-        {
-            if (p["scale"]!.Type != JTokenType.Float && p["scale"]!.Type != JTokenType.Integer)
-                throw new ArgumentException("scale must be numeric, or omitted for automatic scaling.");
-            requestedScale = DrawingLayout.ValidateScale((double)p["scale"]!);
-        }
-        if (p["preview"] != null && p["preview"]!.Type != JTokenType.Boolean) throw new ArgumentException("preview must be boolean.");
-        bool preview = (bool?)p["preview"] ?? true;
-        var kinds = DrawingViewSet.Parse((string?)p["views"]);
-        var projection = ParseProjection((string?)p["projection"]);
+        // All argument validation below runs before anything is created (the drawing document, its
+        // transaction), so an ArgumentException here can safely become a structured INVALID_ARGUMENT
+        // result instead of an exception that CommandDispatcher would sanitize into an opaque
+        // API_ERROR, losing the ability for a caller to tell "you typed the views wrong" from
+        // "Inventor crashed".
+        double? requestedScale;
+        bool preview;
+        ViewKind[] kinds;
+        ProjectionAngle projection;
         double gutterMm = 15;
-        if (p["gutter_mm"] != null && p["gutter_mm"]!.Type != JTokenType.Null)
+        double gutter;
+        string sheetSizeName;
+        string orientationName;
+        try
         {
-            if (p["gutter_mm"]!.Type != JTokenType.Float && p["gutter_mm"]!.Type != JTokenType.Integer)
-                throw new ArgumentException("gutter_mm must be numeric.");
-            gutterMm = (double)p["gutter_mm"]!;
+            requestedScale = null;
+            if (p["scale"] != null && p["scale"]!.Type != JTokenType.Null)
+            {
+                if (p["scale"]!.Type != JTokenType.Float && p["scale"]!.Type != JTokenType.Integer)
+                    throw new ArgumentException("scale must be numeric, or omitted for automatic scaling.");
+                requestedScale = DrawingLayout.ValidateScale((double)p["scale"]!);
+            }
+            if (p["preview"] != null && p["preview"]!.Type != JTokenType.Boolean) throw new ArgumentException("preview must be boolean.");
+            preview = (bool?)p["preview"] ?? true;
+            kinds = DrawingViewSet.Parse((string?)p["views"]);
+            projection = ParseProjection((string?)p["projection"]);
+            if (p["gutter_mm"] != null && p["gutter_mm"]!.Type != JTokenType.Null)
+            {
+                if (p["gutter_mm"]!.Type != JTokenType.Float && p["gutter_mm"]!.Type != JTokenType.Integer)
+                    throw new ArgumentException("gutter_mm must be numeric.");
+                gutterMm = (double)p["gutter_mm"]!;
+            }
+            gutter = UnitConvert.MmToCm(gutterMm);
+            sheetSizeName = ((string?)p["sheet_size"] ?? "A3").Trim().ToUpperInvariant();
+            orientationName = ((string?)p["orientation"] ?? "landscape").Trim().ToLowerInvariant();
+            SheetSizes.Resolve(sheetSizeName, orientationName, out _, out _);   // fail fast before creating anything
         }
-        double gutter = UnitConvert.MmToCm(gutterMm);
-        string sheetSizeName = ((string?)p["sheet_size"] ?? "A3").Trim().ToUpperInvariant();
-        string orientationName = ((string?)p["orientation"] ?? "landscape").Trim().ToLowerInvariant();
-        SheetSizes.Resolve(sheetSizeName, orientationName, out _, out _);   // fail fast before creating anything
+        catch (ArgumentException ex)
+        {
+            return Fail(ctx, InventorErrorCodes.INVALID_ARGUMENT, ex.Message);
+        }
         string Geometry(global::Inventor.Document d) => d is PartDocument part ? part.ComponentDefinition.ModelGeometryVersion : ((AssemblyDocument)d).ComponentDefinition.ModelGeometryVersion;
         var originals = source.AllReferencedDocuments.Cast<global::Inventor.Document>().Append(source)
             .Select(d => new { Doc = d, Path = d.FullFileName, Dirty = d.Dirty, Geometry = Geometry(d) }).ToArray();
@@ -54,6 +73,19 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
         DrawingDocument? drawing = null;
         Transaction? transaction = null;
         bool priorUi = app.UserInterfaceManager.UserInteractionDisabled;
+        // Shared by both catch clauses below: abort the owned transaction (if still owned) and
+        // close only the tool-created draft, regardless of whether the failure is reported back as
+        // a structured Fail() or rethrown.
+        void RollbackDraft()
+        {
+            if (transaction != null)
+            {
+                if (!ReferenceEquals(app.TransactionManager.CurrentTransaction, transaction)) throw new InvalidOperationException("ROLLBACK_FAILED: transaction ownership lost; drawing left open.");
+                transaction.Abort();
+            }
+            if (drawing != null) drawing.Close(true); // only the new tool-owned document
+            source.Activate();
+        }
         try
         {
             if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired before drawing creation.");
@@ -116,14 +148,19 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
             var plan = SheetPlanner.Plan(sheet.Width, sheet.Height, footer, extents, projection, gutter, requestedScale);
             if (!plan.Fits)
             {
-                string needed = UnitConvert.CmToMm(plan.RequiredWidthCm).ToString("F0") + " x "
-                    + UnitConvert.CmToMm(plan.RequiredHeightCm).ToString("F0") + " mm";
-                throw new InvalidOperationException(requestedScale.HasValue
-                    ? "VIEW_OUTSIDE_LAYOUT: at the requested scale the views need " + needed
-                      + "; omit scale for automatic scaling, or use a larger sheet_size."
-                    : "NO_FITTING_SCALE: the views need " + needed + " even at 1:500"
+                double neededWidthMm = UnitConvert.CmToMm(plan.RequiredWidthCm);
+                double neededHeightMm = UnitConvert.CmToMm(plan.RequiredHeightCm);
+                string needed = neededWidthMm.ToString("F0") + " x " + neededHeightMm.ToString("F0") + " mm";
+                var details = new JObject { ["required_width_mm"] = neededWidthMm, ["required_height_mm"] = neededHeightMm };
+                if (requestedScale.HasValue)
+                    throw new DrawingLayoutException(InventorErrorCodes.VIEW_OUTSIDE_LAYOUT,
+                        "At the requested scale the views need " + needed
+                          + "; omit scale for automatic scaling, or use a larger sheet_size.", details);
+                if (plan.SuggestedSheetSize != null) details["sheet_size"] = plan.SuggestedSheetSize;
+                throw new DrawingLayoutException(InventorErrorCodes.NO_FITTING_SCALE,
+                    "The views need " + needed + " even at 1:500"
                       + (plan.SuggestedSheetSize == null ? "; no listed sheet size fits."
-                          : "; retry with sheet_size=" + plan.SuggestedSheetSize + "."));
+                          : "; retry with sheet_size=" + plan.SuggestedSheetSize + "."), details);
             }
             double scale = plan.Scale;
 
@@ -136,8 +173,14 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
             // belong to the drawing as it actually is rather than to the predicted layout.
             var applied = SheetPlanner.Plan(sheet.Width, sheet.Height, footer,
                 BuildExtents(kinds, created), projection, gutter, scale);
-            if (!applied.Fits) throw new InvalidOperationException(
-                "VIEW_OUTSIDE_LAYOUT: the measured views do not fit at the planned scale.");
+            if (!applied.Fits)
+                throw new DrawingLayoutException(InventorErrorCodes.VIEW_OUTSIDE_LAYOUT,
+                    "The measured views do not fit at the planned scale.",
+                    new JObject
+                    {
+                        ["required_width_mm"] = UnitConvert.CmToMm(applied.RequiredWidthCm),
+                        ["required_height_mm"] = UnitConvert.CmToMm(applied.RequiredHeightCm)
+                    });
             // Position the front view first: Inventor keeps projected views aligned to their parent,
             // and the planner keeps every projected view in the front view's own row or column.
             foreach (var kind in Ordered(kinds))
@@ -180,15 +223,17 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
             else { transaction.End(); transaction = null; result["revision"] = ctx.Events.Revision(drawingId); }
             return Ok(ctx, result);
         }
+        catch (DrawingLayoutException failure)
+        {
+            // A layout/projection failure the caller can branch on: report it as a structured
+            // result with the same rollback the generic catch below performs, instead of letting it
+            // reach CommandDispatcher's catch-all, which would sanitize it into an opaque API_ERROR.
+            RollbackDraft();
+            return Fail(ctx, failure.Code, failure.Message, failure.Details);
+        }
         catch
         {
-            if (transaction != null)
-            {
-                if (!ReferenceEquals(app.TransactionManager.CurrentTransaction, transaction)) throw new InvalidOperationException("ROLLBACK_FAILED: transaction ownership lost; drawing left open.");
-                transaction.Abort();
-            }
-            if (drawing != null) drawing.Close(true); // only the new tool-owned document
-            source.Activate();
+            RollbackDraft();
             throw;
         }
         finally { app.UserInterfaceManager.UserInteractionDisabled = priorUi; }
@@ -257,9 +302,28 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
         }
         catch (Exception ex)
         {
-            throw new InvalidOperationException(
-                "PROJECTION_UNAVAILABLE: the drawing standard does not accept a projection change: " + ex.Message);
+            throw new DrawingLayoutException(InventorErrorCodes.PROJECTION_UNAVAILABLE,
+                "The drawing standard does not accept a projection change: " + ex.Message);
         }
+    }
+
+    /// <summary>
+    /// A drawing-layout failure the caller can act on programmatically: <see cref="Code"/> is one of
+    /// NO_FITTING_SCALE, VIEW_OUTSIDE_LAYOUT or PROJECTION_UNAVAILABLE, and <see cref="Details"/>
+    /// carries the machine-readable specifics (e.g. a suggested sheet size) instead of forcing the
+    /// caller to parse them back out of the human-readable message. Caught in <see cref="Execute"/>
+    /// so it can be reported as a structured <c>Fail</c> result — with the same rollback the generic
+    /// catch performs — rather than reaching <c>CommandDispatcher</c>'s catch-all as an API_ERROR.
+    /// </summary>
+    private sealed class DrawingLayoutException : Exception
+    {
+        public DrawingLayoutException(string code, string message, JObject? details = null) : base(message)
+        {
+            Code = code;
+            Details = details;
+        }
+        public string Code { get; }
+        public JObject? Details { get; }
     }
 
     /// <summary>Measured extents of already-scaled views, normalised back to scale 1.</summary>

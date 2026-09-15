@@ -26,6 +26,13 @@ public abstract class HandlerBase
     protected static InventorCommandResult Fail(InventorCommandContext ctx, string code, string message) =>
         InventorCommandResult.Fail(Guid.Empty, code, message, Meta(ctx));
 
+    /// <summary>
+    /// Machine-readable variant: <paramref name="details"/> carries specifics a caller can branch
+    /// on (e.g. a suggested sheet size) without parsing the human-readable <paramref name="message"/>.
+    /// </summary>
+    protected static InventorCommandResult Fail(InventorCommandContext ctx, string code, string message, JObject? details) =>
+        InventorCommandResult.Fail(Guid.Empty, code, message, details, Meta(ctx));
+
     internal static InventorCommandResult FailForSupport(InventorCommandContext ctx, string code, string message) =>
         InventorCommandResult.Fail(Guid.Empty, code, message, Meta(ctx));
 }
