@@ -241,8 +241,19 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
             // DrawingStylesManager.ActiveStandardStyle is a DrawingStandardStyle, whose projection
             // convention is the bool FirstAngleProjection. ProjectionTypeEnum is unrelated: it
             // selects orthographic vs perspective, not first vs third angle.
-            drawing.StylesManager.ActiveStandardStyle.FirstAngleProjection =
-                projection == ProjectionAngle.First;
+            var style = drawing.StylesManager.ActiveStandardStyle;
+            if (style.StyleLocation == StyleLocationEnum.kLibraryStyleLocation)
+            {
+                // A library-only style must gain a document copy before it is edited (mirrors
+                // SetSheetMetalRuleHandler's guard): writing FirstAngleProjection straight onto
+                // ActiveStandardStyle here would edit it in place, and that write is not part of the
+                // document transaction, so transaction.Abort() on a preview would NOT undo it. That
+                // would let preview=true, documented as leaving nothing behind, permanently flip the
+                // projection convention for every future drawing on this machine.
+                style.ConvertToLocal();
+                style = drawing.StylesManager.ActiveStandardStyle;
+            }
+            style.FirstAngleProjection = projection == ProjectionAngle.First;
         }
         catch (Exception ex)
         {

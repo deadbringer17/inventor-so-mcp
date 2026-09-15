@@ -193,9 +193,22 @@ Run against a live Inventor 2027 with a saved, up-to-date part open.
    back view (mirrored front, not a duplicate right view).
 
 8. **Drawing standard write behaviour.** The handler sets `DrawingStandardStyle.FirstAngleProjection`.
-   Confirm it takes effect immediately without requiring an edit bracket or a local style. Test
-   against a read-only or library-resident style — the expected failure is `PROJECTION_UNAVAILABLE`,
-   not silently producing a drawing in the host's own convention.
-   **Expected:** on a writable standard, the setting takes effect immediately. On a read-only style,
-   the tool fails with `PROJECTION_UNAVAILABLE`.
+   Confirm it takes effect immediately without requiring an edit bracket. Test against a
+   library-resident style — it must be converted to a local copy automatically and the setting must
+   take effect, not fail. Test separately against a genuinely non-writable style (e.g. a read-only
+   style library on disk) — the expected failure there is `PROJECTION_UNAVAILABLE`, not silently
+   producing a drawing in the host's own convention.
+   **Expected:** on a writable or library-resident standard, the setting takes effect immediately
+   (a library-resident style is converted to local automatically, matching
+   `SetSheetMetalRuleHandler`'s guard). On a genuinely non-writable style, the tool fails with
+   `PROJECTION_UNAVAILABLE`.
+
+9. **Preview leaves the style library untouched.** With the active drawing standard style
+   library-resident, call `inventor_create_drawing_safe` with `preview=true` and any `projection`.
+   After the call returns, check the style in the Inventor UI (or open a fresh drawing from the same
+   template) rather than trusting the tool's own report.
+   **Expected:** the style is still library-resident, with its original projection convention. A
+   style-library write is not part of the document transaction, so `transaction.Abort()` alone does
+   not undo it — before the fix, `preview=true`, documented as leaving nothing behind, could
+   permanently flip the projection convention for every future drawing on this machine.
 
