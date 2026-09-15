@@ -77,9 +77,40 @@ public sealed class DrawingViewSetTests
     [Fact]
     public void ProjectedViewsClassified()
     {
+        // Back is a BASE view, not a projected one. AddProjectedView derives a child's orientation
+        // from the DIRECTION to its parent, not the distance, so treating back as "projected two
+        // steps out" made it indistinguishable from a projected side view sharing that direction
+        // (views=front,right,back silently produced two right views under first angle). Back is
+        // created with AddBaseView and kBackViewOrientation instead, exactly like front and iso.
         Assert.False(DrawingViewSet.IsProjected(ViewKind.Front));
+        Assert.False(DrawingViewSet.IsProjected(ViewKind.Back));
         Assert.False(DrawingViewSet.IsProjected(ViewKind.Iso));
-        foreach (var kind in new[] { ViewKind.Back, ViewKind.Top, ViewKind.Bottom, ViewKind.Left, ViewKind.Right })
+        foreach (var kind in new[] { ViewKind.Top, ViewKind.Bottom, ViewKind.Left, ViewKind.Right })
             Assert.True(DrawingViewSet.IsProjected(kind));
+    }
+
+    [Fact]
+    public void BackAloneIsAllowed()
+        // A base view needs no parent, so unlike top/bottom/left/right this is legal without 'front'.
+        => Assert.Equal(new[] { ViewKind.Back }, DrawingViewSet.Parse("back"));
+
+    [Fact]
+    public void BackSitsTwoColumnsFromFrontUnderBothProjections()
+    {
+        // The slot arithmetic itself (2 * side) is unchanged by this fix; what changed is HOW that
+        // slot is realized in Inventor (AddBaseView instead of AddProjectedView). This test pins the
+        // slot so a future regression on the arithmetic side is still caught, even though the
+        // AddProjectedView-vs-AddBaseView distinction can only be observed against live Inventor.
+        var all = DrawingViewSet.Parse("front,right,back");
+        var firstAngle = DrawingViewSet.Slot(ViewKind.Back, ProjectionAngle.First, all);
+        Assert.Equal(-2, firstAngle.Column);
+        Assert.Equal(0, firstAngle.Row);
+        var thirdAngle = DrawingViewSet.Slot(ViewKind.Back, ProjectionAngle.Third, all);
+        Assert.Equal(2, thirdAngle.Column);
+        Assert.Equal(0, thirdAngle.Row);
+
+        // Back must never collide with the projected 'right' view's slot under either convention.
+        var right = DrawingViewSet.Slot(ViewKind.Right, ProjectionAngle.First, all);
+        Assert.NotEqual((firstAngle.Column, firstAngle.Row), (right.Column, right.Row));
     }
 }

@@ -184,7 +184,15 @@ Run against a live Inventor 2027 with a saved, up-to-date part open.
    rejected this exact input with "Projected views require 'front'" despite `front` being present.
    **Expected:** the call succeeds; the response `views` field reads `["top","front","right"]`.
 
-7. **Drawing standard write behaviour.** The handler sets `DrawingStandardStyle.FirstAngleProjection`.
+7. **Back is a real back view, not a second side view.** Call with `views="front,right,back"` under
+   `projection="first"` and check the resulting drawing in the Inventor UI. Before the fix, `back`
+   was routed through `AddProjectedView` off the front view, which derives orientation from the
+   *direction* to its parent, not the distance — so `back` and `right` landed as two identical
+   right-side views while the response still claimed a back view.
+   **Expected:** the drawing shows three distinct views — front, a right-side view, and a genuine
+   back view (mirrored front, not a duplicate right view).
+
+8. **Drawing standard write behaviour.** The handler sets `DrawingStandardStyle.FirstAngleProjection`.
    Confirm it takes effect immediately without requiring an edit bracket or a local style. Test
    against a read-only or library-resident style — the expected failure is `PROJECTION_UNAVAILABLE`,
    not silently producing a drawing in the host's own convention.

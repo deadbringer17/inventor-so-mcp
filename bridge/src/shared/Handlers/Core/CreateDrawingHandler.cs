@@ -215,16 +215,15 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
         }
     }
 
+    // Only reached for base views (AddBaseView branch): Front, Back and Iso. Top, Bottom, Left and
+    // Right are projected views whose orientation AddProjectedView derives from the direction to
+    // their parent, so those arms would be dead code here.
     private static ViewOrientationTypeEnum Orientation(ViewKind kind)
     {
         switch (kind)
         {
             case ViewKind.Front: return ViewOrientationTypeEnum.kFrontViewOrientation;
             case ViewKind.Back: return ViewOrientationTypeEnum.kBackViewOrientation;
-            case ViewKind.Top: return ViewOrientationTypeEnum.kTopViewOrientation;
-            case ViewKind.Bottom: return ViewOrientationTypeEnum.kBottomViewOrientation;
-            case ViewKind.Left: return ViewOrientationTypeEnum.kLeftViewOrientation;
-            case ViewKind.Right: return ViewOrientationTypeEnum.kRightViewOrientation;
             case ViewKind.Iso: return ViewOrientationTypeEnum.kIsoTopRightViewOrientation;
             default: throw new ArgumentException("Unsupported view kind.");
         }

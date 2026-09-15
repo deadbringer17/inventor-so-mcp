@@ -67,8 +67,12 @@ public static class DrawingViewSet
         return result.ToArray();
     }
 
+    // Back is deliberately NOT projected: AddProjectedView derives a child's orientation from the
+    // DIRECTION to its parent, not the distance, so a "two columns out" back view would be
+    // indistinguishable from the projected side view sharing that direction. Back is created with
+    // AddBaseView and kBackViewOrientation instead, like Front and Iso.
     public static bool IsProjected(ViewKind kind) =>
-        kind == ViewKind.Back || kind == ViewKind.Top || kind == ViewKind.Bottom ||
+        kind == ViewKind.Top || kind == ViewKind.Bottom ||
         kind == ViewKind.Left || kind == ViewKind.Right;
 
     public static ViewSlot Slot(ViewKind kind, ProjectionAngle projection, IReadOnlyList<ViewKind> all)
