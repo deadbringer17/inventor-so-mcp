@@ -23,8 +23,8 @@ public sealed class SaveArtifactHandler : HandlerBase, IInventorCommand
         if (doc == null) return Fail(ctx, "NO_DOCUMENT", "No active document.");
         if (doc is not PartDocument && doc is not AssemblyDocument && doc is not DrawingDocument) return Fail(ctx, "WRONG_DOCUMENT_TYPE", "Part, assembly or drawing required.");
         string id = EntityReferences.DocumentId(doc);
-        if ((string?)p["document_id"] != id) return Fail(ctx, "INVALID_ARGUMENT", "DOCUMENT_CHANGED");
-        if (ctx.Events == null || (string?)p["expected_revision"] != ctx.Events.Revision(id)) return Fail(ctx, "INVALID_ARGUMENT", "STALE_REVISION");
+        if ((string?)p["document_id"] != id) return Fail(ctx, ConcurrencyFailure.DocumentChanged((string?)p["document_id"], id));
+        if (ctx.Events == null || (string?)p["expected_revision"] != ctx.Events.Revision(id)) return Fail(ctx, ConcurrencyFailure.StaleRevision((string?)p["expected_revision"], ctx.Events?.Revision(id)));
         string format = (string?)p["format"] ?? "";
         string extension = ArtifactFormatPolicy.Extension(doc is PartDocument ? "part" : doc is AssemblyDocument ? "assembly" : "drawing",
             format, doc is DrawingDocument dwg && dwg.IsInventorDWG);
@@ -73,7 +73,7 @@ public sealed class SaveArtifactHandler : HandlerBase, IInventorCommand
         var transaction = app.TransactionManager.StartTransaction((Inventor._Document)doc, "Inventor SO export ownership check");
         bool nested = transaction.HasParentTransaction;
         transaction.Abort(); // our empty transaction only
-        if (nested) return Fail(ctx, "INVALID_ARGUMENT", "TRANSACTION_BUSY");
+        if (nested) return Fail(ctx, ConcurrencyFailure.TransactionBusy());
         string originalPath = doc.FullFileName;
         bool dirty = doc.Dirty;
         string geometryVersion = Geometry(doc);

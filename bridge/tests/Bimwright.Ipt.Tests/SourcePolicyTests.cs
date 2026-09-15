@@ -89,6 +89,46 @@ public sealed class SourcePolicyTests
         Assert.Contains("ReadOnly = o.ReadOnly || env.ReadOnly", text);
     }
 
+    /// <summary>
+    /// The handler tree is compiled only by the per-version add-ins, so nothing else in this suite
+    /// would notice a guard that reports a real error code as the MESSAGE of a generic code. That is
+    /// the defect this policy exists to prevent: the caller then has to parse prose to tell a stale
+    /// plan from a busy transaction. Report the code in <c>InventorError.Code</c> instead - throw a
+    /// CodedFailureException, or pass it to Fail - and keep the specifics in Details.
+    /// </summary>
+    [Fact]
+    public void HandlersNeverReportAnErrorCodeAsTheMessage()
+    {
+        var codes = typeof(Bimwright.Ipt.Shared.Contracts.InventorErrorCodes)
+            .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+            .Where(f => f.IsLiteral && f.FieldType == typeof(string))
+            .Select(f => (string)f.GetRawConstantValue()!)
+            .Where(c => c != "API_ERROR")   // the batch runner deliberately re-states its own code
+            .ToArray();
+
+        var offenders = new System.Collections.Generic.List<string>();
+        foreach (var path in Directory.EnumerateFiles(Path.Combine(RepoRoot(), @"src\shared\Handlers"), "*.cs", SearchOption.AllDirectories))
+        {
+            var lines = File.ReadAllLines(path);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                foreach (var code in codes)
+                {
+                    // Fail(ctx, <anything>, "CODE"...) and throw new …Exception("CODE"…): both hide
+                    // the code where only a human can find it.
+                    bool failMessage = lines[i].Contains("Fail(ctx,") &&
+                        (lines[i].Contains(", \"" + code + "\")") || lines[i].Contains(", \"" + code + ":"));
+                    bool thrownMessage = lines[i].Contains("Exception(\"" + code + "\")") ||
+                        lines[i].Contains("Exception(\"" + code + ":");
+                    if (failMessage || thrownMessage)
+                        offenders.Add(Path.GetFileName(path) + ":" + (i + 1) + " " + code);
+                }
+            }
+        }
+
+        Assert.Empty(offenders);
+    }
+
     [Fact]
     public void MassPropertiesUsesAreaUnitHelper()
     {

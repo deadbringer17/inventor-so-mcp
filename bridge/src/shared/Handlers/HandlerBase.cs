@@ -33,6 +33,14 @@ public abstract class HandlerBase
     protected static InventorCommandResult Fail(InventorCommandContext ctx, string code, string message, JObject? details) =>
         InventorCommandResult.Fail(Guid.Empty, code, message, details, Meta(ctx));
 
+    /// <summary>
+    /// Report an already-built <see cref="CodedFailureException"/> as a result, for the guards that
+    /// refuse before anything is created. The same factory feeds both this and the throw sites, so a
+    /// caller sees one code, one wording and one details shape for a given failure either way.
+    /// </summary>
+    protected static InventorCommandResult Fail(InventorCommandContext ctx, CodedFailureException failure) =>
+        InventorCommandResult.Fail(Guid.Empty, failure.Code, failure.Message, failure.Details, Meta(ctx));
+
     internal static InventorCommandResult FailForSupport(InventorCommandContext ctx, string code, string message) =>
         InventorCommandResult.Fail(Guid.Empty, code, message, Meta(ctx));
 }

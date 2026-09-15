@@ -29,15 +29,21 @@ public sealed class CheckpointHandler : HandlerBase, IInventorCommand
         {
             if (!ActiveDocumentSupport.TryGetActivePart(ctx, Name, out _, out var active, out var failure)) return failure!;
             string activeId = "doc_" + active.InternalName;
-            if ((string?)p["document_id"] != activeId) return Fail(ctx, "INVALID_ARGUMENT", "DOCUMENT_CHANGED");
+            if ((string?)p["document_id"] != activeId) return Fail(ctx, ConcurrencyFailure.DocumentChanged((string?)p["document_id"], activeId));
             string? revision = ctx.Events?.Revision(activeId);
-            if (revision == null || (string?)p["expected_revision"] != revision) return Fail(ctx, "INVALID_ARGUMENT", "STALE_REVISION");
+            if (revision == null || (string?)p["expected_revision"] != revision)
+                return Fail(ctx, ConcurrencyFailure.StaleRevision((string?)p["expected_revision"], revision));
             string key = (string?)p["checkpoint_id"] ?? "";
             var before = store.ReadSemantic(key);
-            if ((string?)before["document_id"] != activeId) return Fail(ctx, "INVALID_ARGUMENT", "CHECKPOINT_DOCUMENT_MISMATCH");
+            if ((string?)before["document_id"] != activeId)
+                return Fail(ctx, InventorErrorCodes.INVALID_ARGUMENT,
+                    "This checkpoint was taken from a different document; diff it against the document it belongs to.",
+                    new JObject { ["reason"] = "checkpoint_document_mismatch",
+                        ["checkpoint_document_id"] = (string?)before["document_id"], ["active_document_id"] = activeId });
             var after = PartSemanticSnapshot.Capture(active, ctx.IsDeadlineExceeded);
             if (ctx.Events!.Revision(activeId) != revision || app.ActiveDocument == null || EntityReferences.DocumentId(app.ActiveDocument) != activeId)
-                return Fail(ctx, "INVALID_ARGUMENT", "DOCUMENT_CHANGED_DURING_DIFF");
+                return Fail(ctx, ConcurrencyFailure.DocumentChanged(activeId,
+                    app.ActiveDocument == null ? null : EntityReferences.DocumentId(app.ActiveDocument), "the diff"));
             var result = PartSnapshotDiff.Compare(before, after);
             result["checkpoint_id"] = key; result["revision"] = revision;
             result["database_units"] = after["database_units"];
@@ -75,7 +81,7 @@ public sealed class CheckpointHandler : HandlerBase, IInventorCommand
             var probe = app.TransactionManager.StartTransaction((Inventor._Document)app.ActiveDocument, "Inventor SO recovery ownership check");
             bool nested = probe.HasParentTransaction;
             probe.Abort();
-            if (nested) return Fail(ctx, "INVALID_ARGUMENT", "TRANSACTION_BUSY");
+            if (nested) return Fail(ctx, ConcurrencyFailure.TransactionBusy());
         }
         var path = store.RecoveryCopy(checkpointId, Path.Combine(root, "recoveries"), ctx.IsDeadlineExceeded);
         if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired before recovery open; recovery file retained.");

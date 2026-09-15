@@ -1,4 +1,6 @@
 using System;
+using Newtonsoft.Json.Linq;
+using Bimwright.Ipt.Shared.Contracts;
 
 namespace Bimwright.Ipt.Shared.Infrastructure;
 
@@ -20,14 +22,20 @@ public static class DrawingLayout
             var a = rectangles[i];
             if (a.Length != 4) throw new ArgumentException("Invalid view rectangle.");
             foreach (var v in a) if (double.IsNaN(v) || double.IsInfinity(v)) throw new ArgumentException("Nonfinite view rectangle.");
+            // Both refusals name themselves in a code rather than in the message: the caller that
+            // retries at a smaller scale has to tell them from a genuine Inventor API failure.
             if (a[2] <= 0 || a[3] <= 0 || a[0]-a[2]/2 < 1 || a[0]+a[2]/2 > sheetWidth-1 ||
                 a[1]-a[3]/2 < reservedBottomCm || a[1]+a[3]/2 > sheetHeight-1)
-                throw new InvalidOperationException("VIEW_OUTSIDE_LAYOUT: choose a smaller scale. Actual title-block height, at least 40 mm, is reserved.");
+                throw new CodedFailureException(InventorErrorCodes.VIEW_OUTSIDE_LAYOUT,
+                    "A view falls outside the usable sheet area; choose a smaller scale. The actual title-block height, at least 40 mm, is reserved.",
+                    new JObject { ["view_index"] = i, ["reserved_bottom_mm"] = reservedBottomCm * 10 });
             for (int j = 0; j < i; j++)
             {
                 var b = rectangles[j];
                 if (Math.Abs(a[0]-b[0]) < (a[2]+b[2])/2+0.2 && Math.Abs(a[1]-b[1]) < (a[3]+b[3])/2+0.2)
-                    throw new InvalidOperationException("VIEW_OVERLAP: choose a smaller scale.");
+                    throw new CodedFailureException(InventorErrorCodes.VIEW_OVERLAP,
+                        "Two views overlap; choose a smaller scale.",
+                        new JObject { ["view_index"] = i, ["overlaps_view_index"] = j });
             }
         }
     }

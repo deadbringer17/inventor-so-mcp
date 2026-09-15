@@ -88,7 +88,7 @@ public sealed class WorkspaceDocumentHandler : HandlerBase, IInventorCommand
             var probe = app.TransactionManager.StartTransaction((Inventor._Document)app.ActiveDocument, "Inventor SO workspace ownership check");
             bool nested = probe.HasParentTransaction;
             probe.Abort();
-            if (nested) return Fail(ctx, InventorErrorCodes.INVALID_ARGUMENT, "TRANSACTION_BUSY");
+            if (nested) return Fail(ctx, ConcurrencyFailure.TransactionBusy());
         }
         if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired before document creation.");
         Directory.CreateDirectory(root);
@@ -248,9 +248,9 @@ public sealed class WorkspaceDocumentHandler : HandlerBase, IInventorCommand
         var doc = app.ActiveDocument;
         if (doc == null) return Fail(ctx, InventorErrorCodes.NO_DOCUMENT, "No active document.");
         string id = EntityReferences.DocumentId(doc);
-        if ((string?)p["document_id"] != id) return Fail(ctx, InventorErrorCodes.INVALID_ARGUMENT, "DOCUMENT_CHANGED");
+        if ((string?)p["document_id"] != id) return Fail(ctx, ConcurrencyFailure.DocumentChanged((string?)p["document_id"], id));
         if (ctx.Events == null || (string?)p["expected_revision"] != ctx.Events.Revision(id))
-            return Fail(ctx, InventorErrorCodes.INVALID_ARGUMENT, "STALE_REVISION");
+            return Fail(ctx, ConcurrencyFailure.StaleRevision((string?)p["expected_revision"], ctx.Events?.Revision(id)));
         string path = doc.FullFileName;
         string? name = (string?)p["name"];
         if (string.IsNullOrWhiteSpace(path)) return SaveNew(ctx, app, root, doc, id, name);
@@ -281,7 +281,7 @@ public sealed class WorkspaceDocumentHandler : HandlerBase, IInventorCommand
         var transaction = app.TransactionManager.StartTransaction((Inventor._Document)doc, "Inventor SO workspace save ownership check");
         bool nested = transaction.HasParentTransaction;
         transaction.Abort();
-        if (nested) return Fail(ctx, InventorErrorCodes.INVALID_ARGUMENT, "TRANSACTION_BUSY");
+        if (nested) return Fail(ctx, ConcurrencyFailure.TransactionBusy());
 
         var referenceStates = referenced.Select(d => new { Document = d, Path = d.FullFileName, Hash = Fingerprint(d.FullFileName) }).ToArray();
         if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired before save.");
@@ -392,7 +392,7 @@ public sealed class WorkspaceDocumentHandler : HandlerBase, IInventorCommand
         var transaction = app.TransactionManager.StartTransaction((Inventor._Document)doc, "Inventor SO workspace first save ownership check");
         bool nested = transaction.HasParentTransaction;
         transaction.Abort();
-        if (nested) return Fail(ctx, InventorErrorCodes.INVALID_ARGUMENT, "TRANSACTION_BUSY");
+        if (nested) return Fail(ctx, ConcurrencyFailure.TransactionBusy());
         if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired before first save.");
         Directory.CreateDirectory(root);
         SafeArtifactWriter.CheckAncestors(root);

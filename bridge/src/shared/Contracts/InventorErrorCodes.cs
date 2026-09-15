@@ -32,5 +32,12 @@ public static class InventorErrorCodes
     // layout failure from a genuine Inventor API error without parsing prose.
     public const string NO_FITTING_SCALE = "NO_FITTING_SCALE";
     public const string VIEW_OUTSIDE_LAYOUT = "VIEW_OUTSIDE_LAYOUT";
+    public const string VIEW_OVERLAP = "VIEW_OVERLAP";
     public const string PROJECTION_UNAVAILABLE = "PROJECTION_UNAVAILABLE";
+
+    // A document already owned by another transaction. Every safe write probes for this before it
+    // starts one of its own, and used to report it the same way: the identifier as the MESSAGE of a
+    // generic INVALID_ARGUMENT, which a caller cannot branch on. It is a distinct, retryable
+    // outcome - nothing was changed - so it is a code of its own.
+    public const string TRANSACTION_BUSY = "TRANSACTION_BUSY";
 }

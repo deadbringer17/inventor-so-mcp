@@ -12,7 +12,9 @@ namespace Bimwright.Ipt.Shared.Infrastructure;
 /// <summary>
 /// Routes a deserialized <see cref="InventorCommandEnvelope"/> to its handler, enforcing
 /// read-only mode, the <c>send_code</c> opt-in gate, and the response-size guard, and
-/// sanitizing any handler exception into an <c>API_ERROR</c>. Ported from nwd's CommandDispatcher.
+/// sanitizing any handler exception into an <c>API_ERROR</c> - except a
+/// <see cref="CodedFailureException"/>, which is reported under its own code. Ported from nwd's
+/// CommandDispatcher.
 /// </summary>
 public sealed class CommandDispatcher
 {
@@ -77,6 +79,13 @@ public sealed class CommandDispatcher
             if (!ResponseSizeGuard.Check(serialized, _maxResponseBytes, out var sizeError))
                 return InventorCommandResult.Fail(env.Id, sizeError!.Code, sizeError.Message, result.Meta);
             return result;
+        }
+        catch (CodedFailureException failure)
+        {
+            // The handler already knows what went wrong and said so in a code. Sanitizing that into
+            // API_ERROR here would throw the identity away and leave the caller parsing prose.
+            return InventorCommandResult.Fail(env.Id, failure.Code,
+                ErrorSanitizer.Sanitize(failure.Message), failure.Details, meta);
         }
         catch (Exception ex)
         {

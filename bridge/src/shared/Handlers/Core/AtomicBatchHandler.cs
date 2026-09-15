@@ -28,6 +28,13 @@ public sealed class AtomicBatchHandler : IInventorCommand
             // sanitized API_ERROR string would force the caller to parse the sentence back apart.
             return InventorCommandResult.Fail(Guid.Empty, failure.Code, failure.Message, failure.Details(), new());
         }
+        catch (CodedFailureException failure)
+        {
+            // TRANSACTION_BUSY from Begin: a refusal raised before any operation ran, so it belongs
+            // to no step. Report it under its own code rather than letting it reach the dispatcher's
+            // catch-all as an API_ERROR whose message happens to start with the code.
+            return InventorCommandResult.Fail(Guid.Empty, failure.Code, failure.Message, failure.Details, new());
+        }
     }
 }
 
@@ -42,7 +49,7 @@ internal sealed class InventorBatchBackend : ICadBatchBackend, IDisposable
     {
         _ctx = ctx;
         _app = (Application)ctx.Application!;
-        _doc = _app.ActiveDocument ?? throw new InvalidOperationException("NO_DOCUMENT");
+        _doc = _app.ActiveDocument ?? throw new CodedFailureException(InventorErrorCodes.NO_DOCUMENT, "No active Inventor document.");
         if (_doc.DocumentType != DocumentTypeEnum.kPartDocumentObject) throw new InvalidOperationException("Atomic modeling batch currently requires a part document.");
         if (ctx.Events == null) throw new InvalidOperationException("EVENTS_UNAVAILABLE: cannot verify concurrency.");
     }
@@ -59,7 +66,7 @@ internal sealed class InventorBatchBackend : ICadBatchBackend, IDisposable
         try
         {
             if (_transaction.HasParentTransaction)
-                throw new InvalidOperationException("TRANSACTION_BUSY: another Inventor transaction is active.");
+                throw ConcurrencyFailure.TransactionBusy();
         }
         catch
         {
@@ -72,7 +79,10 @@ internal sealed class InventorBatchBackend : ICadBatchBackend, IDisposable
         EnsureOwned();
         if (_ctx.Commands == null || !_ctx.Commands.TryGetValue(command, out var handler)) throw new ArgumentException("Unregistered batch command " + command);
         var result = handler.Execute(_ctx, arguments);
-        if (!result.Ok) throw new InvalidOperationException(result.Error?.Code + ": " + result.Error?.Message);
+        // Carry the failing handler's own code structurally; AtomicCadBatch lifts it into the
+        // batch result's details.step_code rather than re-parsing it out of a sentence.
+        if (!result.Ok) throw new CodedFailureException(result.Error?.Code ?? InventorErrorCodes.API_ERROR,
+            result.Error?.Message ?? "The step failed without a message.", result.Error?.Details);
         return new JObject { ["command"] = command, ["data"] = result.Data };
     }
     public void Validate()

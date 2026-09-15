@@ -21,8 +21,8 @@ public sealed class MoveComponentHandler : HandlerBase, IInventorCommand
         if (!ActiveDocumentSupport.TryGetActiveAssembly(ctx, Name, out var app, out var assembly, out var failure)) return failure!;
         var doc = (global::Inventor.Document)assembly;
         string id = EntityReferences.DocumentId(doc);
-        if ((string?)p["document_id"] != id) return Fail(ctx, "INVALID_ARGUMENT", "DOCUMENT_CHANGED");
-        if (ctx.Events == null || (string?)p["expected_revision"] != ctx.Events.Revision(id)) return Fail(ctx, "INVALID_ARGUMENT", "STALE_REVISION");
+        if ((string?)p["document_id"] != id) return Fail(ctx, ConcurrencyFailure.DocumentChanged((string?)p["document_id"], id));
+        if (ctx.Events == null || (string?)p["expected_revision"] != ctx.Events.Revision(id)) return Fail(ctx, ConcurrencyFailure.StaleRevision((string?)p["expected_revision"], ctx.Events?.Revision(id)));
         var move = ComponentMoveRequest.Parse(p);
         var def = assembly.ComponentDefinition;
         ComponentOccurrence? occurrence = null;
@@ -58,7 +58,7 @@ public sealed class MoveComponentHandler : HandlerBase, IInventorCommand
             if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired before movement");
             app.UserInterfaceManager.UserInteractionDisabled = true;
             transaction = app.TransactionManager.StartTransaction((Inventor._Document)doc, "Inventor SO component translation");
-            if (transaction.HasParentTransaction) throw new InvalidOperationException("TRANSACTION_BUSY");
+            if (transaction.HasParentTransaction) throw ConcurrencyFailure.TransactionBusy();
             var original = _insert ? app.TransientGeometry.CreateMatrix() : occurrence!.Transformation;
             var target = original.Copy();
             var matrix = new double[4,4];
@@ -90,9 +90,11 @@ public sealed class MoveComponentHandler : HandlerBase, IInventorCommand
                 checks.Add(new JObject { ["component_id"] = EntityReferences.Describe(doc, other)["id"], ["distance_mm"] = distance });
             }
             EnsureOwned();
-            if (_insert && (source!.Dirty || source.FullFileName != sourcePath)) throw new InvalidOperationException("SOURCE_CHANGED");
+            if (_insert && (source!.Dirty || source.FullFileName != sourcePath))
+                throw new InvalidOperationException("SOURCE_CHANGED: the source part was modified or moved during insertion.");
             if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired before commit.");
-            if (app.ActiveDocument == null || EntityReferences.DocumentId(app.ActiveDocument) != id) throw new InvalidOperationException("DOCUMENT_CHANGED");
+            if (app.ActiveDocument == null || EntityReferences.DocumentId(app.ActiveDocument) != id)
+                throw ConcurrencyFailure.DocumentChanged(id, app.ActiveDocument == null ? null : EntityReferences.DocumentId(app.ActiveDocument), "the move");
             JToken? resultId = _insert ? (move.Preview ? null : EntityReferences.Describe(doc, occurrence)["id"]) : p["component_id"];
             if (move.Preview) transaction.Abort(); else transaction.End();
             transaction = null;
@@ -108,8 +110,16 @@ public sealed class MoveComponentHandler : HandlerBase, IInventorCommand
             if (transaction != null)
             {
                 try { EnsureOwned(); transaction.Abort(); }
-                catch (Exception rollback) { throw new InvalidOperationException("ROLLBACK_FAILED: " + rollback.Message, ex); }
-                throw new InvalidOperationException("ROLLED_BACK: " + ex.Message, ex);
+                catch (Exception rollback)
+                {
+                    // The rollback is the part that failed, so CAD is in an unknown state: say so in
+                    // the code, and keep what actually went wrong in the details.
+                    throw new CodedFailureException(InventorErrorCodes.ROLLBACK_FAILED,
+                        "Rollback failed; inspect the model before continuing. Failure: " + ex.Message +
+                        "; rollback: " + rollback.Message, CodedFailureException.ReasonOf(ex), ex);
+                }
+                throw new CodedFailureException(InventorErrorCodes.ROLLED_BACK,
+                    "Rolled back; nothing was changed. " + ex.Message, CodedFailureException.ReasonOf(ex), ex);
             }
             throw;
         }

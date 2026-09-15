@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Bimwright.Ipt.Shared.Contracts;
 using Newtonsoft.Json.Linq;
 
@@ -176,13 +175,5 @@ public static class AtomicCadBatch
     /// Handlers report failure as "CODE: message"; lift that code out so the caller does not have to
     /// read the sentence to find it.
     /// </summary>
-    private static string? StepCodeOf(Exception error)
-    {
-        if (error is CadBatchException nested) return nested.StepCode ?? nested.Code;
-        string message = error.Message ?? "";
-        int colon = message.IndexOf(':');
-        if (colon <= 0) return null;
-        string candidate = message.Substring(0, colon);
-        return candidate.Length <= 40 && candidate.All(c => char.IsUpper(c) || c == '_') ? candidate : null;
-    }
+    private static string? StepCodeOf(Exception error) => CodedFailureException.LiftCode(error);
 }

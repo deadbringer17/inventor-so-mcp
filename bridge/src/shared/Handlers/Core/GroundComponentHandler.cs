@@ -27,9 +27,9 @@ public sealed class GroundComponentHandler : HandlerBase, IInventorCommand
         if (!ActiveDocumentSupport.TryGetActiveAssembly(ctx, Name, out var app, out var assembly, out var failure)) return failure!;
         var doc = (global::Inventor.Document)assembly;
         string id = EntityReferences.DocumentId(doc);
-        if ((string?)p["document_id"] != id) return Fail(ctx, InventorErrorCodes.INVALID_ARGUMENT, "DOCUMENT_CHANGED");
+        if ((string?)p["document_id"] != id) return Fail(ctx, ConcurrencyFailure.DocumentChanged((string?)p["document_id"], id));
         if (ctx.Events == null || (string?)p["expected_revision"] != ctx.Events.Revision(id))
-            return Fail(ctx, InventorErrorCodes.INVALID_ARGUMENT, "STALE_REVISION");
+            return Fail(ctx, ConcurrencyFailure.StaleRevision((string?)p["expected_revision"], ctx.Events?.Revision(id)));
         if (p["grounded"]?.Type != JTokenType.Boolean)
             return Fail(ctx, InventorErrorCodes.INVALID_ARGUMENT, "grounded must be true or false.");
         bool grounded = (bool)p["grounded"]!;
@@ -57,7 +57,7 @@ public sealed class GroundComponentHandler : HandlerBase, IInventorCommand
         {
             if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired before grounding.");
             transaction = app.TransactionManager.StartTransaction((Inventor._Document)doc, "Inventor SO ground component");
-            if (transaction.HasParentTransaction) throw new InvalidOperationException("TRANSACTION_BUSY");
+            if (transaction.HasParentTransaction) throw ConcurrencyFailure.TransactionBusy();
             occurrence.Grounded = grounded;
             if (!doc.Update2()) throw new InvalidOperationException("Assembly rebuild failed.");
             foreach (AssemblyConstraint constraint in def.Constraints)
@@ -70,7 +70,7 @@ public sealed class GroundComponentHandler : HandlerBase, IInventorCommand
                 throw new InvalidOperationException("GROUND_NOT_APPLIED: Inventor did not keep the requested state.");
             Owned();
             if (app.ActiveDocument == null || EntityReferences.DocumentId(app.ActiveDocument) != id)
-                throw new InvalidOperationException("DOCUMENT_CHANGED");
+                throw ConcurrencyFailure.DocumentChanged(id, app.ActiveDocument == null ? null : EntityReferences.DocumentId(app.ActiveDocument), "the grounding change");
             transaction.End();
             transaction = null;
             return Ok(ctx, new JObject
@@ -89,8 +89,16 @@ public sealed class GroundComponentHandler : HandlerBase, IInventorCommand
             if (transaction != null)
             {
                 try { Owned(); transaction.Abort(); }
-                catch (Exception rollback) { throw new InvalidOperationException("ROLLBACK_FAILED: " + rollback.Message, ex); }
-                throw new InvalidOperationException("ROLLED_BACK: " + ex.Message, ex);
+                catch (Exception rollback)
+                {
+                    // The rollback is the part that failed, so CAD is in an unknown state: say so in
+                    // the code, and keep what actually went wrong in the details.
+                    throw new CodedFailureException(InventorErrorCodes.ROLLBACK_FAILED,
+                        "Rollback failed; inspect the model before continuing. Failure: " + ex.Message +
+                        "; rollback: " + rollback.Message, CodedFailureException.ReasonOf(ex), ex);
+                }
+                throw new CodedFailureException(InventorErrorCodes.ROLLED_BACK,
+                    "Rolled back; nothing was changed. " + ex.Message, CodedFailureException.ReasonOf(ex), ex);
             }
             throw;
         }

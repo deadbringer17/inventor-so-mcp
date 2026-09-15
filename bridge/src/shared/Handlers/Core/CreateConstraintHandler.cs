@@ -19,8 +19,8 @@ public sealed class CreateConstraintHandler : HandlerBase, IInventorCommand
         if (!ActiveDocumentSupport.TryGetActiveAssembly(ctx, Name, out var app, out var assembly, out var failure)) return failure!;
         var doc = (global::Inventor.Document)assembly;
         string id = EntityReferences.DocumentId(doc);
-        if ((string?)p["document_id"] != id) return Fail(ctx, "INVALID_ARGUMENT", "DOCUMENT_CHANGED");
-        if (ctx.Events == null || (string?)p["expected_revision"] != ctx.Events.Revision(id)) return Fail(ctx, "INVALID_ARGUMENT", "STALE_REVISION");
+        if ((string?)p["document_id"] != id) return Fail(ctx, ConcurrencyFailure.DocumentChanged((string?)p["document_id"], id));
+        if (ctx.Events == null || (string?)p["expected_revision"] != ctx.Events.Revision(id)) return Fail(ctx, ConcurrencyFailure.StaleRevision((string?)p["expected_revision"], ctx.Events?.Revision(id)));
         ConstraintCreateRequest request;
         object a, b;
         ComponentOccurrence occurrenceA, occurrenceB;
@@ -54,7 +54,7 @@ public sealed class CreateConstraintHandler : HandlerBase, IInventorCommand
             if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired before constraint creation.");
             app.UserInterfaceManager.UserInteractionDisabled = true;
             transaction = app.TransactionManager.StartTransaction((Inventor._Document)doc, "Inventor SO create constraint");
-            if (transaction.HasParentTransaction) throw new InvalidOperationException("TRANSACTION_BUSY");
+            if (transaction.HasParentTransaction) throw ConcurrencyFailure.TransactionBusy();
             var constraints = def.Constraints;
             AssemblyConstraint created = request.Type switch
             {
@@ -80,7 +80,8 @@ public sealed class CreateConstraintHandler : HandlerBase, IInventorCommand
             {
                 if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired during assembly validation.");
                 var pair = app.TransientObjects.CreateObjectCollection(); pair.Add(components[i]); pair.Add(components[j]);
-                if (def.AnalyzeInterference(pair).Count > 0) throw new InvalidOperationException("INTERFERENCE");
+                if (def.AnalyzeInterference(pair).Count > 0)
+                    throw new InvalidOperationException("INTERFERENCE: " + components[i].Name + "/" + components[j].Name);
                 double distance = app.MeasureTools.GetMinimumDistance(components[i], components[j]) * 10;
                 if (double.IsNaN(distance) || double.IsInfinity(distance) || distance < request.ClearanceMm)
                     throw new InvalidOperationException("CLEARANCE_FAILED: " + distance);
@@ -95,7 +96,8 @@ public sealed class CreateConstraintHandler : HandlerBase, IInventorCommand
                 ["constraint_id"] = request.Preview ? null : EntityReferences.Describe(doc, created)["id"] };
             Owned();
             if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired before commit.");
-            if (app.ActiveDocument == null || EntityReferences.DocumentId(app.ActiveDocument) != id) throw new InvalidOperationException("DOCUMENT_CHANGED");
+            if (app.ActiveDocument == null || EntityReferences.DocumentId(app.ActiveDocument) != id)
+                throw ConcurrencyFailure.DocumentChanged(id, app.ActiveDocument == null ? null : EntityReferences.DocumentId(app.ActiveDocument), "the constraint");
             if (request.Preview) transaction.Abort(); else transaction.End();
             transaction = null;
             result["status"] = request.Preview ? "preview_rolled_back" : "committed";
@@ -107,8 +109,16 @@ public sealed class CreateConstraintHandler : HandlerBase, IInventorCommand
             if (transaction != null)
             {
                 try { Owned(); transaction.Abort(); }
-                catch (Exception rollback) { throw new InvalidOperationException("ROLLBACK_FAILED: " + rollback.Message, ex); }
-                throw new InvalidOperationException("ROLLED_BACK: " + ex.Message, ex);
+                catch (Exception rollback)
+                {
+                    // The rollback is the part that failed, so CAD is in an unknown state: say so in
+                    // the code, and keep what actually went wrong in the details.
+                    throw new CodedFailureException(InventorErrorCodes.ROLLBACK_FAILED,
+                        "Rollback failed; inspect the model before continuing. Failure: " + ex.Message +
+                        "; rollback: " + rollback.Message, CodedFailureException.ReasonOf(ex), ex);
+                }
+                throw new CodedFailureException(InventorErrorCodes.ROLLED_BACK,
+                    "Rolled back; nothing was changed. " + ex.Message, CodedFailureException.ReasonOf(ex), ex);
             }
             throw;
         }

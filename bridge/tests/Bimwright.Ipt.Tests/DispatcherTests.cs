@@ -178,6 +178,43 @@ public sealed class DispatcherTests
     }
 
     [Fact]
+    public void CodedHandlerFailureKeepsItsOwnCodeAndDetails()
+    {
+        var d = Make(new FakeCmd
+        {
+            Name = "create_drawing_safe",
+            IsReadOnly = true,
+            Body = () => throw new CodedFailureException(InventorErrorCodes.VIEW_OUTSIDE_LAYOUT,
+                "The views do not fit; choose a smaller scale.",
+                new JObject { ["required_width_mm"] = 640 }),
+        });
+
+        var r = d.Dispatch(new InventorCommandContext(), new InventorCommandEnvelope { Command = "create_drawing_safe" });
+
+        Assert.Equal(InventorErrorCodes.VIEW_OUTSIDE_LAYOUT, r.Error!.Code);
+        Assert.Equal(640, (int?)r.Error.Details?["required_width_mm"]);
+        // The whole point: the caller branches on the code, never on the sentence.
+        Assert.DoesNotContain(InventorErrorCodes.VIEW_OUTSIDE_LAYOUT, r.Error.Message);
+    }
+
+    [Fact]
+    public void CodedHandlerFailureMessageIsStillSanitized()
+    {
+        var d = Make(new FakeCmd
+        {
+            Name = "move_component_safe",
+            IsReadOnly = true,
+            Body = () => throw new CodedFailureException(InventorErrorCodes.ROLLED_BACK,
+                @"Rolled back; nothing was changed. Clearance failed at C:\secret\model.iam"),
+        });
+
+        var r = d.Dispatch(new InventorCommandContext(), new InventorCommandEnvelope { Command = "move_component_safe" });
+
+        Assert.Equal(InventorErrorCodes.ROLLED_BACK, r.Error!.Code);
+        Assert.DoesNotContain(@"C:\secret", r.Error.Message);
+    }
+
+    [Fact]
     public void SuccessfulHandlerResponseKeepsEnvelopeId()
     {
         var id = Guid.Parse("33333333-3333-3333-3333-333333333333");

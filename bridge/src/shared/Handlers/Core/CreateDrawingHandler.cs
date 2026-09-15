@@ -20,8 +20,8 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
         var source = app.ActiveDocument;
         if (source is not PartDocument && source is not AssemblyDocument) return Fail(ctx, "WRONG_DOCUMENT_TYPE", "Active part or assembly required.");
         string id = EntityReferences.DocumentId(source);
-        if ((string?)p["document_id"] != id) return Fail(ctx, "INVALID_ARGUMENT", "DOCUMENT_CHANGED");
-        if (ctx.Events == null || (string?)p["expected_revision"] != ctx.Events.Revision(id)) return Fail(ctx, "INVALID_ARGUMENT", "STALE_REVISION");
+        if ((string?)p["document_id"] != id) return Fail(ctx, ConcurrencyFailure.DocumentChanged((string?)p["document_id"], id));
+        if (ctx.Events == null || (string?)p["expected_revision"] != ctx.Events.Revision(id)) return Fail(ctx, ConcurrencyFailure.StaleRevision((string?)p["expected_revision"], ctx.Events?.Revision(id)));
         if (source.RequiresUpdate) return Fail(ctx, "INVALID_ARGUMENT", "Source requires a rebuild first.");
         // All argument validation below runs before anything is created (the drawing document, its
         // transaction), so an ArgumentException here can safely become a structured INVALID_ARGUMENT
@@ -69,7 +69,7 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
             .Select(d => new { Doc = d, Path = d.FullFileName, Dirty = d.Dirty, Geometry = Geometry(d) }).ToArray();
         var probe = app.TransactionManager.StartTransaction((Inventor._Document)source, "Inventor SO drawing ownership check");
         bool nested = probe.HasParentTransaction; probe.Abort();
-        if (nested) return Fail(ctx, "INVALID_ARGUMENT", "TRANSACTION_BUSY");
+        if (nested) return Fail(ctx, ConcurrencyFailure.TransactionBusy());
         DrawingDocument? drawing = null;
         Transaction? transaction = null;
         bool priorUi = app.UserInterfaceManager.UserInteractionDisabled;
@@ -80,7 +80,9 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
         {
             if (transaction != null)
             {
-                if (!ReferenceEquals(app.TransactionManager.CurrentTransaction, transaction)) throw new InvalidOperationException("ROLLBACK_FAILED: transaction ownership lost; drawing left open.");
+                if (!ReferenceEquals(app.TransactionManager.CurrentTransaction, transaction))
+                    throw new CodedFailureException(InventorErrorCodes.ROLLBACK_FAILED,
+                        "Transaction ownership was lost during rollback; the draft drawing is left open. Inspect it before continuing.");
                 transaction.Abort();
             }
             if (drawing != null) drawing.Close(true); // only the new tool-owned document
@@ -94,7 +96,7 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
                 app.FileManager.GetTemplateFile(DocumentTypeEnum.kDrawingDocumentObject), true);
             if (drawing.Sheets.Count != 1 || drawing.ActiveSheet.DrawingViews.Count != 0) throw new InvalidOperationException("Default template must contain one sheet without model views.");
             transaction = app.TransactionManager.StartTransaction((Inventor._Document)drawing, "Inventor SO drawing views");
-            if (transaction.HasParentTransaction) throw new InvalidOperationException("TRANSACTION_BUSY");
+            if (transaction.HasParentTransaction) throw ConcurrencyFailure.TransactionBusy();
             var sheet = drawing.ActiveSheet;
             sheet.Size = SheetSizeEnum(sheetSizeName);
             sheet.Orientation = orientationName == "portrait"
@@ -154,11 +156,11 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
                 string needed = neededWidthMm.ToString("F0") + " x " + neededHeightMm.ToString("F0") + " mm";
                 var details = new JObject { ["required_width_mm"] = neededWidthMm, ["required_height_mm"] = neededHeightMm };
                 if (requestedScale.HasValue)
-                    throw new DrawingLayoutException(InventorErrorCodes.VIEW_OUTSIDE_LAYOUT,
+                    throw new CodedFailureException(InventorErrorCodes.VIEW_OUTSIDE_LAYOUT,
                         "At the requested scale the views need " + needed
                           + "; omit scale for automatic scaling, or use a larger sheet_size.", details);
                 if (plan.SuggestedSheetSize != null) details["sheet_size"] = plan.SuggestedSheetSize;
-                throw new DrawingLayoutException(InventorErrorCodes.NO_FITTING_SCALE,
+                throw new CodedFailureException(InventorErrorCodes.NO_FITTING_SCALE,
                     "The views need " + needed + " even at 1:500"
                       + (plan.SuggestedSheetSize == null ? "; no listed sheet size fits."
                           : "; retry with sheet_size=" + plan.SuggestedSheetSize + "."), details);
@@ -175,7 +177,7 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
             var applied = SheetPlanner.Plan(sheet.Width, sheet.Height, footer,
                 BuildExtents(kinds, created), projection, gutter, scale);
             if (!applied.Fits)
-                throw new DrawingLayoutException(InventorErrorCodes.VIEW_OUTSIDE_LAYOUT,
+                throw new CodedFailureException(InventorErrorCodes.VIEW_OUTSIDE_LAYOUT,
                     "The measured views do not fit at the planned scale.",
                     new JObject
                     {
@@ -224,13 +226,13 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
             else { transaction.End(); transaction = null; result["revision"] = ctx.Events.Revision(drawingId); }
             return Ok(ctx, result);
         }
-        catch (DrawingLayoutException failure)
+        catch (CodedFailureException failure)
         {
-            // A layout/projection failure the caller can branch on: report it as a structured
-            // result with the same rollback the generic catch below performs, instead of letting it
-            // reach CommandDispatcher's catch-all, which would sanitize it into an opaque API_ERROR.
+            // A layout/projection failure the caller can branch on — including the ones
+            // DrawingLayout.Validate raises. Report it as a structured result with the same rollback
+            // the generic catch below performs, rather than letting it travel as an exception.
             RollbackDraft();
-            return Fail(ctx, failure.Code, failure.Message, failure.Details);
+            return Fail(ctx, failure);
         }
         catch
         {
@@ -303,28 +305,9 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
         }
         catch (Exception ex)
         {
-            throw new DrawingLayoutException(InventorErrorCodes.PROJECTION_UNAVAILABLE,
+            throw new CodedFailureException(InventorErrorCodes.PROJECTION_UNAVAILABLE,
                 "The drawing standard does not accept a projection change: " + ex.Message);
         }
-    }
-
-    /// <summary>
-    /// A drawing-layout failure the caller can act on programmatically: <see cref="Code"/> is one of
-    /// NO_FITTING_SCALE, VIEW_OUTSIDE_LAYOUT or PROJECTION_UNAVAILABLE, and <see cref="Details"/>
-    /// carries the machine-readable specifics (e.g. a suggested sheet size) instead of forcing the
-    /// caller to parse them back out of the human-readable message. Caught in <see cref="Execute"/>
-    /// so it can be reported as a structured <c>Fail</c> result — with the same rollback the generic
-    /// catch performs — rather than reaching <c>CommandDispatcher</c>'s catch-all as an API_ERROR.
-    /// </summary>
-    private sealed class DrawingLayoutException : Exception
-    {
-        public DrawingLayoutException(string code, string message, JObject? details = null) : base(message)
-        {
-            Code = code;
-            Details = details;
-        }
-        public string Code { get; }
-        public JObject? Details { get; }
     }
 
     /// <summary>Measured extents of already-scaled views, normalised back to scale 1.</summary>

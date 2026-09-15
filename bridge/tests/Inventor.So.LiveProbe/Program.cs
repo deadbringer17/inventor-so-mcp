@@ -1,7 +1,9 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Loader;
+using Bimwright.Ipt.Shared.Contracts;
 using Bimwright.Ipt.Shared.Handlers.Core;
+using Bimwright.Ipt.Shared.Infrastructure;
 using Newtonsoft.Json.Linq;
 
 internal static class Program
@@ -102,6 +104,24 @@ internal static class Program
         if ((string?)result["status"] != "resolved") throw new InvalidOperationException(phase + ": " + result);
     }
 
+    /// <summary>
+    /// A refusal is identified by its code and, for a rollback, by details.reason - never by the
+    /// wording of the message, which is guidance for a human and free to change.
+    /// </summary>
+    private static void Expect(InventorCommandResult result, string code, string what)
+    {
+        if (result.Ok) throw new Exception(what + " unexpectedly succeeded");
+        if (result.Error?.Code != code)
+            throw new Exception(what + " reported " + result.Error?.Code + " instead of " + code);
+    }
+
+    /// <summary>The clearance/interference refusals the safe assembly writes roll back on.</summary>
+    private static bool Refused(CodedFailureException failure)
+    {
+        string? reason = (string?)failure.Details?["reason"];
+        return reason == "CLEARANCE_FAILED" || reason == "INTERFERENCE";
+    }
+
     private static int AssemblyProbe()
     {
         Marshal.ThrowExceptionForHR(CLSIDFromProgID("Inventor.Application", out var clsid));
@@ -137,8 +157,7 @@ internal static class Program
             foreach (double dx in new[] { -26.0, -40.0 })
             {
                 try { handler.Execute(ctx, Request(dx, false)); throw new Exception("Unsafe move accepted"); }
-                catch (InvalidOperationException ex) when (ex.Message.StartsWith("ROLLED_BACK:") &&
-                    (ex.Message.Contains("CLEARANCE_FAILED") || ex.Message.Contains("INTERFERENCE"))) { }
+                catch (CodedFailureException ex) when (ex.Code == InventorErrorCodes.ROLLED_BACK && Refused(ex)) { }
                 if (Math.Abs(b.Transformation.Translation.X - 5) > 1e-7) throw new Exception("Unsafe move changed transform");
             }
             var committed = handler.Execute(ctx, Request(-20, false));
@@ -156,8 +175,7 @@ internal static class Program
             handler.Execute(ctx, Rotation(90,true));
             if (Math.Abs(b.Transformation.Cell[1,1]-1)>1e-7) throw new Exception("Rotation preview failed to restore orientation");
             try { handler.Execute(ctx, Rotation(-90,false)); throw new Exception("Unsafe rotation accepted"); }
-            catch (InvalidOperationException ex) when (ex.Message.StartsWith("ROLLED_BACK:") &&
-                (ex.Message.Contains("INTERFERENCE") || ex.Message.Contains("CLEARANCE_FAILED"))) { }
+            catch (CodedFailureException ex) when (ex.Code == InventorErrorCodes.ROLLED_BACK && Refused(ex)) { }
             if (Math.Abs(b.Transformation.Cell[1,1]-1)>1e-7) throw new Exception("Unsafe rotation changed orientation");
             var rotated = handler.Execute(ctx, Rotation(90,false));
             if ((string?)rotated.Data?["status"]!="committed" || Math.Abs(b.Transformation.Cell[1,3]-1)>1e-7 ||
@@ -186,7 +204,8 @@ internal static class Program
             if ((string?)editPreview.Data?["status"]!="preview_rolled_back" || Math.Abs(b.Transformation.Translation.X-startX)>1e-7)
                 throw new Exception("Constraint preview did not restore position");
             try { editHandler.Execute(ctx,Edit(24,false)); throw new Exception("Unsafe constraint edit accepted"); }
-            catch (InvalidOperationException ex) when(ex.Message.StartsWith("ROLLED_BACK:") && ex.Message.Contains("CLEARANCE_FAILED")) { }
+            catch (CodedFailureException ex) when (ex.Code == InventorErrorCodes.ROLLED_BACK &&
+                (string?)ex.Details?["reason"] == "CLEARANCE_FAILED") { }
             if (Math.Abs(b.Transformation.Translation.X-startX)>1e-7) throw new Exception("Constraint rollback failed");
             var editCommit = editHandler.Execute(ctx,Edit(30,false));
             if ((string?)editCommit.Data?["status"]!="committed" || Math.Abs(Math.Abs(b.Transformation.Translation.X)-3)>1e-7)
@@ -259,8 +278,10 @@ internal static class Program
         var preview = Run(true, false);
         if ((string?)preview.Data?["status"] != "preview_rolled_back") throw new Exception("Hole preview failed");
         AssertRestored();
-        try { Run(false, true); throw new Exception("Off-face point accepted"); }
-        catch (InvalidOperationException ex) when (ex.Message.StartsWith("ROLLED_BACK:") && ex.Message.Contains("does not land")) { }
+        var offFace = Run(false, true);
+        Expect(offFace, InventorErrorCodes.ROLLED_BACK, "Off-face point");
+        if (!(offFace.Error?.Message ?? "").Contains("does not land"))
+            throw new Exception("Off-face point rolled back for the wrong reason: " + offFace.Error?.Message);
         AssertRestored();
         var committed = Run(false, false);
         double expectedRemoval = 4 * Math.PI * 0.1 * 0.1 * (z / 10);
@@ -390,18 +411,15 @@ internal static class Program
         var preview = handler.Execute(ctx, Request(true));
         if ((string?)preview.Data?["status"] != "preview_rolled_back" || Math.Abs(Value() - original) > 1e-8)
             throw new InvalidOperationException("Live preview did not restore parameter");
-        try { handler.Execute(ctx, Request(false, true)); throw new Exception("Invalid batch unexpectedly succeeded"); }
-        catch (InvalidOperationException ex) when (ex.Message.StartsWith("ROLLED_BACK:")) { }
+        Expect(handler.Execute(ctx, Request(false, true)), InventorErrorCodes.ROLLED_BACK, "Invalid batch");
         if (Math.Abs(Value() - original) > 1e-8) throw new InvalidOperationException("Failed batch did not restore parameter");
         var stale = Request(false);
         stale["expected_revision"] = "stale";
-        try { handler.Execute(ctx, stale); throw new Exception("Stale revision accepted"); }
-        catch (InvalidOperationException ex) when (ex.Message.StartsWith("STALE_REVISION:")) { }
+        Expect(handler.Execute(ctx, stale), InventorErrorCodes.STALE_REVISION, "Stale revision");
         var external = app.TransactionManager.StartTransaction((Inventor._Document)part, "Fixture ownership test");
         try
         {
-            try { handler.Execute(ctx, Request(false)); throw new Exception("Existing transaction was accepted"); }
-            catch (InvalidOperationException ex) when (ex.Message.StartsWith("TRANSACTION_BUSY:")) { }
+            Expect(handler.Execute(ctx, Request(false)), InventorErrorCodes.TRANSACTION_BUSY, "Existing transaction");
             if (!ReferenceEquals(app.TransactionManager.CurrentTransaction, external)) throw new Exception("External transaction ownership was changed");
         }
         finally { external.Abort(); }

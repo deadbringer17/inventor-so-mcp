@@ -19,9 +19,10 @@ public sealed class NativePackagePlanHandler : HandlerBase, IInventorCommand
         if (doc is not PartDocument && doc is not AssemblyDocument && doc is not DrawingDocument)
             return Fail(ctx, "WRONG_DOCUMENT_TYPE", "Active part, assembly or drawing required.");
         string id = EntityReferences.DocumentId(doc);
-        if ((string?)p["document_id"] != id) return Fail(ctx, "INVALID_ARGUMENT", "DOCUMENT_CHANGED");
+        if ((string?)p["document_id"] != id) return Fail(ctx, ConcurrencyFailure.DocumentChanged((string?)p["document_id"], id));
         string? revision = ctx.Events?.Revision(id);
-        if (revision == null || (string?)p["expected_revision"] != revision) return Fail(ctx, "INVALID_ARGUMENT", "STALE_REVISION");
+        if (revision == null || (string?)p["expected_revision"] != revision)
+            return Fail(ctx, ConcurrencyFailure.StaleRevision((string?)p["expected_revision"], revision));
         var project = app.DesignProjectManager.ActiveDesignProject;
         string projectPath = project.FullFileName;
         var documents = doc.AllReferencedDocuments.Cast<global::Inventor.Document>().Prepend(doc).Take(10001).ToArray();
@@ -41,10 +42,11 @@ public sealed class NativePackagePlanHandler : HandlerBase, IInventorCommand
         }
         for (int i = 0; i < documents.Length; i++)
             if (documents[i].FullFileName != nodes[i].Path || documents[i].Dirty != nodes[i].Dirty || documents[i].RequiresUpdate != nodes[i].RequiresUpdate)
-                return Fail(ctx, "INVALID_ARGUMENT", "DOCUMENT_CHANGED_DURING_PLAN");
+                return Fail(ctx, ConcurrencyFailure.DependencyChanged(nodes[i].Id, "the plan"));
         if (app.ActiveDocument == null || EntityReferences.DocumentId(app.ActiveDocument) != id ||
             ctx.Events!.Revision(id) != revision || app.DesignProjectManager.ActiveDesignProject.FullFileName != projectPath)
-            return Fail(ctx, "INVALID_ARGUMENT", "DOCUMENT_CHANGED_DURING_PLAN");
+            return Fail(ctx, ConcurrencyFailure.DocumentChanged(id,
+                app.ActiveDocument == null ? null : EntityReferences.DocumentId(app.ActiveDocument), "the plan"));
         result["ready_for_copy"] = blockers.Count == 0;
         result["document_id"] = id; result["revision"] = revision; result["project"] = projectPath;
         return Ok(ctx, result);
