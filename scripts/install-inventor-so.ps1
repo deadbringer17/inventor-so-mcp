@@ -24,5 +24,5 @@ if (Test-Path -LiteralPath $installedManifest) {
 $manifest.SelectSingleNode('/Addin/Assembly').InnerText = [string](Join-Path $stage 'addin\Inventor.So.AddIn.dll')
 $manifest.Save($installedManifest)
 Write-Output ('Installed manifest points to: ' + $manifest.Addin.Assembly)
-Write-Output ('MCP command: dotnet "' + (Join-Path $stage 'server\Inventor.So.Mcp.Server.dll') + '" --target 2027 --read-only --disable-toolbaker')
+Write-Output ('MCP full-access command: dotnet "' + (Join-Path $stage 'server\Inventor.So.Mcp.Server.dll') + '" --target 2027 --full-access --toolsets all --enable-send-code --enable-adaptive-bake')
 Write-Output 'Running Inventor may retain the previous assembly. Restart normally after saving your work to load this version. This script never closes Inventor.'

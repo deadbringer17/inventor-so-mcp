@@ -68,13 +68,19 @@ public static class SheetPlanner
     /// </param>
     public static SheetPlanResult Plan(double sheetWidth, double sheetHeight, double reservedBottom,
         IReadOnlyList<ViewExtent> extents, ProjectionAngle projection, double gutter, double? fixedScale = null)
+        => Plan(UsableArea.FromReservedBottom(sheetWidth, sheetHeight, reservedBottom),
+                extents, projection, gutter, fixedScale);
+
+    /// <summary>
+    /// Layout inside an arbitrary usable rectangle. A template-driven drawing states its usable area
+    /// explicitly, because its title block need not be a band along the bottom of the sheet.
+    /// </summary>
+    public static SheetPlanResult Plan(UsableArea area,
+        IReadOnlyList<ViewExtent> extents, ProjectionAngle projection, double gutter, double? fixedScale = null)
     {
+        if (area == null) throw new ArgumentException("A usable area is required.");
         if (extents == null || extents.Count == 0)
             throw new ArgumentException("At least one view extent is required.");
-        if (!ViewExtent.IsFinite(sheetWidth) || !ViewExtent.IsFinite(sheetHeight) || sheetWidth <= 0 || sheetHeight <= 0)
-            throw new ArgumentException("Sheet size must be finite and positive.");
-        if (!ViewExtent.IsFinite(reservedBottom) || reservedBottom < MinReservedBottomCm)
-            throw new ArgumentException("reservedBottom must be at least " + MinReservedBottomCm + " cm.");
         if (!ViewExtent.IsFinite(gutter) || gutter < MinGutterCm)
             throw new ArgumentException("gutter must be at least " + MinGutterCm + " cm.");
         if (fixedScale.HasValue && (!ViewExtent.IsFinite(fixedScale.Value) || fixedScale.Value <= 0))
@@ -84,12 +90,12 @@ public static class SheetPlanner
         foreach (var extent in extents) kinds.Add(extent.Kind);
 
         double outer = Math.Max(gutter, MinMarginCm);
-        double usableWidth = sheetWidth - 2 * outer;
-        // The bottom-most view gets the same margin as the other three sides. Spec decision 2 calls
-        // the corridor "attorno a ciascuna" (around each view), not around three sides of it: without
-        // the second `outer` here, a view block that exactly fills the usable height sits flush
-        // against the title-block band while top/left/right keep their margin.
-        double usableHeight = sheetHeight - reservedBottom - 2 * outer;
+        // Every side of the usable rectangle gets the same margin. Spec decision 2 calls the corridor
+        // "attorno a ciascuna" (around each view), not around three sides of it: without the second
+        // `outer` per axis, a view block that exactly fills the usable height sits flush against the
+        // title block while the other sides keep their margin.
+        double usableWidth = area.WidthCm - 2 * outer;
+        double usableHeight = area.HeightCm - 2 * outer;
         var result = new SheetPlanResult();
         double blockWidth = 0, blockHeight = 0;
 
@@ -98,7 +104,7 @@ public static class SheetPlanner
         {
             IReadOnlyList<PlannedView>? views;
             bool fits = TryLayout(extents, kinds, projection, scale, gutter, usableWidth, usableHeight,
-                outer, reservedBottom, out views, out blockWidth, out blockHeight);
+                area.XMinCm + outer, area.YMinCm + outer, out views, out blockWidth, out blockHeight);
             if (fits)
             {
                 result.Scale = scale;
@@ -112,14 +118,17 @@ public static class SheetPlanner
         result.Scale = candidates[candidates.Length - 1];
         result.RequiredWidthCm = blockWidth;
         result.RequiredHeightCm = blockHeight;
+        // The sheet a caller should retry on has to carry the same non-usable margins and title-block
+        // area this one does, so they are added back to the block the views actually need.
         result.SuggestedSheetSize = SheetSizes.SmallestContaining(
-            blockWidth + 2 * outer, blockHeight + reservedBottom + 2 * outer);
+            blockWidth + 2 * outer + area.ReservedWidthCm,
+            blockHeight + 2 * outer + area.ReservedHeightCm);
         return result;
     }
 
     private static bool TryLayout(IReadOnlyList<ViewExtent> extents, IReadOnlyList<ViewKind> kinds,
         ProjectionAngle projection, double scale, double gutter, double usableWidth, double usableHeight,
-        double outer, double reservedBottom,
+        double originX, double originY,
         out IReadOnlyList<PlannedView>? views, out double blockWidth, out double blockHeight)
     {
         views = null;
@@ -149,7 +158,7 @@ public static class SheetPlanner
         if (blockWidth > usableWidth || blockHeight > usableHeight) return false;
 
         var columnCenter = new Dictionary<int, double>();
-        double cursor = outer + (usableWidth - blockWidth) / 2;
+        double cursor = originX + (usableWidth - blockWidth) / 2;
         foreach (int column in columns)
         {
             columnCenter[column] = cursor + columnWidth[column] / 2;
@@ -157,9 +166,9 @@ public static class SheetPlanner
         }
 
         var rowCenter = new Dictionary<int, double>();
-        // + outer here is the bottom margin itself (mirrors the left margin's `outer` above); the
-        // remaining (usableHeight - blockHeight) is the slack centred between bottom and top margins.
-        cursor = reservedBottom + outer + (usableHeight - blockHeight) / 2;
+        // originY already includes the bottom margin (mirrors originX above); the remaining
+        // (usableHeight - blockHeight) is the slack centred between bottom and top margins.
+        cursor = originY + (usableHeight - blockHeight) / 2;
         foreach (int row in rows)
         {
             rowCenter[row] = cursor + rowHeight[row] / 2;

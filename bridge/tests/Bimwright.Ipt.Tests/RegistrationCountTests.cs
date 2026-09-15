@@ -38,7 +38,7 @@ public sealed class RegistrationCountTests
     };
 
     [Fact]
-    public void All_toolsets_with_send_code_contain_83_underlying_tools()
+    public void All_toolsets_with_send_code_contain_84_underlying_tools()
     {
         var names = ToolNames(AllEnabled());
 
@@ -46,7 +46,7 @@ public sealed class RegistrationCountTests
         var distinct = names.Distinct(StringComparer.Ordinal).ToArray();
         Assert.Equal(distinct.Length, names.Length);
 
-        Assert.Equal(83, names.Length);
+        Assert.Equal(84, names.Length);
     }
 
     [Fact]
@@ -91,6 +91,7 @@ public sealed class RegistrationCountTests
             "inventor_checkpoint_restore",
             "inventor_diff_checkpoint",
             "inventor_create_drawing_safe",
+            "inventor_list_drawing_templates",
             // code (1)
             "inventor_send_code",
             // toolbaker (6)
@@ -103,7 +104,7 @@ public sealed class RegistrationCountTests
             "inventor_get_assembly_bom", "inventor_list_constraints",
         };
 
-        Assert.Equal(83, expected.Length);
+        Assert.Equal(84, expected.Length);
         foreach (var e in expected)
             Assert.True(names.Contains(e), $"missing expected tool: {e}");
         // and nothing extra beyond the expected surface
@@ -158,11 +159,11 @@ public sealed class RegistrationCountTests
     }
 
     [Fact]
-    public void Default_config_contains_82_underlying_tools_without_send_code()
+    public void Default_config_contains_83_underlying_tools_without_send_code()
     {
         // Default (no --enable-send-code) drops the single `code` tool, leaving 58.
         var names = ToolNames(new InventorMcpConfig());
         Assert.False(names.Contains("inventor_send_code"), "send_code must be off by default");
-        Assert.Equal(82, names.Length);
+        Assert.Equal(83, names.Length);
     }
 }

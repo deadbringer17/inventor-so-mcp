@@ -27,6 +27,7 @@ public static partial class InventorCommandRegistry
         add(new SaveArtifactHandler());
         add(new NativePackagePlanHandler());
         add(new CreateDrawingHandler());
+        add(new ListDrawingTemplatesHandler());
         add(new CheckpointHandler("create"));
         add(new CheckpointHandler("list"));
         add(new CheckpointHandler("diff"));

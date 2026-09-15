@@ -137,7 +137,61 @@ The variable is read by the **add-in**, so set it before starting Inventor. It m
 absolute path outside Windows and Program Files; an unusable value fails loudly rather
 than silently falling back.
 
-### 8. Verify against the real application
+### 8. Optional: install your company drawing templates
+
+<a id="company-drawing-templates"></a>
+
+Drawings are laid out on the stock Inventor sheet unless you install your own templates.
+Put each `.idw` (or Inventor `.dwg`) template — sheet, border and title block as your
+drafting standard draws them — in the template library, by default
+`%LOCALAPPDATA%\InventorSO\templates`:
+
+```powershell
+[Environment]::SetEnvironmentVariable('INVENTOR_SO_TEMPLATES', 'C:\Standards\inventor-templates', 'User')
+```
+
+Like the workspace variable this is read by the **add-in**, must be absolute and outside
+Windows, and fails loudly rather than falling back.
+
+Next to each template put a manifest with the same file stem — `Company_A3.idw` gets
+`Company_A3.json` — declaring the sheet and the area the views may use. Measure the free
+area in millimetres from the **bottom-left corner of the sheet**:
+
+```json
+{
+  "sheet_size": "A3",
+  "orientation": "landscape",
+  "usable_area_mm": { "x_min": 20, "y_min": 15, "x_max": 340, "y_max": 282 }
+}
+```
+
+The area is declared rather than measured because a title block's graphics do not describe
+what the standard actually reserves: parts lists, revision tables and note columns are
+placed later into space no range box can see. A manifest whose `sheet_size` does not match
+the template's real sheet is refused (`TEMPLATE_SHEET_MISMATCH`) instead of being applied
+to the wrong paper.
+
+Then check what the server sees:
+
+```
+inventor_list_drawing_templates
+```
+
+Each entry reports its sheet and usable area, or `usable: false` with the reason. To use
+one, pass its file name:
+
+```
+inventor_create_drawing_safe(template="Company_A3.idw",
+                             title_block_json="{\"Title\":\"Flangia DN50\",\"Commessa\":\"24-118\"}")
+```
+
+`sheet_size` and `orientation` are refused together with `template`: the template's sheet
+is authoritative, and a company border does not rescale when the sheet size changes.
+`title_block_json` writes the drawing's iProperties, which is what an Inventor title block
+displays; names the document does not have are created as user-defined properties, so
+custom fields like `Commessa` work without any mapping.
+
+### 9. Verify against the real application
 
 These scripts create, use and delete only their own workspace documents, and restore
 your original set of open documents:
@@ -327,6 +381,9 @@ new drawing; commit leaves it open. Bounds/overlap checks reserve the actual
 title-block height. No dimensions or tolerances are invented: the result is not
 manufacturing-ready. PDF output is available through `inventor_save_artifact`
 with `format=pdf` and exports all sheets of an updated active drawing.
+
+Pass `template` to draw on a company title block instead of the stock Inventor
+sheet. See [company drawing templates](#company-drawing-templates).
 
 `inventor_save_artifact(document_id, expected_revision, format)` creates either
 a native IPT/IDW/Inventor-DWG copy (`native`) or part/assembly STEP (`step`) in a unique folder under

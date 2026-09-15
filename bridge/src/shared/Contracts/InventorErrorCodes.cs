@@ -35,6 +35,17 @@ public static class InventorErrorCodes
     public const string VIEW_OVERLAP = "VIEW_OVERLAP";
     public const string PROJECTION_UNAVAILABLE = "PROJECTION_UNAVAILABLE";
 
+    // Company drawing template outcomes (create_drawing_safe with `template`). Each one is a
+    // different thing for the caller to fix - install the file, write the sidecar, correct the
+    // sidecar, pair it with the right template - so they are distinct codes rather than one
+    // TEMPLATE_ERROR whose message would have to be parsed to tell them apart.
+    public const string TEMPLATE_NOT_FOUND = "TEMPLATE_NOT_FOUND";
+    public const string TEMPLATE_MANIFEST_MISSING = "TEMPLATE_MANIFEST_MISSING";
+    public const string TEMPLATE_MANIFEST_INVALID = "TEMPLATE_MANIFEST_INVALID";
+    public const string TEMPLATE_SHEET_MISMATCH = "TEMPLATE_SHEET_MISMATCH";
+    public const string TEMPLATE_UNUSABLE = "TEMPLATE_UNUSABLE";
+    public const string TITLE_BLOCK_FIELD_REJECTED = "TITLE_BLOCK_FIELD_REJECTED";
+
     // A document already owned by another transaction. Every safe write probes for this before it
     // starts one of its own, and used to report it the same way: the identifier as the MESSAGE of a
     // generic INVALID_ARGUMENT, which a caller cannot branch on. It is a distinct, retryable

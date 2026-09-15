@@ -29,6 +29,11 @@
           "isRequired": false
         },
         {
+          "name": "BIMWRIGHT_INVENTOR_FULL_ACCESS",
+          "description": "Set to 1/true on trusted local installations to expose every registered MCP tool instead of the reviewed production allowlist.",
+          "isRequired": false
+        },
+        {
           "name": "BIMWRIGHT_INVENTOR_ENABLE_SEND_CODE",
           "description": "Set to 1/true to expose the dangerous inventor_send_code tool (also requires BIMWRIGHT_INVENTOR_PLUGIN_ENABLE_SEND_CODE=1 on the add-in).",
           "isRequired": false

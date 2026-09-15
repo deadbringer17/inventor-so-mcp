@@ -29,6 +29,7 @@ public sealed class SoToolPolicyTests
         Assert.True(SoToolPolicy.IsExposed("inventor_save_artifact"));
         Assert.True(SoToolPolicy.IsExposed("inventor_checkpoint_create"));
         Assert.True(SoToolPolicy.IsExposed("inventor_create_drawing_safe"));
+        Assert.True(SoToolPolicy.IsExposed("inventor_list_drawing_templates"));
         Assert.True(SoToolPolicy.IsExposed("inventor_checkpoint_restore"));
     }
     [Theory]
@@ -38,6 +39,14 @@ public sealed class SoToolPolicyTests
     [InlineData("inventor_export_step")]
     [InlineData("inventor_future_write")]
     public void UnreviewedAndDirectWritesHidden(string name) => Assert.False(SoToolPolicy.IsExposed(name));
+
+    [Theory]
+    [InlineData("inventor_set_parameter")]
+    [InlineData("inventor_send_code")]
+    [InlineData("inventor_run_baked_tool")]
+    [InlineData("inventor_export_step")]
+    public void ExplicitFullAccessExposesEveryRegisteredTool(string name) =>
+        Assert.True(SoToolPolicy.IsExposed(name, fullAccess: true));
 
     [Theory]
     [InlineData("inventor_atomic_batch")]

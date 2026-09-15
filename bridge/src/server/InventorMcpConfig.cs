@@ -12,6 +12,7 @@ public sealed class InventorMcpConfig
     public bool EnableSendCode { get; set; }
     public bool EnableToolBaker { get; set; } = true;
     public bool EnableAdaptiveBake { get; set; }
+    public bool FullAccess { get; set; }
     public int TimeoutMs { get; set; } = 30000;
     public int MaxResponseBytes { get; set; } = 5_000_000;
     public string? TargetId { get; set; }
@@ -41,6 +42,7 @@ public sealed class InventorMcpConfig
         if (o["enableSendCode"] is { } sc) c.EnableSendCode = sc.Value<bool>();
         if (o["enableToolBaker"] is { } tb) c.EnableToolBaker = tb.Value<bool>();
         if (o["enableAdaptiveBake"] is { } ab) c.EnableAdaptiveBake = ab.Value<bool>();
+        if (o["fullAccess"] is { } fa) c.FullAccess = fa.Value<bool>();
         if (o["timeoutMs"] is { } tm) c.TimeoutMs = tm.Value<int>();
         if (o["maxResponseBytes"] is { } mb) c.MaxResponseBytes = mb.Value<int>();
         if (o["target"] is { } tg) c.TargetId = tg.Value<string>();
@@ -54,6 +56,7 @@ public sealed class InventorMcpConfig
         if (Bool("BIMWRIGHT_INVENTOR_ENABLE_SEND_CODE") is { } sc) c.EnableSendCode = sc;
         if (Bool("BIMWRIGHT_INVENTOR_ENABLE_TOOLBAKER") is { } tb) c.EnableToolBaker = tb;
         if (Bool("BIMWRIGHT_INVENTOR_ENABLE_ADAPTIVE_BAKE") is { } ab) c.EnableAdaptiveBake = ab;
+        if (Bool("BIMWRIGHT_INVENTOR_FULL_ACCESS") is { } fa) c.FullAccess = fa;
         if (Int("BIMWRIGHT_INVENTOR_TIMEOUT_MS") is { } tm) c.TimeoutMs = tm;
         if (Int("BIMWRIGHT_INVENTOR_MAX_RESPONSE_BYTES") is { } mb) c.MaxResponseBytes = mb;
         var tg = Environment.GetEnvironmentVariable("BIMWRIGHT_INVENTOR_TARGET");
@@ -73,6 +76,7 @@ public sealed class InventorMcpConfig
                 case "--enable-send-code":     c.EnableSendCode = true; break;
                 case "--disable-toolbaker":    c.EnableToolBaker = false; break;
                 case "--enable-adaptive-bake": c.EnableAdaptiveBake = true; break;
+                case "--full-access":          c.FullAccess = true; break;
                 case "--toolsets":             c.Toolsets = SplitCsv(Next(args, ref i)); break;
                 case "--target":               c.TargetId = Next(args, ref i); break;
                 case "--timeout-ms":           if (int.TryParse(Next(args, ref i), out var t)) c.TimeoutMs = t; break;

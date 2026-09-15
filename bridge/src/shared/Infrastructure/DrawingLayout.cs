@@ -17,6 +17,23 @@ public static class DrawingLayout
     {
         if (double.IsNaN(reservedBottomCm) || double.IsInfinity(reservedBottomCm) || reservedBottomCm < 4)
             throw new ArgumentException("Invalid title-block reserve.");
+        Validate(UsableArea.FromReservedBottom(sheetWidth, sheetHeight, reservedBottomCm), rectangles);
+    }
+
+    /// <summary>
+    /// Same rule against an explicit usable rectangle, which a template-driven drawing declares
+    /// instead of a bottom band. A view must stay inside that rectangle AND keep
+    /// <see cref="SheetPlanner.MinMarginCm"/> from every sheet edge, so a manifest that claims the
+    /// whole sheet still cannot push a view against the paper edge.
+    /// </summary>
+    public static void Validate(UsableArea area, double[][] rectangles)
+    {
+        if (area == null) throw new ArgumentException("A usable area is required.");
+        double margin = SheetPlanner.MinMarginCm;
+        double left = Math.Max(area.XMinCm, margin);
+        double right = Math.Min(area.XMaxCm, area.SheetWidthCm - margin);
+        double bottom = Math.Max(area.YMinCm, margin);
+        double top = Math.Min(area.YMaxCm, area.SheetHeightCm - margin);
         for (int i = 0; i < rectangles.Length; i++)
         {
             var a = rectangles[i];
@@ -24,11 +41,20 @@ public static class DrawingLayout
             foreach (var v in a) if (double.IsNaN(v) || double.IsInfinity(v)) throw new ArgumentException("Nonfinite view rectangle.");
             // Both refusals name themselves in a code rather than in the message: the caller that
             // retries at a smaller scale has to tell them from a genuine Inventor API failure.
-            if (a[2] <= 0 || a[3] <= 0 || a[0]-a[2]/2 < 1 || a[0]+a[2]/2 > sheetWidth-1 ||
-                a[1]-a[3]/2 < reservedBottomCm || a[1]+a[3]/2 > sheetHeight-1)
+            if (a[2] <= 0 || a[3] <= 0 || a[0]-a[2]/2 < left || a[0]+a[2]/2 > right ||
+                a[1]-a[3]/2 < bottom || a[1]+a[3]/2 > top)
                 throw new CodedFailureException(InventorErrorCodes.VIEW_OUTSIDE_LAYOUT,
                     "A view falls outside the usable sheet area; choose a smaller scale. The actual title-block height, at least 40 mm, is reserved.",
-                    new JObject { ["view_index"] = i, ["reserved_bottom_mm"] = reservedBottomCm * 10 });
+                    new JObject
+                    {
+                        ["view_index"] = i,
+                        ["reserved_bottom_mm"] = area.YMinCm * 10,
+                        ["usable_area_mm"] = new JObject
+                        {
+                            ["x_min"] = left * 10, ["y_min"] = bottom * 10,
+                            ["x_max"] = right * 10, ["y_max"] = top * 10
+                        }
+                    });
             for (int j = 0; j < i; j++)
             {
                 var b = rectangles[j];

@@ -10,5 +10,11 @@ public sealed class InventorAddInServer : Bimwright.Ipt.Shared.Plugin.InventorAd
 {
     protected override string ProductDirectory => Path.Combine("InventorSO", "inventor-so-mcp");
     protected override string PipePrefix => "InventorSO";
-    protected override bool RequireAtomicWrites => true;
+    protected override bool RequireAtomicWrites => !FullAccessEnabled();
+
+    private static bool FullAccessEnabled()
+    {
+        var value = System.Environment.GetEnvironmentVariable("BIMWRIGHT_INVENTOR_PLUGIN_FULL_ACCESS");
+        return value?.Trim().ToLowerInvariant() is "1" or "true" or "yes" or "on";
+    }
 }

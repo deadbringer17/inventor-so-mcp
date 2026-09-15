@@ -230,3 +230,52 @@ keeps the previously loaded assembly, so a stale add-in silently answers with th
    not undo it — before the fix, `preview=true`, documented as leaving nothing behind, could
    permanently flip the projection convention for every future drawing on this machine.
 
+
+10. **Company template drives the sheet.** Install a real company `.idw` in the template library with
+    its manifest, then call `inventor_create_drawing_safe` with `template="<file>.idw"` and
+    `preview=false`. Check in the Inventor UI that the sheet is the company sheet — its border and
+    title block, its size — and that no view touches the title block or the border.
+    **Expected:** the response echoes `template`, `sheet` from the manifest, and a `usable_area_mm`
+    matching the manifest. The drawing shows the company frame, not the stock Inventor one.
+
+11. **The sheet cannot be overridden.** Repeat with `template` plus `sheet_size="A4"`.
+    **Expected:** `INVALID_ARGUMENT` naming `sheet_size`. Nothing is created. The reason is physical,
+    not stylistic: a company border does not rescale when `Sheet.Size` changes, so honouring the
+    override would put the frame in the wrong place while reporting success.
+
+12. **A wrong manifest is refused, not applied.** Copy the A3 template's manifest next to the A2
+    template (so it declares `sheet_size: "A3"` for an A2 sheet) and call with that template.
+    **Expected:** `TEMPLATE_SHEET_MISMATCH` naming both sizes, and no drawing left open. This is the
+    failure the declared area exists to prevent: applied silently, the views would be planned into
+    A3 space on A2 paper.
+
+13. **Missing pieces name what to fix.** Call with a template name that is not installed; then with
+    one installed but with no `.json` beside it; then with a `.json` containing `x_max` smaller than
+    `x_min`.
+    **Expected:** `TEMPLATE_NOT_FOUND`, `TEMPLATE_MANIFEST_MISSING` (naming the expected file name)
+    and `TEMPLATE_MANIFEST_INVALID` (naming the offending field) respectively.
+
+14. **Paths are never accepted.** Call with `template="..\..\Windows\win.ini"`, with an absolute
+    path, and with `template="sub\Company_A3.idw"`.
+    **Expected:** `INVALID_ARGUMENT` for each, with no file access attempted outside the library.
+
+15. **Title block fields reach the cartouche.** Call with `title_block_json` setting both a standard
+    field (`Title`) and a custom one the company block reads (for example `Commessa`). Commit and
+    read the title block in the Inventor UI, not the tool's own report.
+    **Expected:** both values appear in the printed title block. The response reports
+    `title_block_fields_set` for properties the document already had and
+    `title_block_fields_created` for ones added as user-defined properties. A field the template
+    binds to a typed property (a date, a count) must fail `TITLE_BLOCK_FIELD_REJECTED` naming the
+    field rather than an opaque API error.
+
+16. **Preview with a template leaves nothing behind.** Call with `template` and `title_block_json`
+    at `preview=true`, then check the template file's timestamp and open a fresh drawing from the
+    same template.
+    **Expected:** the template file is unmodified and the fresh drawing has an empty title block.
+    iProperty writes are not part of the document transaction, so this check is proving the discard
+    of the whole draft document, not the transaction abort.
+
+17. **Discovery matches reality.** Call `inventor_list_drawing_templates`.
+    **Expected:** every installed template is listed with its declared sheet and usable area; the one
+    with the broken manifest from check 13 appears with `usable: false` and the reason, rather than
+    being hidden.

@@ -14,11 +14,28 @@ public sealed class SafeArtifactTools
     private readonly PluginClient _client;
     public SafeArtifactTools(PluginClient client) => _client = client;
 
-    [McpServerTool(Name = "inventor_create_drawing_safe"), Description("Create an unsaved drawing from the active up-to-date part or assembly using the host default drawing template. Chooses sheet_size (A4/A3/A2/A1/A0, default A3) and orientation (landscape/portrait). Sets the projection convention explicitly: projection='first' (ISO/UNI, default) or 'third' (ANSI), so the same call produces the same drawing on any machine. views is a comma-separated list of front, back, top, bottom, left, right and iso (default 'front,top,right,iso'); projected views require front. Omit scale for automatic scaling: the largest ISO 5455 scale whose layout fits leaving gutter_mm (default 15) of free space around each view for dimensioning; pass scale to force one. Requires source document_id/revision. Checks view bounds/overlap and source state; preview=true by default closes only the new draft. Commit leaves the draft active. No dimensions, tolerances or manufacturing approval are added; manufacturing_ready=false. Does not save sources. Export separately with inventor_save_artifact format=pdf.")]
+    [McpServerTool(Name = "inventor_create_drawing_safe"), Description("Create an unsaved drawing from the active up-to-date part or assembly. By default uses the host default drawing template and chooses sheet_size (A4/A3/A2/A1/A0, default A3) and orientation (landscape/portrait). Pass template to start from a company IDW/DWG title-block template instead: a file NAME listed by inventor_list_drawing_templates, never a path. A template brings its own sheet, border and title block, so sheet_size and orientation are then refused; its manifest declares the area left free for views, and views are laid out inside that area. Sets the projection convention explicitly: projection='first' (ISO/UNI, default) or 'third' (ANSI), so the same call produces the same drawing on any machine. views is a comma-separated list of front, back, top, bottom, left, right and iso (default 'front,top,right,iso'); projected views require front. Omit scale for automatic scaling: the largest ISO 5455 scale whose layout fits leaving gutter_mm (default 15) of free space around each view for dimensioning; pass scale to force one. title_block_json is an optional JSON object of iProperty name to value (for example {\"Title\":\"Flangia\",\"Commessa\":\"24-118\"}), written into the drawing's iProperties, which is what an Inventor title block displays; unknown names are created as user-defined properties. Requires source document_id/revision. Checks view bounds/overlap and source state; preview=true by default closes only the new draft. Commit leaves the draft active. No dimensions, tolerances or manufacturing approval are added; manufacturing_ready=false. Does not save sources. Export separately with inventor_save_artifact format=pdf.")]
     public Task<string> CreateDrawing(string document_id, string expected_revision, double? scale = null,
         string? sheet_size = null, string? orientation = null, string? projection = null,
-        string? views = null, double? gutter_mm = null, bool preview = true, CancellationToken ct = default)
-        => CheckpointCall("create_drawing_safe", new JObject
+        string? views = null, double? gutter_mm = null, bool preview = true,
+        string? template = null, string? title_block_json = null, CancellationToken ct = default)
+    {
+        JToken? titleBlock;
+        // Parsed here rather than forwarded as a string: a malformed object must be refused by the
+        // tool that took it, not travel to the add-in as an opaque argument.
+        try { titleBlock = string.IsNullOrWhiteSpace(title_block_json) ? null : JToken.Parse(title_block_json!); }
+        catch (Exception ex)
+        {
+            return Task.FromResult(new JObject
+            {
+                ["error"] = new JObject
+                {
+                    ["code"] = "INVALID_ARGUMENT",
+                    ["message"] = "title_block_json is not valid JSON: " + ex.Message
+                }
+            }.ToString(Formatting.None));
+        }
+        return CheckpointCall("create_drawing_safe", new JObject
         {
             ["document_id"] = document_id,
             ["expected_revision"] = expected_revision,
@@ -28,8 +45,15 @@ public sealed class SafeArtifactTools
             ["projection"] = projection,
             ["views"] = views,
             ["gutter_mm"] = gutter_mm,
-            ["preview"] = preview
+            ["preview"] = preview,
+            ["template"] = template,
+            ["title_block"] = titleBlock
         }, ct);
+    }
+
+    [McpServerTool(Name = "inventor_list_drawing_templates"), Description("List the company drawing templates installed in the host-owned template library (INVENTOR_SO_TEMPLATES, by default %LOCALAPPDATA%/InventorSO/templates), for use as the template argument of inventor_create_drawing_safe. Read-only: nothing is opened, created or modified. Each entry reports the file name, the sheet it declares (for example 'A3 landscape') and the usable_area_mm its manifest leaves free for views. A template whose sidecar manifest is missing or malformed is still listed, with usable=false and the reason, so it can be fixed before drawing time. Arbitrary paths are never accepted: only files inside the library are visible.")]
+    public Task<string> ListDrawingTemplates(CancellationToken ct = default)
+        => CheckpointCall("list_drawing_templates", new JObject(), ct);
 
     [McpServerTool(Name = "inventor_checkpoint_create"), Description("Create a persistent hash-verified native snapshot of the active standalone single-model-state part. Requires document_id, expected_revision and label (1-120 characters). Does not save the source in place. Stored under host-owned InventorSO/checkpoints; failures may retain partial files. Assemblies and external references are not supported yet.")]
     public Task<string> CreateCheckpoint(string document_id, string expected_revision, string label, CancellationToken ct = default)

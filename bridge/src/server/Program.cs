@@ -23,18 +23,23 @@ var mcp = builder.Services
     .AddMcpServer(o => o.ServerInstructions = ServerInstructions.Text)
     .WithStdioServerTransport()
     .WithResources<CadResources>();
-mcp = Program.RegisterToolsets(mcp, Program.ResolveToolTypesForRegistration(cfg));
+mcp = Program.RegisterToolsets(mcp, Program.ResolveToolTypesForRegistration(cfg), cfg.FullAccess);
 
 await builder.Build().RunAsync();
 
 internal static partial class Program
 {
-    internal static IMcpServerBuilder RegisterToolsets(IMcpServerBuilder mcp, IEnumerable<Type> toolTypes)
+    internal static IMcpServerBuilder RegisterToolsets(
+        IMcpServerBuilder mcp,
+        IEnumerable<Type> toolTypes,
+        bool fullAccess = false)
     {
         foreach (var toolType in toolTypes)
         {
             var methods = toolType.GetMethods().Where(method =>
-                SoToolPolicy.IsExposed(method.GetCustomAttribute<McpServerToolAttribute>()?.Name));
+                SoToolPolicy.IsExposed(
+                    method.GetCustomAttribute<McpServerToolAttribute>()?.Name,
+                    fullAccess));
             mcp = mcp.WithTools(methods.Select(method => McpServerTool.Create(method,
                 context => ActivatorUtilities.CreateInstance(context.Services!, toolType))));
         }

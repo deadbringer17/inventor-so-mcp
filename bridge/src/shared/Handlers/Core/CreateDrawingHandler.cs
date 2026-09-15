@@ -6,6 +6,8 @@ using Newtonsoft.Json.Linq;
 using Bimwright.Ipt.Shared.Contracts;
 using Bimwright.Ipt.Shared.Infrastructure;
 using Bimwright.Ipt.Shared.Handlers;
+using Bimwright.Ipt.Shared.Handlers.Properties;
+using File = System.IO.File;
 
 namespace Bimwright.Ipt.Shared.Handlers.Core;
 
@@ -36,6 +38,10 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
         double gutter;
         string sheetSizeName;
         string orientationName;
+        string? templateName;
+        string? templatePath = null;
+        DrawingTemplateManifest? manifest = null;
+        System.Collections.Generic.IReadOnlyList<TitleBlockField> titleBlock;
         try
         {
             requestedScale = null;
@@ -56,13 +62,33 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
                 gutterMm = (double)p["gutter_mm"]!;
             }
             gutter = UnitConvert.MmToCm(gutterMm);
+            titleBlock = TitleBlockFields.Parse(p["title_block"]);
+            templateName = (string?)p["template"];
+            if (string.IsNullOrWhiteSpace(templateName)) templateName = null;
+            if (templateName != null)
+            {
+                // The template's own sheet is authoritative. A company border and title block are
+                // drawn to one paper size and do NOT rescale when Sheet.Size changes, so honouring an
+                // explicit sheet_size here would silently produce a drawing with the frame in the
+                // wrong place - worse than refusing.
+                if (p["sheet_size"] != null && p["sheet_size"]!.Type != JTokenType.Null)
+                    throw new ArgumentException("sheet_size cannot be combined with template: the template's own sheet is used.");
+                if (p["orientation"] != null && p["orientation"]!.Type != JTokenType.Null)
+                    throw new ArgumentException("orientation cannot be combined with template: the template's own sheet is used.");
+            }
             sheetSizeName = ((string?)p["sheet_size"] ?? "A3").Trim().ToUpperInvariant();
             orientationName = ((string?)p["orientation"] ?? "landscape").Trim().ToLowerInvariant();
             SheetSizes.Resolve(sheetSizeName, orientationName, out _, out _);   // fail fast before creating anything
+            if (templateName != null) ResolveTemplate(templateName, out templatePath, out manifest);
         }
         catch (ArgumentException ex)
         {
             return Fail(ctx, InventorErrorCodes.INVALID_ARGUMENT, ex.Message);
+        }
+        catch (CodedFailureException failure)
+        {
+            // Template resolution runs before anything is created, so there is nothing to roll back.
+            return Fail(ctx, failure);
         }
         string Geometry(global::Inventor.Document d) => d is PartDocument part ? part.ComponentDefinition.ModelGeometryVersion : ((AssemblyDocument)d).ComponentDefinition.ModelGeometryVersion;
         var originals = source.AllReferencedDocuments.Cast<global::Inventor.Document>().Append(source)
@@ -93,15 +119,26 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
             if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired before drawing creation.");
             app.UserInterfaceManager.UserInteractionDisabled = true;
             drawing = (DrawingDocument)app.Documents.Add(DocumentTypeEnum.kDrawingDocumentObject,
-                app.FileManager.GetTemplateFile(DocumentTypeEnum.kDrawingDocumentObject), true);
-            if (drawing.Sheets.Count != 1 || drawing.ActiveSheet.DrawingViews.Count != 0) throw new InvalidOperationException("Default template must contain one sheet without model views.");
+                templatePath ?? app.FileManager.GetTemplateFile(DocumentTypeEnum.kDrawingDocumentObject), true);
+            if (drawing.Sheets.Count != 1 || drawing.ActiveSheet.DrawingViews.Count != 0)
+                throw templatePath == null
+                    ? new InvalidOperationException("Default template must contain one sheet without model views.")
+                    : new CodedFailureException(InventorErrorCodes.TEMPLATE_UNUSABLE,
+                        "Template '" + templateName + "' must contain exactly one sheet and no model views; this one has "
+                          + drawing.Sheets.Count + " sheet(s) and "
+                          + drawing.ActiveSheet.DrawingViews.Count + " view(s) on the active sheet.");
             transaction = app.TransactionManager.StartTransaction((Inventor._Document)drawing, "Inventor SO drawing views");
             if (transaction.HasParentTransaction) throw ConcurrencyFailure.TransactionBusy();
             var sheet = drawing.ActiveSheet;
-            sheet.Size = SheetSizeEnum(sheetSizeName);
-            sheet.Orientation = orientationName == "portrait"
-                ? PageOrientationTypeEnum.kPortraitPageOrientation
-                : PageOrientationTypeEnum.kLandscapePageOrientation;
+            // With a template the sheet comes as the company drew it: size, orientation, border and
+            // title block are left exactly as they are.
+            if (templatePath == null)
+            {
+                sheet.Size = SheetSizeEnum(sheetSizeName);
+                sheet.Orientation = orientationName == "portrait"
+                    ? PageOrientationTypeEnum.kPortraitPageOrientation
+                    : PageOrientationTypeEnum.kLandscapePageOrientation;
+            }
             ApplyProjection(drawing, projection);
 
             var geo = app.TransientGeometry;
@@ -141,6 +178,17 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
 
             double footer = Math.Max(SheetPlanner.MinReservedBottomCm,
                 sheet.TitleBlock == null ? SheetPlanner.MinReservedBottomCm : sheet.TitleBlock.RangeBox.MaxPoint.Y + 0.2);
+            // With a template the usable region is whatever its manifest declares, checked against the
+            // sheet that was actually produced; without one it is the sheet above the measured title
+            // block, exactly as before.
+            UsableArea area;
+            if (manifest != null)
+            {
+                try { area = manifest.Verify(sheet.Width, sheet.Height); }
+                catch (ArgumentException ex)
+                { throw new CodedFailureException(InventorErrorCodes.TEMPLATE_SHEET_MISMATCH, ex.Message); }
+            }
+            else area = UsableArea.FromReservedBottom(sheet.Width, sheet.Height, footer);
 
             // View extents scale linearly with view scale, so normalising the measured reference-scale
             // extents to scale 1 lets the planner answer every candidate scale without another update.
@@ -148,7 +196,7 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
             foreach (var kind in kinds)
                 extents.Add(new ViewExtent(kind, created[kind].Width / reference, created[kind].Height / reference));
 
-            var plan = SheetPlanner.Plan(sheet.Width, sheet.Height, footer, extents, projection, gutter, requestedScale);
+            var plan = SheetPlanner.Plan(area, extents, projection, gutter, requestedScale);
             if (!plan.Fits)
             {
                 double neededWidthMm = UnitConvert.CmToMm(plan.RequiredWidthCm);
@@ -160,10 +208,14 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
                         "At the requested scale the views need " + needed
                           + "; omit scale for automatic scaling, or use a larger sheet_size.", details);
                 if (plan.SuggestedSheetSize != null) details["sheet_size"] = plan.SuggestedSheetSize;
+                // A template pins the sheet, so "retry with a bigger sheet_size" is advice the caller
+                // cannot take: it has to pick the company template drawn for that size instead.
                 throw new CodedFailureException(InventorErrorCodes.NO_FITTING_SCALE,
                     "The views need " + needed + " even at 1:500"
                       + (plan.SuggestedSheetSize == null ? "; no listed sheet size fits."
-                          : "; retry with sheet_size=" + plan.SuggestedSheetSize + "."), details);
+                          : templateName != null
+                              ? "; use a template drawn on " + plan.SuggestedSheetSize + " or larger."
+                              : "; retry with sheet_size=" + plan.SuggestedSheetSize + "."), details);
             }
             double scale = plan.Scale;
 
@@ -174,8 +226,7 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
 
             // Re-plan on the MEASURED geometry, pinned to the scale just applied, so the positions
             // belong to the drawing as it actually is rather than to the predicted layout.
-            var applied = SheetPlanner.Plan(sheet.Width, sheet.Height, footer,
-                BuildExtents(kinds, created), projection, gutter, scale);
+            var applied = SheetPlanner.Plan(area, BuildExtents(kinds, created), projection, gutter, scale);
             if (!applied.Fits)
                 throw new CodedFailureException(InventorErrorCodes.VIEW_OUTSIDE_LAYOUT,
                     "The measured views do not fit at the planned scale.",
@@ -192,9 +243,12 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
                         created[kind].Position = geo.CreatePoint2d(planned.CenterX, planned.CenterY);
             if (!drawing.Update2()) throw new InvalidOperationException("Drawing update failed after placement.");
 
+            int fieldsSet = 0, fieldsCreated = 0;
+            ApplyTitleBlock((global::Inventor.Document)drawing, titleBlock, ref fieldsSet, ref fieldsCreated);
+
             var views = sheet.DrawingViews.Cast<DrawingView>().ToArray();
-            DrawingLayout.Validate(sheet.Width, sheet.Height,
-                views.Select(v => new[] { v.Position.X, v.Position.Y, v.Width, v.Height }).ToArray(), footer);
+            DrawingLayout.Validate(area,
+                views.Select(v => new[] { v.Position.X, v.Position.Y, v.Width, v.Height }).ToArray());
             foreach (var original in originals)
                 if (original.Doc.FullFileName != original.Path || original.Doc.Dirty != original.Dirty || Geometry(original.Doc) != original.Geometry)
                     throw new InvalidOperationException("SOURCE_CHANGED: inspect source state.");
@@ -213,14 +267,28 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
                 ["view_count"] = views.Length,
                 ["scale"] = scale,
                 ["scale_mode"] = requestedScale.HasValue ? "explicit" : "auto",
-                ["sheet"] = sheetSizeName + " " + orientationName,
+                // With a template the requested sheet_size/orientation were refused, so the defaults
+                // held in those variables describe nothing; the manifest's verified sheet does.
+                ["sheet"] = manifest != null
+                    ? manifest.SheetSize + " " + manifest.Orientation
+                    : sheetSizeName + " " + orientationName,
                 ["projection"] = projection == ProjectionAngle.First ? "first" : "third",
                 ["views"] = viewNames.ToString(),
                 ["gutter_mm"] = gutterMm,
                 ["document_id"] = preview ? null : drawingId,
                 ["manufacturing_ready"] = false,
                 ["dimensions_added"] = 0,
-                ["reserved_footer_mm"] = UnitConvert.CmToMm(footer)
+                ["reserved_footer_mm"] = UnitConvert.CmToMm(footer),
+                ["template"] = templateName,
+                ["usable_area_mm"] = new JObject
+                {
+                    ["x_min"] = UnitConvert.CmToMm(area.XMinCm),
+                    ["y_min"] = UnitConvert.CmToMm(area.YMinCm),
+                    ["x_max"] = UnitConvert.CmToMm(area.XMaxCm),
+                    ["y_max"] = UnitConvert.CmToMm(area.YMaxCm)
+                },
+                ["title_block_fields_set"] = fieldsSet,
+                ["title_block_fields_created"] = fieldsCreated
             };
             if (preview) { transaction.Abort(); transaction = null; drawing.Close(true); drawing = null; source.Activate(); }
             else { transaction.End(); transaction = null; result["revision"] = ctx.Events.Revision(drawingId); }
@@ -241,6 +309,91 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
         }
         finally { app.UserInterfaceManager.UserInteractionDisabled = priorUi; }
     }
+
+    /// <summary>
+    /// Resolves a template name against the host-owned library and loads its manifest, before any
+    /// document exists. Every outcome is a code of its own: the caller has a different thing to fix
+    /// for a missing file, a missing sidecar and a malformed sidecar.
+    /// </summary>
+    private static void ResolveTemplate(string name, out string path, out DrawingTemplateManifest manifest)
+    {
+        string root;
+        try { root = DrawingTemplatePolicy.Root(); }
+        catch (ArgumentException ex)
+        {
+            throw new CodedFailureException(InventorErrorCodes.TEMPLATE_NOT_FOUND,
+                "TEMPLATE_LIBRARY_NOT_CONFIGURED: " + ex.Message);
+        }
+        path = DrawingTemplatePolicy.PathOf(root, name);   // ArgumentException => INVALID_ARGUMENT
+        if (!File.Exists(path))
+            throw new CodedFailureException(InventorErrorCodes.TEMPLATE_NOT_FOUND,
+                "No drawing template named '" + name + "' in the template library. List the installed templates with list_drawing_templates.",
+                new JObject { ["template_root"] = root });
+        string manifestPath = DrawingTemplatePolicy.ManifestPathOf(path);
+        if (!File.Exists(manifestPath))
+            throw new CodedFailureException(InventorErrorCodes.TEMPLATE_MANIFEST_MISSING,
+                "Template '" + name + "' has no manifest next to it. Create '"
+                  + System.IO.Path.GetFileName(manifestPath)
+                  + "' declaring sheet_size, orientation and usable_area_mm (x_min, y_min, x_max, y_max).",
+                new JObject { ["manifest_path"] = manifestPath });
+        string json;
+        try { json = File.ReadAllText(manifestPath); }
+        catch (Exception ex)
+        {
+            throw new CodedFailureException(InventorErrorCodes.TEMPLATE_MANIFEST_INVALID,
+                "The manifest of template '" + name + "' cannot be read: " + ex.Message);
+        }
+        try { manifest = DrawingTemplateManifest.Parse(json); }
+        catch (ArgumentException ex)
+        {
+            throw new CodedFailureException(InventorErrorCodes.TEMPLATE_MANIFEST_INVALID,
+                "The manifest of template '" + name + "' is not usable: " + ex.Message,
+                new JObject { ["manifest_path"] = manifestPath });
+        }
+    }
+
+    /// <summary>
+    /// Writes the caller's title-block values into the drawing's iProperties, which is how an
+    /// Inventor title block is populated: its text fields are bound to property names, not written
+    /// into the sheet. A name the document does not carry is created as a user-defined property,
+    /// because a company title block usually reads custom ones.
+    /// </summary>
+    private static void ApplyTitleBlock(global::Inventor.Document drawing,
+        System.Collections.Generic.IReadOnlyList<TitleBlockField> fields, ref int set, ref int created)
+    {
+        foreach (var field in fields)
+        {
+            var existing = FindProperty(drawing, field.Name);
+            try
+            {
+                if (existing != null) { existing.Value = field.Value; set++; }
+                else { UserDefinedSet(drawing).Add(field.Value, field.Name); created++; }
+            }
+            catch (Exception ex)
+            {
+                // A typed property (a date, a count) rejects a string; naming the field turns that
+                // into something the caller can act on instead of an opaque API_ERROR.
+                throw new CodedFailureException(InventorErrorCodes.TITLE_BLOCK_FIELD_REJECTED,
+                    "The title block field '" + field.Name + "' could not be written: " + ex.Message,
+                    new JObject { ["field"] = field.Name });
+            }
+        }
+    }
+
+    private static Property? FindProperty(global::Inventor.Document drawing, string name)
+    {
+        foreach (PropertySet propertySet in drawing.PropertySets)
+        {
+            var found = PropertyAccess.FindProperty(propertySet, name);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private static PropertySet UserDefinedSet(global::Inventor.Document drawing)
+        => PropertyAccess.FindSet(drawing, "Inventor User Defined Properties")
+           ?? PropertyAccess.FindSet(drawing, "{D5CDD505-2E9C-101B-9397-08002B2CF9AE}")
+           ?? drawing.PropertySets.Add("Inventor User Defined Properties");
 
     private static ProjectionAngle ParseProjection(string? value)
     {
