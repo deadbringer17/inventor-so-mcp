@@ -27,6 +27,7 @@ public static partial class InventorCommandRegistry
         AddAssembly(d, Add);      // Phase 3 Assembly
         AddAssemblyQuery(d, Add); // Phase 3 Assembly Query
         AddSheetMetal(d, Add);    // Sheet metal: rule, face, flange, cut, flat pattern
+        AddExperimental(d, Add);  // Experimental tier: only with -p:SoExperimental=true (plan §26.3)
         return d;
     }
 
@@ -41,4 +42,5 @@ public static partial class InventorCommandRegistry
     static partial void AddAssembly(Dictionary<string, IInventorCommand> d, Action<IInventorCommand> add);
     static partial void AddAssemblyQuery(Dictionary<string, IInventorCommand> d, Action<IInventorCommand> add);
     static partial void AddSheetMetal(Dictionary<string, IInventorCommand> d, Action<IInventorCommand> add);
+    static partial void AddExperimental(Dictionary<string, IInventorCommand> d, Action<IInventorCommand> add);
 }

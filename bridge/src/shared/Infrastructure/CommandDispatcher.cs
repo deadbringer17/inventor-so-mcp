@@ -31,6 +31,9 @@ public sealed class CommandDispatcher
         "checkpoint_create", "checkpoint_restore",
         "workspace_new_document", "workspace_open_document", "workspace_activate_document",
         "workspace_save_document", "workspace_close_document",
+        // Experimental tier: always runs inside one aborted transaction (plan F13). Registered only
+        // by the experimental build, so a default build reports it as an unknown command.
+        "sample_parameter_motion",
     };
 
     /// <summary>Read-only-flagged legacy exports that still write files; they stay blocked.</summary>

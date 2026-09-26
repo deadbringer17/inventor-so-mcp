@@ -34,6 +34,9 @@ public abstract class InventorAddInServerBase : InvApi.ApplicationAddInServer
 #if INVENTOR2027
     private CadEventTracker? _events;
 #endif
+#if INVENTOR2027 && SO_EXPERIMENTAL
+    private SelectionEventTracker? _selection;
+#endif
     protected virtual string ProductDirectory => Path.Combine("Bimwright", "ipt-mcp");
     protected virtual string PipePrefix => "BimwrightInventor";
     protected virtual bool RequireAtomicWrites => false;
@@ -44,6 +47,14 @@ public abstract class InventorAddInServerBase : InvApi.ApplicationAddInServer
         _sta = new InventorStaDispatcher();         // created on the STA thread
 #if INVENTOR2027
         _events = new CadEventTracker(_app);
+#endif
+#if INVENTOR2027 && SO_EXPERIMENTAL
+        // Selection events are journalled only when the experimental tier is switched on.
+        if (EnvFlag("INVENTOR_SO_EXPERIMENTAL"))
+        {
+            try { _selection = new SelectionEventTracker(_app, _events.Journal); }
+            catch { _selection = null; /* selection events stay unavailable; reported by get_capabilities */ }
+        }
 #endif
 
         _year = InventorVersion.Year;
@@ -141,6 +152,10 @@ public abstract class InventorAddInServerBase : InvApi.ApplicationAddInServer
 
     public void Deactivate()
     {
+#if INVENTOR2027 && SO_EXPERIMENTAL
+        try { _selection?.Dispose(); } catch { }
+        _selection = null;
+#endif
 #if INVENTOR2027
         try { _events?.Dispose(); } catch { }
         _events = null;
