@@ -7,7 +7,12 @@ namespace InventorXrSo.Core.Tests.Support;
 /// <summary>Scriptable in-memory backend for session and selection logic.</summary>
 public sealed class FakeBackend : IInventorBackend
 {
-    public List<string> Calls { get; } = new();
+    private readonly object _callsLock = new();
+    private readonly List<string> _calls = new();
+
+    /// <summary>A snapshot taken under the lock: safe to enumerate while the session keeps calling in the background.</summary>
+    public List<string> Calls { get { lock (_callsLock) return new List<string>(_calls); } }
+
     public CapabilitiesInfo Capabilities { get; set; } = CapabilitiesInfo.FromJson(JObject.Parse(
         @"{""target"":{""reachable"":true},""capabilities"":{""xr_mesh"":true,""scene_graph"":true,""highlight"":true}}"));
     public DocumentState State { get; set; } = new DocumentState("doc", "r1", "v1");
@@ -20,7 +25,7 @@ public sealed class FakeBackend : IInventorBackend
 
     private Task Step(string call)
     {
-        Calls.Add(call);
+        lock (_callsLock) { _calls.Add(call); }
         if (FailNext is { } failure) { FailNext = null; throw failure; }
         return Task.CompletedTask;
     }
