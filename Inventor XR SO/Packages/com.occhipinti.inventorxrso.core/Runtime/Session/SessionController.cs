@@ -54,8 +54,11 @@ namespace InventorXrSo.Core.Session
                         await _delay.Delay(NotReadyRetry, ct);
                         continue;
                     }
-                    backoff.Reset();
                     await RefreshAsync(ct);
+                    // Only a refresh that actually completes counts as recovery: a PC that answers
+                    // capabilities but keeps failing to refresh must not be retried at the fastest
+                    // backoff step forever (a throw from RefreshAsync skips this line entirely).
+                    backoff.Reset();
                     await RunConnectedAsync(ct);
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -84,30 +87,42 @@ namespace InventorXrSo.Core.Session
         }
 
         /// <summary>Re-read the document state; reload the scene only when the document or its geometry changed.</summary>
-        public async Task RefreshAsync(CancellationToken ct)
+        private async Task RefreshAsync(CancellationToken ct)
         {
             DocumentState state;
             try { state = await _backend.GetDocumentStateAsync(ct); }
             catch (McpToolException ex) when (ex.Code == "NO_DOCUMENT")
             {
-                Document = null;
-                if (Scene != null)
-                {
-                    Scene = null;
-                    SceneLoaded?.Invoke(null);
-                }
-                SetStatus(SessionStatus.NoDocument);
+                ClearSceneForNoDocument();
                 return;
             }
             if (SceneDiff.Compare(Document, state).NeedsReload || Scene == null)
             {
-                var scene = await _loader.LoadAsync(ct);
+                LoadedScene scene;
+                try { scene = await _loader.LoadAsync(ct); }
+                catch (McpToolException ex) when (ex.Code == "NO_DOCUMENT")
+                {
+                    // The document closed between the state read and the scene read: same outcome.
+                    ClearSceneForNoDocument();
+                    return;
+                }
                 Scene = scene;
                 Document = scene.Graph.State;
                 SceneLoaded?.Invoke(scene);
             }
             else Document = state;
             SetStatus(SessionStatus.Online);
+        }
+
+        private void ClearSceneForNoDocument()
+        {
+            Document = null;
+            if (Scene != null)
+            {
+                Scene = null;
+                SceneLoaded?.Invoke(null);
+            }
+            SetStatus(SessionStatus.NoDocument);
         }
 
         private async Task RunConnectedAsync(CancellationToken ct)
@@ -117,12 +132,17 @@ namespace InventorXrSo.Core.Session
                 var changed = new SemaphoreSlim(0);
                 Task events = _backend.RunEventsAsync(() => changed.Release(), linked.Token);
                 var never = new TaskCompletionSource<bool>().Task;
+                // One outstanding wake and one outstanding poll live across passes; each is replaced
+                // only once it has actually completed. Creating a fresh WaitAsync on every pass (even
+                // when the poll won) would abandon the previous one mid-flight: SemaphoreSlim.Release
+                // satisfies waiters in order, so a later RaiseChanged could complete a stale, unawaited
+                // waiter instead of the one this loop is actually watching, silently losing the event.
+                Task wake = changed.WaitAsync(linked.Token);
+                Task poll = _delay.Delay(PollInterval, linked.Token);
                 try
                 {
                     while (true)
                     {
-                        var wake = changed.WaitAsync(linked.Token);
-                        var poll = _delay.Delay(PollInterval, linked.Token);
                         var done = await Task.WhenAny(wake, poll, events);
                         linked.Token.ThrowIfCancellationRequested();
                         if (done == events)
@@ -133,12 +153,18 @@ namespace InventorXrSo.Core.Session
                             events = never;
                             continue;
                         }
+                        if (done == wake) wake = changed.WaitAsync(linked.Token);
+                        else poll = _delay.Delay(PollInterval, linked.Token);
                         await RefreshAsync(ct);
                     }
                 }
                 finally
                 {
                     linked.Cancel();
+                    // A stream that faulted (rather than ended/being cancelled) must still be observed,
+                    // or its exception surfaces later as an unobserved task exception.
+                    if (!ReferenceEquals(events, never))
+                        _ = events.ContinueWith(t => { var __ = t.Exception; }, TaskScheduler.Default);
                 }
             }
         }

@@ -154,4 +154,78 @@ public class SessionControllerTests
         cts.Cancel();
         await run;
     }
+
+    [Fact]
+    public async Task PollingSeveralTimesStillDeliversTheNextEvent()
+    {
+        var backend = Backend();
+        var delay = new ManualDelay();
+        var session = new SessionController(backend, delay);
+        int loads = 0;
+        session.SceneLoaded += _ => loads++;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var run = session.RunAsync(cts.Token);
+        await Until(() => session.Status == SessionStatus.Online && backend.RaiseChanged != null);
+        Assert.Equal(1, loads);
+
+        // Release the poll delay a few times while connected: each is a refresh with no geometry
+        // change, so no reload, but (pre-fix) each pass also abandoned the still-pending event waiter.
+        for (int i = 0; i < 3; i++)
+        {
+            int before = backend.Calls.Count(c => c == "state");
+            delay.ReleaseAll();
+            await Until(() => backend.Calls.Count(c => c == "state") > before);
+        }
+        Assert.Equal(1, loads);
+
+        backend.State = new DocumentState("doc", "r9", "v9");
+        backend.Scene = () => FakeBackend.Assembly("v9");
+        backend.RaiseChanged();
+        await Until(() => loads == 2);
+
+        cts.Cancel();
+        await run;
+    }
+
+    [Fact]
+    public async Task RepeatedRefreshFailuresGrowTheBackoffWithoutResetting()
+    {
+        var backend = Backend();
+        backend.Scene = () => throw new TransportException("db unreachable");
+        var delay = new ManualDelay();
+        var session = new SessionController(backend, delay);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var run = session.RunAsync(cts.Token);
+
+        await Until(() => session.Status == SessionStatus.Offline);
+        Assert.Contains(TimeSpan.FromSeconds(1), delay.Requested);
+
+        delay.ReleaseAll();
+        await Until(() => delay.Requested.Contains(TimeSpan.FromSeconds(2)));
+
+        delay.ReleaseAll();
+        await Until(() => delay.Requested.Contains(TimeSpan.FromSeconds(4)));
+
+        cts.Cancel();
+        await run;
+    }
+
+    [Fact]
+    public async Task DocumentClosedDuringSceneReloadMeansNoDocument()
+    {
+        var backend = Backend();
+        var session = new SessionController(backend, new ManualDelay());
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var run = session.RunAsync(cts.Token);
+        await Until(() => session.Status == SessionStatus.Online && backend.RaiseChanged != null);
+
+        backend.State = new DocumentState("doc", "r2", "v2");
+        backend.Scene = () => throw new McpToolException("inventor_get_scene_graph", "NO_DOCUMENT", "closed mid-reload", null);
+        backend.RaiseChanged();
+        await Until(() => session.Status == SessionStatus.NoDocument);
+        Assert.Null(session.Scene);
+
+        cts.Cancel();
+        await run;
+    }
 }
