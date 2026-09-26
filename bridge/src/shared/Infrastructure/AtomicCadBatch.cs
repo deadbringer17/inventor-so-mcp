@@ -23,6 +23,34 @@ public interface ICadBatchBackend
 }
 
 /// <summary>
+/// Optional capability of a backend: run the caller's <c>validate</c> checks before commit. A backend
+/// that does not implement it can still run batches whose checks are only the document defaults.
+/// </summary>
+public interface ICadBatchValidatingBackend
+{
+    /// <summary>Throw <see cref="CodedFailureException"/> with <c>VALIDATION_FAILED</c> when a check fails.</summary>
+    void Validate(ValidationSpec spec);
+}
+
+/// <summary>What the caller of a batch is allowed to run, and against which kind of document.</summary>
+public sealed class CadBatchOptions
+{
+    /// <summary>The active document's kind (<see cref="CadDocumentKinds"/>); null skips the kind check (legacy callers).</summary>
+    public string? DocumentKind { get; set; }
+    /// <summary>Admit experimental catalogue entries. Host-owned: never taken from the request.</summary>
+    public bool AllowExperimental { get; set; }
+    /// <summary>
+    /// Whether the executing add-in has a handler for a command. An experimental command can be
+    /// catalogued yet absent from a default build; refusing it here keeps the whole plan untouched.
+    /// </summary>
+    public Func<string, bool>? IsRegistered { get; set; }
+    /// <summary>Whether this add-in build can run a validation check; unsupported checks are refused before the transaction.</summary>
+    public Func<string, bool>? SupportsCheck { get; set; }
+    /// <summary>The raw <c>validate</c> argument, parsed against <see cref="DocumentKind"/>.</summary>
+    public JToken? Validate { get; set; }
+}
+
+/// <summary>
 /// A batch failure the caller can act on programmatically: the message keeps its human form, and
 /// <see cref="Code"/>, <see cref="StepIndex"/> and <see cref="Command"/> say what failed and where,
 /// without parsing prose.
@@ -53,6 +81,9 @@ public sealed class CadBatchException : Exception
         if (StepIndex != null) details["step_index"] = StepIndex;
         if (Command != null) details["command"] = Command;
         if (StepCode != null) details["step_code"] = StepCode;
+        // A failing step or validation check may carry its own specifics (the interfering pair, the
+        // measured clearance): pass them through instead of flattening them into the message.
+        if (InnerException is CodedFailureException { Details: { } inner }) details["step_details"] = inner.DeepClone();
         return details;
     }
 }
@@ -65,21 +96,42 @@ public static class AtomicCadBatch
     /// enforced list can never drift apart.
     /// </summary>
     private static readonly HashSet<string> Allowed =
-        new(CadBatchCommandCatalog.Names, StringComparer.Ordinal);
+        new(CadBatchCommandCatalog.AllNames, StringComparer.Ordinal);
 
-    /// <summary>Allowed command names, for callers that want to check a plan before sending it.</summary>
+    /// <summary>Stable (production) command names, for callers that want to check a plan before sending it.</summary>
     public static IReadOnlyList<string> AllowedCommands => CadBatchCommandCatalog.Names;
 
     public static JObject Run(ICadBatchBackend backend, string documentId, string expectedRevision,
         JArray operations, bool preview, Func<bool>? expired = null)
+        => Run(backend, documentId, expectedRevision, operations, preview, expired, null);
+
+    public static JObject Run(ICadBatchBackend backend, string documentId, string expectedRevision,
+        JArray operations, bool preview, Func<bool>? expired, CadBatchOptions? options)
     {
+        options ??= new CadBatchOptions();
         if (string.IsNullOrWhiteSpace(documentId) || string.IsNullOrWhiteSpace(expectedRevision))
             throw new CadBatchException(InventorErrorCodes.INVALID_ARGUMENT, "document_id and expected_revision are required.");
         if (operations.Count < 1 || operations.Count > 32)
             throw new CadBatchException(InventorErrorCodes.INVALID_ARGUMENT, "Use 1 to 32 operations per transaction.");
         // Validate the entire command surface before beginning or executing any operation.
         for (int i = 0; i < operations.Count; i++)
-            Reject(operations[i], i);
+            Reject(operations[i], i, options);
+        ValidationSpec? checks = null;
+        if (options.DocumentKind != null)
+        {
+            try { checks = ValidationSpec.Parse(options.Validate, options.DocumentKind); }
+            catch (ArgumentException ex) { throw new CadBatchException(InventorErrorCodes.INVALID_ARGUMENT, "validate: " + ex.Message); }
+        }
+        else if (options.Validate != null && options.Validate.Type != JTokenType.Null)
+            throw new CadBatchException(InventorErrorCodes.INVALID_ARGUMENT, "validate needs a backend that reports its document kind.");
+        if (checks != null && options.SupportsCheck != null)
+            foreach (var rule in checks.Rules)
+                if (!options.SupportsCheck(rule.Name))
+                    throw new CadBatchException(InventorErrorCodes.EXPERIMENTAL_DISABLED,
+                        "validate: '" + rule.Name + "' needs the experimental add-in build.");
+        var validating = backend as ICadBatchValidatingBackend;
+        if (checks != null && validating == null && options.Validate != null && options.Validate.Type != JTokenType.Null)
+            throw new CadBatchException(InventorErrorCodes.INVALID_ARGUMENT, "This add-in cannot run requested validation checks.");
         if (backend.DocumentId != documentId)
             throw new CadBatchException(InventorErrorCodes.DOCUMENT_CHANGED, "DOCUMENT_CHANGED: active document differs from the plan.");
         if (backend.Revision != expectedRevision)
@@ -105,6 +157,7 @@ public static class AtomicCadBatch
             }
             command = null;
             backend.Validate();
+            if (checks != null && validating != null) validating.Validate(checks);
             if (expired?.Invoke() == true)
                 throw new CadBatchException(InventorErrorCodes.TIMEOUT, "Batch deadline exceeded before commit.", index);
             if (backend.DocumentId != documentId)
@@ -117,8 +170,10 @@ public static class AtomicCadBatch
                 backend.RestoreRevision(expectedRevision);
             }
             else backend.Commit();
-            return new JObject { ["status"] = preview ? "preview_rolled_back" : "committed", ["steps"] = results,
+            var outcome = new JObject { ["status"] = preview ? "preview_rolled_back" : "committed", ["steps"] = results,
                 ["document_id"] = documentId, ["revision"] = backend.Revision };
+            if (checks != null) outcome["validated"] = checks.ToJson();
+            return outcome;
         }
         catch (Exception error)
         {
@@ -139,7 +194,7 @@ public static class AtomicCadBatch
     /// Refuse a malformed or unlisted operation, naming the step and the command. A caller that only
     /// learns "something in the plan is wrong" has to bisect a 32-step batch by hand.
     /// </summary>
-    private static void Reject(JToken token, int index)
+    private static void Reject(JToken token, int index, CadBatchOptions options)
     {
         string at = "operation " + index + ": ";
         if (token is not JObject step)
@@ -153,6 +208,19 @@ public static class AtomicCadBatch
             throw new CadBatchException(InventorErrorCodes.INVALID_ARGUMENT,
                 at + "'" + command + "' is not a batch command. Scripting, file IO, document lifecycle and " +
                 "nested batches are excluded. " + Vocabulary(), index, command);
+        var entry = CadBatchCommandCatalog.Find(command)!;
+        if (entry.Experimental && !options.AllowExperimental)
+            throw new CadBatchException(InventorErrorCodes.EXPERIMENTAL_DISABLED,
+                at + "'" + command + "' is an experimental batch command (implemented, not yet live-verified). " +
+                "Start the add-in with INVENTOR_SO_EXPERIMENTAL=1 from an experimental build to use it.", index, command);
+        if (options.IsRegistered != null && !options.IsRegistered(command))
+            throw new CadBatchException(entry.Experimental ? InventorErrorCodes.EXPERIMENTAL_DISABLED : InventorErrorCodes.INVALID_ARGUMENT,
+                at + "'" + command + "' is catalogued but this add-in build has no handler for it" +
+                (entry.Experimental ? " (build with -p:SoExperimental=true)." : "."), index, command);
+        if (options.DocumentKind != null && !entry.AppliesTo(options.DocumentKind))
+            throw new CadBatchException(InventorErrorCodes.WRONG_DOCUMENT_TYPE,
+                at + "'" + command + "' runs in " + string.Join("/", entry.Documents) + " documents, not in a " +
+                options.DocumentKind + ".", index, command);
         if (step["arguments"] is not JObject)
             throw new CadBatchException(InventorErrorCodes.INVALID_ARGUMENT,
                 at + "'" + command + "' needs an arguments object" +

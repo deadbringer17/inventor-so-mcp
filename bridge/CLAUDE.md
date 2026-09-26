@@ -64,8 +64,24 @@ src/
 │   └── Handlers/                   # one file per wire command (Phase 2-3)
 ├── plugin-inv22/ inv23/ inv24/     # net48, TCP transport
 ├── plugin-inv25/ inv26/            # net8.0-windows7.0, Named Pipe
-└── plugin-inv27/                   # net10.0-windows7.0, Named Pipe
-tests/Bimwright.Ipt.Tests/     # net8.0, xUnit. Server-only — no Inventor needed.
+├── plugin-inv27/                   # net10.0-windows7.0, Named Pipe
+├── server-http/                    # Inventor.So.Mcp.Http: Streamable HTTP host (same composition), /assets, /viewer (WebXR)
+└── plugin-so27/                    # Inventor SO 2027 add-in (the production target); -p:SoExperimental=true adds the experimental tier
+tests/Bimwright.Ipt.Tests/     # net8.0, xUnit. Server-only — no Inventor needed. FakeAddIn = L2 pipe stand-in.
+```
+
+Inventor SO additions (plan: `docs/INVENTOR_SO_MCP_IMPLEMENTATION_PLAN.md`, rev. 2):
+
+```
+server/InventorMcpComposition.cs   # AddInventorServices / AddInventorMcp: shared by stdio and HTTP hosts
+server/ToolContracts.cs            # semantic contract per tool; SoToolPolicy derives production/experimental from it
+server/Assets/                     # AssetStore (content-addressed a_<sha256>), GlbBuilder, SceneComposer
+server/Planning/                   # ChangePlanStore (plan/commit), BomAnalysis
+server/Audit/AuditLog.cs           # tools/call filter -> JSONL, identity from ICallerIdentity
+server/Events/                     # EventSubscriptionService: resources/subscribe over the event journal
+shared/Contracts/ValidationSpec.cs # closed validate[] vocabulary for atomic batches
+shared/Contracts/MeshPayload.cs    # add-in -> server facet wire format (base64 float32/uint32, per-face ranges)
+shared/Handlers/Experimental/      # experimental-tier handlers, #if INVENTOR2027 && SO_EXPERIMENTAL
 ```
 
 The **server** compiles only `shared/Contracts/*` + `shared/Security/*` (and ToolBaker) explicitly, so it builds with no Inventor SDK present. Each **add-in** uses `<Compile Include="..\shared\**\*.cs" />` to pull in everything, including the API-touching `Infrastructure`/`Plugin`/`Handlers`.
@@ -82,7 +98,18 @@ dotnet build src/plugin-inv24 -c Debug /p:InventorInteropDir="C:\Program Files\C
 
 # Real 2027 add-in compile (needs the .NET 10 SDK and installed Inventor 2027 interop):
 dotnet build src/plugin-inv27 -c Debug
+
+# Inventor SO add-in, default (verified) build and with the experimental tier:
+dotnet build src/plugin-so27 -c Debug
+dotnet build src/plugin-so27 -c Debug -p:SoExperimental=true
+
+# Remote host (Streamable HTTP):
+dotnet build src/server-http -c Debug
 ```
+
+On Linux the 10 path-semantics tests of `WorkspaceDocumentPolicyTests`, `DrawingTemplatePolicyTests`,
+`PunchCatalogPolicyTests` and `PathCompatTests` fail by design (they assert Windows paths); everything
+else, including the HTTP host and the fake-add-in end-to-end tests, runs anywhere.
 
 Inventor must be CLOSED before deploying add-in DLLs it would otherwise lock. The Inventor-API handlers have been smoke-tested against a live Inventor session; hold new handler bodies to the same verification bar before calling them done.
 
@@ -133,11 +160,30 @@ Inventor has **no `ExternalEvent`** (unlike Revit). The add-in marshals every co
 
 ## Error Codes (`InventorErrorCodes`)
 `NO_TARGET, TARGET_UNAVAILABLE, NO_DOCUMENT, WRONG_DOCUMENT_TYPE, INVALID_ARGUMENT, UNSUPPORTED_HOST, API_ERROR, TIMEOUT, RESPONSE_TOO_LARGE, READ_ONLY, ATOMIC_REQUIRED, SEND_CODE_DISABLED, UNAUTHORIZED`,
-plus the concurrency and rollback outcomes `STALE_REVISION, DOCUMENT_CHANGED, TRANSACTION_BUSY, ROLLED_BACK, ROLLBACK_FAILED` and the drawing-layout outcomes `NO_FITTING_SCALE, VIEW_OUTSIDE_LAYOUT, VIEW_OVERLAP, PROJECTION_UNAVAILABLE`. `InventorError.Details` carries the machine-readable specifics (`step_index`, `command`, `step_code`, `reason`, `expected_revision`, …) so a caller never parses the message.
+plus the concurrency and rollback outcomes `STALE_REVISION, DOCUMENT_CHANGED, TRANSACTION_BUSY, ROLLED_BACK, ROLLBACK_FAILED`, the Inventor SO outcomes `VALIDATION_FAILED, EXPERIMENTAL_DISABLED, MESH_TOO_LARGE, PLAN_NOT_FOUND, PLAN_MISMATCH, ASSET_NOT_FOUND, RATE_LIMITED` and the drawing-layout outcomes `NO_FITTING_SCALE, VIEW_OUTSIDE_LAYOUT, VIEW_OVERLAP, PROJECTION_UNAVAILABLE`. `InventorError.Details` carries the machine-readable specifics (`step_index`, `command`, `step_code`, `reason`, `expected_revision`, …) so a caller never parses the message.
 
 **A code never travels in the message.** Handlers raise `CodedFailureException(code, message, details)` (built for the shared concurrency refusals by `ConcurrencyFailure`); `CommandDispatcher` reports it under its own code instead of sanitizing it into `API_ERROR`, and `HandlerBase.Fail(ctx, failure)` turns the same object into a result for guards that refuse before anything is created. Writing the code into the message — as a `Fail(ctx, "INVALID_ARGUMENT", "STALE_REVISION")` or a `throw new InvalidOperationException("TRANSACTION_BUSY: …")` — leaves the caller parsing prose; `SourcePolicyTests.HandlersNeverReportAnErrorCodeAsTheMessage` fails the build if it comes back. Non-code prose tags inside a message (`CLEARANCE_FAILED: 3.2`) are still lifted into `details.reason` / `details.step_code` by `CodedFailureException.LiftCode`.
 
 **Atomic-batch vocabulary:** `shared/Contracts/CadBatchCommandCatalog.cs` is the single source of the batch command list. `AtomicCadBatch` enforces exactly its names and `inventor://batch-commands` publishes them with their arguments, so the discoverable and executable surfaces cannot drift. Adding a batch command means adding a catalogue entry (and updating the frozen list in `AtomicCadBatchTests`).
+
+## Experimental tier (docs plan §26.3)
+- A capability that has not passed live L3/L4 checks is **experimental**: its handlers live in
+  `shared/Handlers/Experimental/` under `#if INVENTOR2027 && SO_EXPERIMENTAL` (compiled only with
+  `-p:SoExperimental=true`), derive from `ExperimentalHandler` (refuses unless the add-in runs with
+  `INVENTOR_SO_EXPERIMENTAL=1`), and its MCP tools have `Tier = Experimental` in `ToolContracts`
+  (listed only with `--enable-experimental`). Batch commands are `X(...)` entries of the catalogue.
+- Promotion: run the live checks, record them in `docs/DEVELOPMENT.md`, move the handler out of
+  `Experimental/`, flip the contract tier and the catalogue entry to stable.
+- Interop calls whose signature is not confirmed against the installed interop go through `dynamic`
+  (late binding): a wrong guess fails inside the batch transaction and is rolled back instead of
+  breaking the build. `ExperimentalSourceTests` keeps catalogue, handlers, registrar and tools in sync.
+- Every tool must have a contract in `ToolContracts` or the policy never exposes it.
+
+## View state vs document state (plan F2/F20)
+- Highlight, camera and focus are view state: read-only handlers, no transaction, no revision change.
+- Visibility, suppression and representation activation change the document: batch commands only.
+- `CadEventJournal.Append` never advances revisions for view events (`selection_changed`,
+  `camera_changed`); `VisualRevision` advances only on `document_changed`.
 
 ## Decision Log
 - **C# server over TypeScript** — single language, direct API access patterns shared with rvt-mcp / nwd-mcp.
@@ -147,4 +193,9 @@ plus the concurrency and rollback outcomes `STALE_REVISION, DOCUMENT_CHANGED, TR
 - **Internal centimetres** — Inventor's API length unit is cm; convert at the handler boundary.
 - **Server has no Inventor reference** — keeps the gateway buildable / testable on any machine; the API-agnostic contract files are the only shared source the server compiles.
 - **Per-version unique ClientId GUID** on each `InventorAddInServer` (matches the `.addin`), so only the matching year loads.
+- **One composition, two hosts** — stdio and HTTP share `InventorMcpComposition`; the HTTP host adds only
+  transport, auth (`name:token`, sessions bound to the token), TLS/binding policy, CORS, rate limits,
+  `/assets` and the viewer. `inventor_switch_target` is process-wide state, so HTTP does not register it.
+- **GLB in metres, per definition** — meshes are content-addressed per part definition and instanced
+  by the scene graph, so unchanged geometry keeps its asset id and only changed parts are re-fetched.
 ```

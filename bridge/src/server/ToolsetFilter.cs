@@ -10,7 +10,7 @@ public static class ToolsetFilter
     {
         "meta", "query", "document", "parameters", "properties",
         "sketch", "feature", "export", "code", "toolbaker", "toolbaker_write",
-        "assembly", "assembly_query"
+        "assembly", "assembly_query", "xr", "insight", "planning"
     };
 
     // everything except "code" (send-code is opt-in)
@@ -18,7 +18,7 @@ public static class ToolsetFilter
     {
         "meta", "query", "document", "parameters", "properties",
         "sketch", "feature", "export", "toolbaker", "toolbaker_write",
-        "assembly", "assembly_query"
+        "assembly", "assembly_query", "xr", "insight", "planning"
     };
 
     // Removed in read-only mode. `export` is write-capable here because Phase 1
@@ -27,7 +27,7 @@ public static class ToolsetFilter
     public static readonly string[] WriteCapable =
     {
         "document", "parameters", "properties", "sketch", "feature",
-        "export", "code", "toolbaker_write", "assembly"
+        "export", "code", "toolbaker_write", "assembly", "planning"
     };
 
     public static HashSet<string> Resolve(InventorMcpConfig config)

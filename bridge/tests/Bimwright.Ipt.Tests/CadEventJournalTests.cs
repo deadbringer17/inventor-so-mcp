@@ -82,3 +82,37 @@ public sealed class CadEventJournalTests
         Assert.Equal("document_changed", (string?)journal.Read()["events"]![0]!["type"]);
     }
 }
+
+public sealed class CadEventJournalViewEventTests
+{
+    [Fact]
+    public void ViewEventsNeverAdvanceRevisions()
+    {
+        var journal = new Bimwright.Ipt.Shared.Contracts.CadEventJournal();
+        journal.Append("document_changed", "doc_a");
+        var revision = journal.Revision("doc_a");
+        var visual = journal.VisualRevision("doc_a");
+        journal.Append("selection_changed", "doc_a", new Newtonsoft.Json.Linq.JObject { ["count"] = 2 });
+        journal.Append("camera_changed", "doc_a");
+        Assert.Equal(revision, journal.Revision("doc_a"));
+        Assert.Equal(visual, journal.VisualRevision("doc_a"));
+        var events = journal.Read(0)["events"]!;
+        Assert.Equal(3, events.Count());
+        Assert.Equal(2, (int)events[1]!["data"]!["count"]!);
+    }
+
+    [Fact]
+    public void SaveAdvancesRevisionButNotVisualRevision()
+    {
+        var journal = new Bimwright.Ipt.Shared.Contracts.CadEventJournal();
+        journal.Append("document_changed", "doc_a");
+        var visual = journal.VisualRevision("doc_a");
+        var revision = journal.Revision("doc_a");
+        journal.Append("document_saved", "doc_a");
+        Assert.NotEqual(revision, journal.Revision("doc_a"));
+        Assert.Equal(visual, journal.VisualRevision("doc_a"));
+        journal.Append("document_changed", "doc_a");
+        Assert.NotEqual(visual, journal.VisualRevision("doc_a"));
+        Assert.StartsWith(journal.Epoch + ":v", journal.VisualRevision("doc_a"));
+    }
+}

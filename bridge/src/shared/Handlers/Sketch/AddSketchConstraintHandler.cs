@@ -67,6 +67,11 @@ public sealed class AddSketchConstraintHandler : HandlerBase, IInventorCommand
                     break;
                 }
                 default:
+#if INVENTOR2027 && SO_EXPERIMENTAL
+                    // midpoint, fix and equal_radius: experimental-tier additions (plan §7.3).
+                    if (ctx.AllowExperimental && Bimwright.Ipt.Shared.Handlers.Experimental.ExperimentalSketchConstraints.TryAdd(g, type, E, ids.Count))
+                        break;
+#endif
                     return Fail(ctx, InventorErrorCodes.INVALID_ARGUMENT,
                         $"unknown constraint type '{type}' (coincident|parallel|perpendicular|horizontal|vertical|tangent|concentric|equal|collinear|symmetric)");
             }

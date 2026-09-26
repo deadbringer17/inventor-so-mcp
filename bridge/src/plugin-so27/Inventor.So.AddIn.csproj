@@ -7,6 +7,11 @@
     <Nullable>enable</Nullable>
     <PlatformTarget>x64</PlatformTarget>
     <DefineConstants>$(DefineConstants);INVENTOR2027</DefineConstants>
+    <!-- Experimental tier (docs/INVENTOR_SO_MCP_IMPLEMENTATION_PLAN.md §26.3): handlers implemented but
+         not yet verified against a live Inventor. Off by default so the default build is exactly the
+         verified production add-in: dotnet build -p:SoExperimental=true to include them. -->
+    <SoExperimental Condition="'$(SoExperimental)' == ''">false</SoExperimental>
+    <DefineConstants Condition="'$(SoExperimental)' == 'true'">$(DefineConstants);SO_EXPERIMENTAL</DefineConstants>
     <InventorInteropDir Condition="'$(InventorInteropDir)' == ''">C:\Program Files\Common Files\Autodesk Shared\Extensions 2027\Framework\Interop</InventorInteropDir>
   </PropertyGroup>
   <Target Name="ValidateInventorReferences" BeforeTargets="ResolveReferences">

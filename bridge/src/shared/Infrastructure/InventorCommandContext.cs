@@ -12,6 +12,11 @@ public sealed class InventorCommandContext
     public bool RequireAtomicWrites { get; init; }
     public System.Func<bool>? IsDeadlineExceeded { get; init; }
     public CadEventJournal? Events { get; init; }
+    /// <summary>
+    /// Host-owned experimental tier (INVENTOR_SO_EXPERIMENTAL=1 on the add-in): admits catalogue
+    /// commands that are implemented but not yet verified against a live Inventor.
+    /// </summary>
+    public bool AllowExperimental { get; init; }
     /// <summary>The add-in's view of read-only mode (the server also enforces this by tool filtering).</summary>
     public bool ReadOnly { get; init; }
 

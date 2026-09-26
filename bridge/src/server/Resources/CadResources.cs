@@ -13,7 +13,20 @@ namespace Bimwright.Ipt.Server.Resources;
 public sealed class CadResources
 {
     private readonly PluginClient _client;
-    public CadResources(PluginClient client) => _client = client;
+    private readonly InventorMcpConfig? _config;
+    private readonly Bimwright.Ipt.Server.Assets.AssetStore? _assets;
+    private readonly ICallerIdentity _caller;
+
+    public CadResources(PluginClient client) : this(client, null, null, null) { }
+
+    [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
+    public CadResources(PluginClient client, InventorMcpConfig? config, Bimwright.Ipt.Server.Assets.AssetStore? assets, ICallerIdentity? caller)
+    {
+        _client = client;
+        _config = config;
+        _assets = assets;
+        _caller = caller ?? new StdioCallerIdentity();
+    }
 
     [McpServerResource(UriTemplate = "inventor://application", MimeType = "application/json")]
     [Description("Selected Inventor instance. Does not expose IPC credentials. This is discovery state, not a live health check.")]
@@ -37,7 +50,17 @@ public sealed class CadResources
 
     [McpServerResource(UriTemplate = "inventor://batch-commands", MimeType = "application/json")]
     [Description("Command vocabulary of inventor_atomic_batch: every allowed wire command with its required and optional arguments. Static server-side contract, no Inventor round trip; a command absent here cannot run in a batch.")]
-    public string BatchCommands() => Bimwright.Ipt.Shared.Contracts.CadBatchCommandCatalog.Describe().ToString(Formatting.None);
+    public string BatchCommands() => Bimwright.Ipt.Shared.Contracts.CadBatchCommandCatalog
+        .Describe(includeExperimental: _config?.EnableExperimental == true).ToString(Formatting.None);
+
+    [McpServerResource(UriTemplate = "inventor://assets/{asset_id}", MimeType = "application/octet-stream")]
+    [Description("A content-addressed asset (GLB mesh or scene, PNG, PDF, CSV, JSON) produced for this client by an XR or release tool. asset_id is the a_<sha256> id returned by that tool; only the client that produced the asset can read it, and it expires after the configured TTL (renewed on every read).")]
+    public ModelContextProtocol.Protocol.ResourceContents Asset(string asset_id)
+    {
+        if (_assets == null || !_assets.TryRead(asset_id, _caller.Client, out var record, out var bytes))
+            throw new ModelContextProtocol.McpException("ASSET_NOT_FOUND: unknown, expired or foreign asset id.");
+        return ModelContextProtocol.Protocol.BlobResourceContents.FromBytes(bytes!, "inventor://assets/" + record!.Id, record.MimeType);
+    }
 
     [McpServerResource(UriTemplate = "inventor://events", MimeType = "application/json")]
     [Description("Bounded document-event journal with epoch, cursor and resync_required flag. Snapshot only; push subscriptions are not implemented yet.")]

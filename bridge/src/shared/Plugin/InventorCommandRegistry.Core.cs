@@ -24,6 +24,7 @@ public static partial class InventorCommandRegistry
         add(new ResolveEntityHandler());
         add(new EventsHandler());
         add(new AtomicBatchHandler());
+        add(new CapabilitiesHandler());
         add(new SaveArtifactHandler());
         add(new NativePackagePlanHandler());
         add(new CreateDrawingHandler());

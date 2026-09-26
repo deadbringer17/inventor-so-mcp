@@ -19,7 +19,11 @@ public sealed class SourcePolicyTests
         throw new DirectoryNotFoundException("Could not locate repo root from " + dir);
     }
 
-    private static string Read(string relativePath) => File.ReadAllText(Path.Combine(RepoRoot(), relativePath));
+    private static string Read(string relativePath) => File.ReadAllText(Local(relativePath));
+
+    /// <summary>The Windows-style relative paths below, resolved on any OS.</summary>
+    private static string Local(string relativePath) =>
+        Path.Combine(RepoRoot(), relativePath.Replace('\\', Path.DirectorySeparatorChar));
 
     [Fact]
     public void SendCodeDoesNotMoveInventorApplicationOntoWorkerThread()
@@ -48,7 +52,7 @@ public sealed class SourcePolicyTests
     [Fact]
     public void SketchAndFeatureHandlersUseSharedActivePartResolver()
     {
-        var paths = Directory.EnumerateFiles(Path.Combine(RepoRoot(), @"src\shared\Handlers"), "*.cs", SearchOption.AllDirectories)
+        var paths = Directory.EnumerateFiles(Local(@"src\shared\Handlers"), "*.cs", SearchOption.AllDirectories)
             .Where(p => p.Contains(@"\Sketch\") || p.Contains(@"\Feature\"));
 
         foreach (var path in paths)
@@ -61,7 +65,7 @@ public sealed class SourcePolicyTests
     [Fact]
     public void ParameterHandlersDoNotExposeRawValueField()
     {
-        var paths = Directory.EnumerateFiles(Path.Combine(RepoRoot(), @"src\shared\Handlers\Parameters"), "*.cs");
+        var paths = Directory.EnumerateFiles(Local(@"src\shared\Handlers\Parameters"), "*.cs");
 
         foreach (var path in paths)
         {
@@ -107,7 +111,7 @@ public sealed class SourcePolicyTests
             .ToArray();
 
         var offenders = new System.Collections.Generic.List<string>();
-        foreach (var path in Directory.EnumerateFiles(Path.Combine(RepoRoot(), @"src\shared\Handlers"), "*.cs", SearchOption.AllDirectories))
+        foreach (var path in Directory.EnumerateFiles(Local(@"src\shared\Handlers"), "*.cs", SearchOption.AllDirectories))
         {
             var lines = File.ReadAllLines(path);
             for (int i = 0; i < lines.Length; i++)
