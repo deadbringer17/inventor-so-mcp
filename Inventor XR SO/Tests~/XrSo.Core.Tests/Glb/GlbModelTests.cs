@@ -1,7 +1,10 @@
+using System.Text;
 using Bimwright.Ipt.Server.Assets;
 using Bimwright.Ipt.Tests;
 using InventorXrSo.Core.Glb;
 using InventorXrSo.Core.Tests.Support;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace InventorXrSo.Core.Tests.Glb;
 
@@ -55,6 +58,60 @@ public class GlbModelTests
         Assert.Throws<FormatException>(() => new FaceMap(new[] { new FaceRange("a", 1, 1, 3) }, 6));
         Assert.Throws<FormatException>(() => new FaceMap(new[] { new FaceRange("a", 1, 0, 9) }, 6));
         Assert.Throws<FormatException>(() => new FaceMap(new[] { new FaceRange("a", 1, 0, 6), new FaceRange("b", 2, 3, 3) }, 6));
+    }
+
+    /// <summary>Re-packs a valid bolt GLB with its JSON chunk mutated, keeping the original BIN chunk and a correct header.</summary>
+    private static byte[] WithMutatedJson(Action<JObject> mutate)
+    {
+        var glb = BoltGlb();
+        int jsonLength = (int)BitConverter.ToUInt32(glb, 12);
+        var json = JObject.Parse(Encoding.UTF8.GetString(glb, 20, jsonLength));
+        mutate(json);
+        var newJson = Encoding.UTF8.GetBytes(json.ToString(Formatting.None));
+        int jsonPadded = (newJson.Length + 3) & ~3;
+        int binStart = 20 + jsonLength;
+        int binLength = glb.Length - binStart;
+        var result = new byte[20 + jsonPadded + binLength];
+        BitConverter.GetBytes(0x46546C67u).CopyTo(result, 0);
+        BitConverter.GetBytes(2u).CopyTo(result, 4);
+        BitConverter.GetBytes((uint)result.Length).CopyTo(result, 8);
+        BitConverter.GetBytes((uint)jsonPadded).CopyTo(result, 12);
+        BitConverter.GetBytes(0x4E4F534Au).CopyTo(result, 16);
+        Array.Copy(newJson, 0, result, 20, newJson.Length);
+        for (int i = newJson.Length; i < jsonPadded; i++) result[20 + i] = 0x20;
+        Array.Copy(glb, binStart, result, 20 + jsonPadded, binLength);
+        return result;
+    }
+
+    private static JObject FirstPrimitive(JObject json) => (JObject)json["meshes"][0]["primitives"][0];
+
+    [Fact]
+    public void RejectsOutOfRangePositionAccessor()
+    {
+        var glb = WithMutatedJson(json => ((JObject)FirstPrimitive(json)["attributes"])["POSITION"] = 99);
+        Assert.Throws<FormatException>(() => GlbModel.Parse(glb));
+    }
+
+    [Fact]
+    public void RejectsOutOfRangeBufferViewOnIndicesAccessor()
+    {
+        var glb = WithMutatedJson(json =>
+        {
+            int indicesAccessor = (int)FirstPrimitive(json)["indices"];
+            ((JObject)json["accessors"][indicesAccessor])["bufferView"] = 99;
+        });
+        Assert.Throws<FormatException>(() => GlbModel.Parse(glb));
+    }
+
+    [Fact]
+    public void RejectsIndicesAccessorThatIsNotScalar()
+    {
+        var glb = WithMutatedJson(json =>
+        {
+            int indicesAccessor = (int)FirstPrimitive(json)["indices"];
+            ((JObject)json["accessors"][indicesAccessor])["type"] = "VEC3";
+        });
+        Assert.Throws<FormatException>(() => GlbModel.Parse(glb));
     }
 
     /// <summary>

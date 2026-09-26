@@ -100,10 +100,24 @@ namespace InventorXrSo.Core.Glb
             public int Length { get; }
         }
 
+        private static JToken ResolveAccessor(JObject gltf, int accessorIndex)
+        {
+            var accessors = gltf["accessors"] as JArray;
+            if (accessors == null || accessorIndex < 0 || accessorIndex >= accessors.Count) throw new FormatException("Missing accessor " + accessorIndex + ".");
+            return accessors[accessorIndex];
+        }
+
+        private static JToken ResolveBufferView(JObject gltf, int bufferViewIndex)
+        {
+            var views = gltf["bufferViews"] as JArray;
+            if (views == null || bufferViewIndex < 0 || bufferViewIndex >= views.Count) throw new FormatException("Missing buffer view " + bufferViewIndex + ".");
+            return views[bufferViewIndex];
+        }
+
         private static (int start, int count, int componentType) Locate(JObject gltf, Bin bin, int accessorIndex, int componentsPerElement)
         {
-            var accessor = gltf["accessors"]?[accessorIndex] ?? throw new FormatException("Missing accessor " + accessorIndex + ".");
-            var view = gltf["bufferViews"]?[(int)accessor["bufferView"]] ?? throw new FormatException("Missing buffer view.");
+            var accessor = ResolveAccessor(gltf, accessorIndex);
+            var view = ResolveBufferView(gltf, (int)accessor["bufferView"]);
             int componentType = (int)accessor["componentType"];
             int size = componentType == 5126 || componentType == 5125 ? 4 : componentType == 5123 ? 2 : componentType == 5121 ? 1 : 0;
             if (size == 0) throw new NotSupportedException("Accessor component type " + componentType + " is not supported.");
@@ -117,7 +131,8 @@ namespace InventorXrSo.Core.Glb
 
         private static float[] ReadFloats(JObject gltf, Bin bin, int accessorIndex, string type)
         {
-            if ((string)gltf["accessors"]?[accessorIndex]?["type"] != type) throw new FormatException("Accessor " + accessorIndex + " is not " + type + ".");
+            var accessor = ResolveAccessor(gltf, accessorIndex);
+            if ((string)accessor["type"] != type) throw new FormatException("Accessor " + accessorIndex + " is not " + type + ".");
             var (start, count, componentType) = Locate(gltf, bin, accessorIndex, 3);
             if (componentType != 5126) throw new NotSupportedException("Only float vertex attributes are supported.");
             var values = new float[count];
@@ -127,6 +142,8 @@ namespace InventorXrSo.Core.Glb
 
         private static uint[] ReadIndices(JObject gltf, Bin bin, int accessorIndex)
         {
+            var indicesAccessor = ResolveAccessor(gltf, accessorIndex);
+            if ((string)indicesAccessor["type"] != "SCALAR") throw new FormatException("Accessor " + accessorIndex + " is not SCALAR.");
             var (start, count, componentType) = Locate(gltf, bin, accessorIndex, 1);
             var values = new uint[count];
             for (int i = 0; i < count; i++)
