@@ -29,7 +29,9 @@ public sealed class AssetRecord
         ["size_bytes"] = Size,
         ["expires_utc"] = ExpiresUtc.ToString("O"),
         ["resource_uri"] = "inventor://assets/" + Id,
-        ["asset_url"] = string.IsNullOrWhiteSpace(publicBaseUrl) ? null : publicBaseUrl!.TrimEnd('/') + "/assets/" + Id,
+        // null: no HTTP host (stdio) - use resource_uri. "": HTTP host without a configured public
+        // URL - a path relative to the MCP endpoint's origin. Otherwise an absolute URL.
+        ["asset_url"] = publicBaseUrl == null ? null : publicBaseUrl.TrimEnd('/') + "/assets/" + Id,
         ["metadata"] = Metadata.DeepClone(),
     };
 }

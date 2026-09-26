@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Inventor.So.Mcp.Http</RootNamespace>
+    <AssemblyName>Inventor.So.Mcp.Http</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <Version>0.1.0</Version>
+    <Description>Remote (Streamable HTTP) host of the Inventor SO MCP server: authenticated, rate limited, with a content-addressed asset endpoint and a WebXR viewer.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Bimwright.Ipt.Tests" />
+  </ItemGroup>
+
+  <!-- WebXR viewer, served from embedded resources through an explicit allowlist (HttpHost.ViewerFiles). -->
+  <ItemGroup>
+    <EmbeddedResource Include="viewer\index.html" LogicalName="viewer/index.html" />
+    <EmbeddedResource Include="viewer\viewer.js" LogicalName="viewer/viewer.js" />
+    <EmbeddedResource Include="viewer\vendor\three.module.min.js" LogicalName="viewer/vendor/three.module.min.js" />
+    <EmbeddedResource Include="viewer\vendor\THREE-LICENSE.txt" LogicalName="viewer/vendor/THREE-LICENSE.txt" />
+    <EmbeddedResource Include="viewer\vendor\jsm\loaders\GLTFLoader.js" LogicalName="viewer/vendor/jsm/loaders/GLTFLoader.js" />
+    <EmbeddedResource Include="viewer\vendor\jsm\utils\BufferGeometryUtils.js" LogicalName="viewer/vendor/jsm/utils/BufferGeometryUtils.js" />
+    <EmbeddedResource Include="viewer\vendor\jsm\controls\OrbitControls.js" LogicalName="viewer/vendor/jsm/controls/OrbitControls.js" />
+    <EmbeddedResource Include="viewer\vendor\jsm\webxr\VRButton.js" LogicalName="viewer/vendor/jsm/webxr/VRButton.js" />
+    <Content Remove="viewer\**" />
+    <None Remove="viewer\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\server\Bimwright.Ipt.Server.csproj" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.1.0" />
+  </ItemGroup>
+
+</Project>

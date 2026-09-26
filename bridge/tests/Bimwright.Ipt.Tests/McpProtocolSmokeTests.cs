@@ -14,6 +14,8 @@ public sealed class McpProtocolSmokeTests
         var initialize = Assert.Single(responses, r => (int?)r["id"] == 1);
         Assert.NotNull(initialize["result"]?["capabilities"]?["tools"]);
         Assert.NotNull(initialize["result"]?["capabilities"]?["resources"]);
+        // Resource subscriptions over the event journal (plan §20).
+        Assert.True((bool?)initialize["result"]?["capabilities"]?["resources"]?["subscribe"]);
 
         var toolsList = Assert.Single(responses, r => (int?)r["id"] == 2);
         var tools = Assert.IsAssignableFrom<JArray>(toolsList["result"]?["tools"]);
@@ -46,9 +48,26 @@ public sealed class McpProtocolSmokeTests
             if (property.Value["default"] != null) Assert.DoesNotContain(property.Name, required);
     }
 
+    /// <summary>
+    /// The server from its own build output. The test directory also carries the ASP.NET host, whose
+    /// shared-framework dependencies are not copied next to the server's console runtimeconfig.
+    /// </summary>
+    private static string ServerAssemblyPath()
+    {
+        var inTests = typeof(Program).Assembly.Location;
+        var testDir = new DirectoryInfo(Path.GetDirectoryName(inTests)!);   // tests/X/bin/<cfg>/<tfm>
+        var bridge = testDir.Parent?.Parent?.Parent?.Parent?.Parent;
+        if (bridge != null)
+        {
+            var own = Path.Combine(bridge.FullName, "src", "server", "bin", testDir.Parent!.Name, testDir.Name, Path.GetFileName(inTests));
+            if (File.Exists(own)) return own;
+        }
+        return inTests;
+    }
+
     private static async Task<JObject[]> RunProtocolHandshake()
     {
-        var serverAssembly = typeof(Program).Assembly.Location;
+        var serverAssembly = ServerAssemblyPath();
         var startInfo = new ProcessStartInfo
         {
             FileName = "dotnet",

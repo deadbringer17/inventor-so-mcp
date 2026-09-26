@@ -145,7 +145,7 @@ public sealed class PlanningTools
         var impact = new JObject
         {
             ["commands"] = new JArray(operations.OfType<JObject>().Select(o => (string?)o["command"]).Distinct()),
-            ["parameters"] = new JArray(parameters),
+            ["parameters"] = new JArray(parameters.Cast<object>().ToArray()),
         };
         if (parameters.Length == 0 || !(_config.EnableExperimental || _config.FullAccess))
         {

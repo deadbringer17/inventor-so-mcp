@@ -30,6 +30,7 @@
   <ItemGroup>
     <Using Include="Xunit" />
     <ProjectReference Include="..\..\src\server\Bimwright.Ipt.Server.csproj" />
+    <ProjectReference Include="..\..\src\server-http\Inventor.So.Mcp.Http.csproj" />
   </ItemGroup>
 
   <ItemGroup>

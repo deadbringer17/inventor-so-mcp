@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inventor SO Viewer</title>
+<script type="importmap">{"imports":{"three":"./vendor/three.module.min.js","three/addons/":"./vendor/jsm/"}}</script>
+<style>
+  :root { color-scheme: dark; --bg: #15171a; --panel: #1f2328; --line: #343a41; --text: #e6e8eb; --muted: #9aa3ad; --accent: #4aa3ff; --bad: #ff6b6b; --ok: #4cd08a; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, sans-serif; }
+  #app { display: grid; grid-template-columns: 320px 1fr; height: 100%; }
+  aside { background: var(--panel); border-right: 1px solid var(--line); padding: 12px; overflow: auto; }
+  main { position: relative; }
+  canvas { display: block; width: 100%; height: 100%; }
+  h1 { font-size: 15px; margin: 0 0 12px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 16px 0 6px; }
+  input, select, button { width: 100%; padding: 7px 8px; margin: 3px 0; background: #111418; color: var(--text); border: 1px solid var(--line); border-radius: 6px; font: inherit; }
+  button { cursor: pointer; background: #25303b; }
+  button:disabled { opacity: .45; cursor: default; }
+  .row { display: flex; gap: 6px; } .row > * { flex: 1; }
+  #status { font-size: 12px; color: var(--muted); white-space: pre-wrap; word-break: break-word; }
+  #status.bad { color: var(--bad); } #status.ok { color: var(--ok); }
+  #pick { font-size: 12px; color: var(--muted); word-break: break-all; }
+  @media (max-width: 720px) { #app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; } aside { max-height: 45vh; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside>
+    <h1>Inventor SO Viewer</h1>
+    <h2>Connection</h2>
+    <input id="token" type="password" placeholder="Client token" autocomplete="off">
+    <button id="connect">Connect</button>
+    <h2>Model</h2>
+    <div class="row"><button id="load" disabled>Load active document</button></div>
+    <div id="revision" class="muted"></div>
+    <h2>Selection</h2>
+    <div id="pick">Click (or trigger in VR) a face.</div>
+    <h2>Parameter change</h2>
+    <select id="param" disabled></select>
+    <input id="value" placeholder="New value, e.g. 25 mm" disabled>
+    <div class="row"><button id="preview" disabled>Preview</button><button id="commit" disabled>Commit</button></div>
+    <h2>Status</h2>
+    <div id="status">Not connected.</div>
+  </aside>
+  <main id="stage"></main>
+</div>
+<script type="module" src="./viewer.js"></script>
+</body>
+</html>
