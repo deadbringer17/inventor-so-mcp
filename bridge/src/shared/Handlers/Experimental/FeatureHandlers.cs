@@ -24,7 +24,8 @@ internal static class FeatureX
         dynamic f = feature;
         var result = new JObject();
         try { result["feature_name"] = (string)f.Name; } catch { }
-        try { result["health"] = f.HealthStatus.ToString(); } catch { }
+        // Late binding hands the enum back as its number (11778); report the name, as the typed paths do.
+        try { result["health"] = ((HealthStatusEnum)(int)f.HealthStatus).ToString(); } catch { }
         return result;
     }
 
@@ -145,8 +146,10 @@ public sealed class SplitHandler : ExperimentalHandler
         object feature = remove switch
         {
             "none" => splits.SplitBody(plane, body),
-            "positive" => splits.TrimSolid(plane, body, true),
-            "negative" => splits.TrimSolid(plane, body, false),
+            // TrimSolid's flag, despite its name RemovePositiveSide, keeps the positive side when true
+            // (verified live on 2027: a box 0..20 trimmed at z=10 with true keeps 10..20).
+            "positive" => splits.TrimSolid(plane, body, false),
+            "negative" => splits.TrimSolid(plane, body, true),
             _ => throw new ArgumentException("remove must be none, positive or negative."),
         };
         return FeatureX.Feature(feature);

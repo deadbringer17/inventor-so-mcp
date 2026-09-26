@@ -57,16 +57,19 @@ public sealed class ExtrudeHandler : HandlerBase, IInventorCommand
         catch (Exception ex) { return Fail(ctx, InventorErrorCodes.API_ERROR, ex.Message); }
     }
 
-    private static double BodyVolumeMm3(PartComponentDefinition def)
+    /// <summary>Total solid volume, or null when Inventor cannot evaluate it (never a made-up 0).</summary>
+    private static double? BodyVolumeMm3(PartComponentDefinition def)
     {
         try
         {
             // SurfaceBody.Volume is a parameterized accessor (PrecisionPercent); call get_Volume directly.
+            // The precision must be positive: 0.0 is rejected with E_INVALIDARG (verified live on 2027),
+            // which the old catch turned into a volume of 0 on every extrude.
             double cm3 = 0;
-            foreach (SurfaceBody b in def.SurfaceBodies) cm3 += b.get_Volume(0.0);
+            foreach (SurfaceBody b in def.SurfaceBodies) cm3 += b.get_Volume(0.01);
             return UnitConvert.Cm3ToMm3(cm3);
         }
-        catch { return 0; }
+        catch { return null; }
     }
 }
 #endif

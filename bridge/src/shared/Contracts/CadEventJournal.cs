@@ -12,6 +12,10 @@ public sealed class CadEventJournal
     private readonly Queue<JObject> _events = new();
     private readonly Dictionary<string, long> _revisions = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _visual = new(StringComparer.Ordinal);
+    // Recent visual revisions per document, so undoing a change can also put the visual token back.
+    private readonly Dictionary<string, List<long>> _visualHistory = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _visualHistoryTruncated = new(StringComparer.Ordinal);
+    private const int VisualHistoryLength = 64;
     private readonly int _capacity;
     private long _sequence;
     public string Epoch { get; } = Guid.NewGuid().ToString("N");
@@ -32,6 +36,10 @@ public sealed class CadEventJournal
     /// in full, so an operation that leaves the model untouched also leaves the caller's plan valid.
     /// Refuses a token from another epoch and never moves a revision forward, so it cannot be used to
     /// hide a change that is still on the model. The event journal itself keeps every entry.
+    /// The visual revision goes back to the last geometric change at or before the restored point:
+    /// otherwise every preview made an XR client download unchanged geometry again (seen live in the
+    /// viewer). When that point has left the bounded history the visual token stays where it is,
+    /// which costs a refetch but never hides a change.
     /// </summary>
     public bool TryRestoreRevision(string documentId, string revision)
     {
@@ -45,6 +53,12 @@ public sealed class CadEventJournal
             if (target > current) return false;
             if (target == 0) _revisions.Remove(documentId);
             else _revisions[documentId] = target;
+            if (_visualHistory.TryGetValue(documentId, out var history))
+            {
+                history.RemoveAll(sequence => sequence > target);
+                if (history.Count > 0) _visual[documentId] = history[history.Count - 1];
+                else if (!_visualHistoryTruncated.Contains(documentId)) _visual.Remove(documentId);
+            }
             return true;
         }
     }
@@ -85,7 +99,17 @@ public sealed class CadEventJournal
             {
                 _revisions[documentId] = sequence;
                 bool nonGeometric = data?[GeometryFlag]?.Type == JTokenType.Boolean && !(bool)data[GeometryFlag]!;
-                if (type == "document_changed" && !nonGeometric) _visual[documentId] = sequence;
+                if (type == "document_changed" && !nonGeometric)
+                {
+                    _visual[documentId] = sequence;
+                    if (!_visualHistory.TryGetValue(documentId, out var history)) _visualHistory[documentId] = history = new List<long>();
+                    history.Add(sequence);
+                    if (history.Count > VisualHistoryLength)
+                    {
+                        history.RemoveAt(0);
+                        _visualHistoryTruncated.Add(documentId);
+                    }
+                }
             }
             var entry = new JObject { ["sequence"] = sequence, ["type"] = type,
                 ["document_id"] = documentId, ["utc"] = DateTimeOffset.UtcNow.ToString("O") };

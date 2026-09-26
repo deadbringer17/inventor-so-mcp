@@ -272,7 +272,7 @@ internal static class ExperimentalValidators
                 if (doc is not PartDocument part) return;
                 foreach (PlanarSketch sketch in part.ComponentDefinition.Sketches)
                 {
-                    string status = ((dynamic)sketch).ConstraintStatus.ToString();
+                    string status = sketch.ConstraintStatus.ToString();
                     if (status != "kFullyConstrainedConstraintStatus")
                         throw new CodedFailureException(InventorErrorCodes.VALIDATION_FAILED, "Sketch " + sketch.Name + " is not fully constrained (" + status + ").",
                             new JObject { ["check"] = check, ["sketch"] = sketch.Name, ["status"] = status });
