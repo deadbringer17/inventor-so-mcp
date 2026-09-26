@@ -65,10 +65,16 @@ public sealed class CadEventJournal
     public void Append(string type, string? documentId) => Append(type, documentId, null);
 
     /// <summary>
+    /// <c>data</c> flag of a <c>document_changed</c> that Inventor reported as leaving geometry and
+    /// structure alone (a save, an iProperty edit): the revision advances, the visual revision does not.
+    /// </summary>
+    public const string GeometryFlag = "geometry";
+
+    /// <summary>
     /// Record an event. Document events advance the document's revision (plans made before it are
-    /// stale); <c>document_changed</c> also advances its visual revision. View events (selection,
-    /// camera) are journalled for subscribers but advance neither: moving the camera must never
-    /// invalidate somebody's change plan.
+    /// stale); <c>document_changed</c> also advances its visual revision unless its data carries
+    /// <c>geometry: false</c>. View events (selection, camera) are journalled for subscribers but
+    /// advance neither: moving the camera must never invalidate somebody's change plan.
     /// </summary>
     public void Append(string type, string? documentId, JObject? data)
     {
@@ -78,7 +84,8 @@ public sealed class CadEventJournal
             if (documentId != null && !IsViewEvent(type))
             {
                 _revisions[documentId] = sequence;
-                if (type == "document_changed") _visual[documentId] = sequence;
+                bool nonGeometric = data?[GeometryFlag]?.Type == JTokenType.Boolean && !(bool)data[GeometryFlag]!;
+                if (type == "document_changed" && !nonGeometric) _visual[documentId] = sequence;
             }
             var entry = new JObject { ["sequence"] = sequence, ["type"] = type,
                 ["document_id"] = documentId, ["utc"] = DateTimeOffset.UtcNow.ToString("O") };

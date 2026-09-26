@@ -97,7 +97,7 @@ public sealed class ShellHandler : ExperimentalHandler
         var def = part.ComponentDefinition;
         double thickness = UnitConvert.MmToCm(X.Positive(p, "thickness_mm"));
         var removed = p["remove_face_ids"] is JArray ? X.Strings(p, "remove_face_ids") : Array.Empty<string>();
-        var faces = FeatureX.Faces(app, part, removed);
+        var faces = FeatureX.Faces(app, (global::Inventor.Document)part, removed);
         var direction = ((string?)p["direction"] ?? "inside").ToLowerInvariant() switch
         {
             "inside" => ShellDirectionEnum.kInsideShellDirection,
@@ -118,13 +118,15 @@ public sealed class DraftHandler : ExperimentalHandler
     protected override JToken Run(InventorCommandContext ctx, Application app, JObject p)
     {
         var part = X.ActivePart(app, Name);
-        var faces = FeatureX.Faces(app, part, X.Strings(p, "face_ids"));
-        var fixedFace = X.Resolve(part, X.Str(p, "fixed_face_id"), out _) as Face
+        var faces = FeatureX.Faces(app, (global::Inventor.Document)part, X.Strings(p, "face_ids"));
+        var fixedFace = X.Resolve((global::Inventor.Document)part, X.Str(p, "fixed_face_id"), out _) as Face
             ?? throw new ArgumentException("fixed_face_id must be a face.");
         double angle = X.Num(p, "angle_deg");
         if (Math.Abs(angle) >= 89) throw new ArgumentException("angle_deg must be within (-89, 89).");
-        dynamic drafts = part.ComponentDefinition.Features.FaceDraftFeatures;
-        object definition = drafts.CreateFaceDraftDefinition(faces, fixedFace, angle * Math.PI / 180.0);
+        var drafts = part.ComponentDefinition.Features.FaceDraftFeatures;
+        var definition = drafts.CreateFaceDraftDefinition();
+        definition.SetFixedPlane(faces, fixedFace, angle * Math.PI / 180.0,
+            DraftAngleConstraintTypeEnum.kOneWayDraftAngle, Type.Missing, false);
         return FeatureX.Feature(drafts.Add(definition));
     }
 }
@@ -158,7 +160,7 @@ public sealed class ThickenHandler : ExperimentalHandler
     protected override JToken Run(InventorCommandContext ctx, Application app, JObject p)
     {
         var part = X.ActivePart(app, Name);
-        var faces = FeatureX.Faces(app, part, X.Strings(p, "face_ids"));
+        var faces = FeatureX.Faces(app, (global::Inventor.Document)part, X.Strings(p, "face_ids"));
         dynamic thickens = part.ComponentDefinition.Features.ThickenFeatures;
         object feature = thickens.Add(faces, UnitConvert.MmToCm(X.Positive(p, "distance_mm")),
             X.Direction((string?)p["direction"]), X.Operation((string?)p["operation"]));
@@ -173,7 +175,7 @@ public sealed class ThreadHandler : ExperimentalHandler
     protected override JToken Run(InventorCommandContext ctx, Application app, JObject p)
     {
         var part = X.ActivePart(app, Name);
-        var face = X.Resolve(part, X.Str(p, "face_id"), out _) as Face ?? throw new ArgumentException("face_id must be a face.");
+        var face = X.Resolve((global::Inventor.Document)part, X.Str(p, "face_id"), out _) as Face ?? throw new ArgumentException("face_id must be a face.");
         if (face.SurfaceType != SurfaceTypeEnum.kCylinderSurface) throw new ArgumentException("A thread needs a cylindrical face.");
         dynamic threads = part.ComponentDefinition.Features.ThreadFeatures;
         // Internal (tapped hole) or external (bolt shank): the caller says which; the face alone
@@ -210,9 +212,9 @@ public sealed class MirrorHandler : ExperimentalHandler
                 foreach (PartFeature feature in def.Features) if (feature.Name == name) { found = feature; break; }
                 parents.Add(found ?? throw new ArgumentException("No feature named " + name + "."));
             }
+        // MirrorOfBody is read-only: Inventor infers it from bodies in the parent collection.
         dynamic mirrors = def.Features.MirrorFeatures;
         dynamic definition = mirrors.CreateDefinition(parents, plane, PatternComputeTypeEnum.kIdenticalCompute);
-        if (bodies) definition.MirrorOfBody = true;
         return FeatureX.Feature(mirrors.AddByDefinition(definition));
     }
 }

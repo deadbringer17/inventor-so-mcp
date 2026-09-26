@@ -199,7 +199,7 @@ public sealed class GetSemanticStateHandler : ExperimentalHandler
             var def = assembly.ComponentDefinition;
             foreach (ComponentOccurrence occurrence in def.Occurrences)
             {
-                string id = X.Describe(assembly, occurrence) ?? "occurrence:" + occurrence.Name;
+                string id = X.Describe((global::Inventor.Document)assembly, occurrence) ?? "occurrence:" + occurrence.Name;
                 if (!Add(new JObject { ["id"] = id, ["type"] = "occurrence", ["name"] = occurrence.Name,
                         ["metadata"] = new JObject { ["suppressed"] = occurrence.Suppressed, ["grounded"] = occurrence.Grounded, ["visible"] = occurrence.Visible } })) break;
                 if (!occurrence.Suppressed && occurrence.Definition.Document is global::Inventor.Document definition)
@@ -207,11 +207,11 @@ public sealed class GetSemanticStateHandler : ExperimentalHandler
             }
             foreach (AssemblyConstraint constraint in def.Constraints)
             {
-                string id = X.Describe(assembly, constraint) ?? "constraint:" + constraint.Name;
+                string id = X.Describe((global::Inventor.Document)assembly, constraint) ?? "constraint:" + constraint.Name;
                 if (!Add(new JObject { ["id"] = id, ["type"] = "constraint", ["name"] = constraint.Name,
                         ["metadata"] = new JObject { ["constraint_type"] = constraint.Type.ToString(), ["health"] = constraint.HealthStatus.ToString(), ["suppressed"] = constraint.Suppressed } })) break;
                 foreach (var occurrence in new[] { constraint.OccurrenceOne, constraint.OccurrenceTwo })
-                    if (occurrence != null && X.Describe(assembly, occurrence) is { } target) Relate(id, "constrains", target);
+                    if (occurrence != null && X.Describe((global::Inventor.Document)assembly, occurrence) is { } target) Relate(id, "constrains", target);
             }
         }
         else throw new CodedFailureException(InventorErrorCodes.WRONG_DOCUMENT_TYPE, "The semantic state covers parts and assemblies.");

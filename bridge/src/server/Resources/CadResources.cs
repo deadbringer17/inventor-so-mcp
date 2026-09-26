@@ -68,8 +68,17 @@ public sealed class CadResources
 
     private async Task<string> Read(string command, CancellationToken ct)
     {
-        // Propagate failures to MCP: never disguise a failed read as a valid CAD snapshot.
-        var data = await _client.SendAsync(command, new JObject(), ct);
-        return data.ToString(Formatting.None);
+        // Propagate failures to MCP: never disguise a failed read as a valid CAD snapshot. Only an
+        // McpException keeps its message; anything else reaches the client as the SDK's bare
+        // "An error occurred.", so a read with no open document could not be told from a crash.
+        try
+        {
+            var data = await _client.SendAsync(command, new JObject(), ct);
+            return data.ToString(Formatting.None);
+        }
+        catch (InventorGatewayException ex)
+        {
+            throw new ModelContextProtocol.McpException(ex.Code + ": " + ex.Message);
+        }
     }
 }

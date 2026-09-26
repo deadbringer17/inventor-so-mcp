@@ -29,10 +29,11 @@ public sealed class XrTools
     private readonly AssetStore _assets;
     private readonly InventorMcpConfig _config;
     private readonly ICallerIdentity _caller;
+    private readonly MeshCache _meshes;
 
-    public XrTools(PluginClient client, AssetStore assets, InventorMcpConfig config, ICallerIdentity caller)
+    public XrTools(PluginClient client, AssetStore assets, InventorMcpConfig config, ICallerIdentity caller, MeshCache meshes)
     {
-        _client = client; _assets = assets; _config = config; _caller = caller;
+        _client = client; _assets = assets; _config = config; _caller = caller; _meshes = meshes;
     }
 
     [McpServerTool(Name = "inventor_get_display_mesh"), Description("Tessellate one open part (or every solid body of it) and publish it as a GLB asset: metres, Y-up as in Inventor, one mesh primitive per solid body, and primitive.extras.faces mapping each face to its index range and portable face id, so a client resolves a picked triangle to a face without a round trip. Returns asset_id (a_ + SHA-256 of the bytes: unchanged geometry keeps its id), resource_uri inventor://assets/{id}, asset_url when the HTTP host runs, revision and visual_revision, and per-body counts. document_id defaults to the active document; any open part may be named, including one referenced by an assembly. tolerance_mm (0.01-5, default 0.1) is the chord tolerance; max_triangles (default 500000) refuses larger meshes with MESH_TOO_LARGE instead of truncating. Read-only; experimental tier.")]
@@ -182,6 +183,16 @@ public sealed class XrTools
     private async Task<(JObject data, GlbBuilder.MeshSource source)> FetchMesh(string? documentId, double toleranceMm, int maxTriangles,
         bool includeFaceIds, CancellationToken ct)
     {
+        // Unchanged geometry must keep its asset id: reuse the tessellation of this visual revision.
+        var revision = (JObject)await _client.SendAsync("get_visual_revision", new JObject { ["document_id"] = documentId }, ct);
+        if ((string?)revision["document_id"] is { } revisionDocument && (string?)revision["visual_revision"] is { } visual
+            && _meshes.TryGet(MeshCache.Key(revisionDocument, visual, toleranceMm, includeFaceIds), out var cached, out var cachedSource)
+            && cachedSource.Bodies.Sum(b => b.Indices.Length / 3) <= maxTriangles)
+        {
+            cached["revision"] = revision["revision"]?.DeepClone();
+            return (cached, cachedSource);
+        }
+
         var data = (JObject)await _client.SendAsync("get_display_mesh", new JObject
         {
             ["document_id"] = documentId, ["tolerance_mm"] = toleranceMm, ["max_triangles"] = maxTriangles, ["include_face_ids"] = includeFaceIds,
@@ -193,6 +204,8 @@ public sealed class XrTools
             DocumentId = (string?)data["document_id"],
             Bodies = bodies,
         };
+        if ((string?)data["document_id"] is { } fetchedDocument && (string?)data["visual_revision"] is { } fetchedVisual)
+            _meshes.Put(MeshCache.Key(fetchedDocument, fetchedVisual, toleranceMm, includeFaceIds), data, source);
         return (data, source);
     }
 

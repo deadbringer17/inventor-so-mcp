@@ -21,6 +21,14 @@ PANEL_Y_MM = 80.0
 FLANGE_MM = 20.0
 
 
+def has_code(result, code):
+    """Error codes travel in error.code / error.details, not in the prose (see 08e2e34)."""
+    error = result.get('error') or {}
+    details = error.get('details') or {}
+    codes = (error.get('code'), details.get('code'), details.get('step_code'), details.get('reason'))
+    return code in codes or code in (error.get('message') or '')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--server', required=True)
@@ -129,7 +137,7 @@ def main():
         if tall is not None:
             refused_corner = batch(dict(command='sheet_metal_corner_round',
                 arguments=dict(edge_ids=[tall['id']], radius_mm=4)), expect_failure=True)
-            assert 'NOT_A_CORNER_EDGE' in refused_corner['error']['message'], refused_corner
+            assert has_code(refused_corner, 'NOT_A_CORNER_EDGE'), refused_corner
         rounded = batch(dict(command='sheet_metal_corner_round',
             arguments=dict(edge_ids=[corner['id']], radius_mm=4)))['steps'][0]['data']
         assert rounded['radius_mm'] == 4, rounded
@@ -211,7 +219,7 @@ def main():
             dict(command='close_sketch', arguments={}))['steps'][0]['data']['sketch_name']
         refused_fold = batch(dict(command='sheet_metal_fold',
             arguments=dict(sketch_name=short_line, line_index=1, angle_degrees=90)), expect_failure=True)
-        assert 'BEND_LINE_REJECTED' in refused_fold['error']['message'], refused_fold
+        assert has_code(refused_fold, 'BEND_LINE_REJECTED'), refused_fold
 
         folded = batch(dict(command='sheet_metal_fold',
             arguments=dict(sketch_name=line_sketch, line_index=1, angle_degrees=90,
@@ -240,13 +248,13 @@ def main():
             dict(command='close_sketch', arguments={}))['steps'][0]['data']['sketch_name']
         refused_plane = batch(dict(command='sheet_metal_punch',
             arguments=dict(sketch_name=plane_sketch, punch='obround.ide')), expect_failure=True)
-        assert 'PUNCH_NEEDS_FACE_SKETCH' in refused_plane['error']['message'], refused_plane
+        assert has_code(refused_plane, 'PUNCH_NEEDS_FACE_SKETCH'), refused_plane
         refused_path = batch(dict(command='sheet_metal_punch',
             arguments=dict(sketch_name=punch_sketch, punch='..\obround.ide')), expect_failure=True)
         assert 'catalog file name' in refused_path['error']['message'], refused_path
         refused_missing = batch(dict(command='sheet_metal_punch',
             arguments=dict(sketch_name=punch_sketch, punch='no such punch')), expect_failure=True)
-        assert 'PUNCH_NOT_IN_CATALOG' in refused_missing['error']['message'], refused_missing
+        assert has_code(refused_missing, 'PUNCH_NOT_IN_CATALOG'), refused_missing
         punched = batch(dict(command='sheet_metal_punch',
             arguments=dict(sketch_name=punch_sketch, punch='obround.ide')))['steps'][0]['data']
         assert punched['punch_count'] == 2 and punched['punch'] == 'obround.ide', punched

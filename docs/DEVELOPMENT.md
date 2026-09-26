@@ -372,3 +372,26 @@ Promotion checklist, per capability, on the Inventor 2027 workstation:
 2. `inventor_get_capabilities`: every expected command listed, `add_in_experimental_enabled: true`.
 3. L3/L4 on a test-owned fixture: preview leaves revision and model unchanged; a failing step rolls back; stale revision refused; health after commit; document count restored. For XR: vertex/triangle counts stable across calls, bbox equal to `RangeBox`, face ids resolve, transforms match the occurrence positions in Inventor, asset id unchanged after a save, changed after an edit.
 4. Record the evidence here, then move the handler out of `Experimental/` and flip its contract and catalogue entry.
+
+## Experimental tier on real Inventor 2027 — 2026-09-26
+
+Steps 1-3 of the checklist above ran on the workstation (final package 20260926-150040-70f115b8, add-in module path checked in the running process, server with `--enable-experimental`). Step 4 (moving handlers out of `Experimental/`) has not been done.
+
+- Build against the real interop failed first: `Parameters` resolved to the `Handlers.Parameters` namespace, and the real `PartDocument`/`AssemblyDocument` do not derive from `Document` (the Linux stub did). Fixed with `global::Inventor.Parameters` and explicit `(Document)` casts.
+- `inventor_get_capabilities`: 102 tools, all 82 batch commands runnable, `add_in_experimental_enabled: true`.
+- Six live defects fixed, each confirmed first by an out-of-process COM probe:
+  - `get_display_mesh` / scene `include_meshes`: the typed `Face.CalculateFacets` with `out` arrays answers DISP_E_TYPEMISMATCH; late binding with pre-sized empty arrays works.
+  - `raycast_entity`: the late-bound `FindUsingRay` could not convert the UnitVector; typed calls per document kind work.
+  - `draft`: `CreateFaceDraftDefinition()` takes no arguments; the definition is now filled with `SetFixedPlane`.
+  - `mirror` of bodies: `MirrorOfBody` is read-only; Inventor infers it from bodies in the parent collection.
+  - `set_bom_structure`: an occurrence accepts only `default` and `reference` (normal, phantom, purchased and inseparable answer E_INVALIDARG). Catalogue narrowed to `default|reference`.
+  - Asset id not stable: face ids carry a fresh key context on every call, so identical geometry produced different GLB bytes; and a save fires `OnDocumentChange` (SaveAs reports kQueryOnlyCmdType, an iProperty edit kFilePropertyEditCmdType), which advanced the visual revision. The tracker now flags these non-geometric changes (`geometry: false`, revision still advances), and the server reuses the tessellation of an unchanged visual revision (`MeshCache`).
+- Live L3/L4 results on test-owned documents (all closed and deleted, original document set restored every run): part 64/64, assembly and drawing 50/50, XR 10/10.
+  - Part: every experimental sketch command, dimensions, work geometry, parameters, iProperties (whitelist refusal), shell/draft/split/mirror/combine/loft/sweep previews, thicken, move_body, visibility, thread M8x1.25, model states, design views, dependencies, trace, semantic state, camera, highlight, focus, raycast, plan/commit (one-shot, PLAN_NOT_FOUND on reuse), failing step rolled back, STALE_REVISION, `validate[]` including sketch_fully_constrained and unknown-check refusal, release package (STEP).
+  - Assembly: scene graph transforms equal to the occurrence transforms, scene with meshes, pick from a part face id to a face proxy, raycast, assembly health, BOM validate/compare, suppress, visibility, BOM override, pattern and replace previews (path refused), positional representation, model states, interference plus clearance validation, motion sampling (clearance and interference failures found at the right samples, parameter restored), release package (STEP + bom.csv).
+  - Drawing: parts list, note, view move and scale, add/activate/delete sheet (last sheet refused), base and projected views, drawing validation, release package (PDF).
+  - XR: GLB bbox equals `RangeBox` (metres), six face ranges whose ids resolve and highlight, counts and asset id stable across calls and after a save, new asset id after an edit, MESH_TOO_LARGE and tolerance refusals.
+- A rolled-back batch advanced the document revision (the aborted transaction still raises change events) although the model was unchanged. `AtomicCadBatch` now restores the planned revision after a successful rollback, as it already did after a preview; after ROLLBACK_FAILED it never does. Verified live: revision identical before and after a failing batch.
+- Resource reads (`inventor://active-document` and the other add-in-backed resources) reached the client as the SDK's bare "An error occurred."; they now fail with an McpException carrying the code (verified live: `NO_DOCUMENT: no active Inventor document`).
+- Stable regression on the final build (package 20260926-150040-70f115b8): all 15 `scripts/smoke-*.py` pass live (smoke-mcp with `--live` and a document open, smoke-projection with the server as its positional argument). Their error assertions now use `has_code`, which reads `error.code` and `error.details` instead of the message (08e2e34 moved the codes there).
+- Unit/protocol suite: 859 passing on Windows.

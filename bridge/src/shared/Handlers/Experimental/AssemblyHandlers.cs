@@ -33,7 +33,7 @@ public sealed class SuppressComponentHandler : ExperimentalHandler
     protected override JToken Run(InventorCommandContext ctx, Application app, JObject p)
     {
         var assembly = X.ActiveAssembly(app, Name);
-        var occurrence = AssemblyX.Occurrence(assembly, (string?)p["occurrence_id"]);
+        var occurrence = AssemblyX.Occurrence((global::Inventor.Document)assembly, (string?)p["occurrence_id"]);
         if (p["suppressed"]?.Type != JTokenType.Boolean) throw new ArgumentException("suppressed must be true or false.");
         bool suppress = (bool)p["suppressed"]!;
         if (suppress && !occurrence.Suppressed) occurrence.Suppress();
@@ -50,7 +50,7 @@ public sealed class ReplaceComponentHandler : ExperimentalHandler
     protected override JToken Run(InventorCommandContext ctx, Application app, JObject p)
     {
         var assembly = X.ActiveAssembly(app, Name);
-        var occurrence = AssemblyX.Occurrence(assembly, (string?)p["occurrence_id"]);
+        var occurrence = AssemblyX.Occurrence((global::Inventor.Document)assembly, (string?)p["occurrence_id"]);
         string file = X.Str(p, "workspace_document");
         string path = WorkspaceDocumentPolicy.ExistingPath(WorkspaceDocumentPolicy.Root(), file);
         occurrence.Replace(path, X.Bool(p, "replace_all", false));
@@ -67,7 +67,7 @@ public sealed class PatternComponentHandler : ExperimentalHandler
         var assembly = X.ActiveAssembly(app, Name);
         var def = assembly.ComponentDefinition;
         var parents = app.TransientObjects.CreateObjectCollection();
-        foreach (var id in X.Strings(p, "occurrence_ids", 64)) parents.Add(AssemblyX.Occurrence(assembly, id));
+        foreach (var id in X.Strings(p, "occurrence_ids", 64)) parents.Add(AssemblyX.Occurrence((global::Inventor.Document)assembly, id));
         int count1 = X.Int(p, "count1", 2, 1000);
         double spacing1 = UnitConvert.MmToCm(X.Positive(p, "spacing_mm1"));
         dynamic patterns = def.OccurrencePatterns;
@@ -105,15 +105,15 @@ public sealed class SetBomStructureHandler : ExperimentalHandler
     protected override JToken Run(InventorCommandContext ctx, Application app, JObject p)
     {
         var assembly = X.ActiveAssembly(app, Name);
-        var occurrence = AssemblyX.Occurrence(assembly, (string?)p["occurrence_id"]);
+        var occurrence = AssemblyX.Occurrence((global::Inventor.Document)assembly, (string?)p["occurrence_id"]);
+        // An occurrence accepts only these two overrides (verified live on 2027: normal, phantom,
+        // purchased and inseparable answer E_INVALIDARG); the others belong to the component's own
+        // document, which an assembly transaction must not rewrite.
         occurrence.BOMStructure = X.Str(p, "structure").ToLowerInvariant() switch
         {
-            "normal" => BOMStructureEnum.kNormalBOMStructure,
-            "purchased" => BOMStructureEnum.kPurchasedBOMStructure,
-            "phantom" => BOMStructureEnum.kPhantomBOMStructure,
+            "default" => BOMStructureEnum.kDefaultBOMStructure,
             "reference" => BOMStructureEnum.kReferenceBOMStructure,
-            "inseparable" => BOMStructureEnum.kInseparableBOMStructure,
-            _ => throw new ArgumentException("structure must be normal, purchased, phantom, reference or inseparable."),
+            _ => throw new ArgumentException("structure must be default or reference; normal, phantom, purchased and inseparable are set on the component's own document."),
         };
         return new JObject { ["occurrence"] = occurrence.Name, ["bom_structure"] = occurrence.BOMStructure.ToString() };
     }
@@ -137,7 +137,7 @@ public sealed class GetAssemblyHealthHandler : ExperimentalHandler
         {
             if (occurrences.Count >= max) break;
             X.Deadline(ctx, "while reading assembly health");
-            var item = new JObject { ["name"] = occurrence.Name, ["occurrence_id"] = X.Describe(assembly, occurrence),
+            var item = new JObject { ["name"] = occurrence.Name, ["occurrence_id"] = X.Describe((global::Inventor.Document)assembly, occurrence),
                 ["suppressed"] = occurrence.Suppressed, ["grounded"] = occurrence.Grounded };
             if (!occurrence.Suppressed)
             {

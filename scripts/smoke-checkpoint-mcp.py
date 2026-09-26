@@ -10,6 +10,14 @@ import win32com.client
 
 Mcp = runpy.run_path(str(Path(__file__).with_name('smoke-atomic-mcp.py')))['Mcp']
 
+
+def has_code(result, code):
+    """Error codes travel in error.code / error.details, not in the prose (see 08e2e34)."""
+    error = result.get('error') or {}
+    details = error.get('details') or {}
+    codes = (error.get('code'), details.get('code'), details.get('step_code'), details.get('reason'))
+    return code in codes or code in (error.get('message') or '')
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--server', required=True)
@@ -37,7 +45,7 @@ def main():
             return json.loads(client.send('resources/read', dict(uri='inventor://active-document'))['contents'][0]['text'])
         before = state()
         stale = client.tool('inventor_checkpoint_create', document_id=before['id'], expected_revision='stale', label='rejected stale test')
-        assert stale.get('ok') is False and 'STALE_REVISION' in stale['error']['message'], stale
+        assert stale.get('ok') is False and has_code(stale, 'STALE_REVISION'), stale
         created = client.tool('inventor_checkpoint_create', document_id=before['id'], expected_revision=before['revision'], label='before CheckpointWidth edit')
         assert created.get('ok') is not False and created['id'].startswith('cp_'), created
         assert part.FullFileName == str(fixture) and part.Dirty == before['dirty']
@@ -49,7 +57,7 @@ def main():
         assert unchanged.get('ok') is not False, unchanged
         assert not unchanged['parameters']['changed'] and not any(q['changed'] for q in unchanged['physical']), unchanged
         stale_diff = reader.tool('inventor_diff_checkpoint', document_id=before['id'], expected_revision='stale', checkpoint_id=checkpoint_id)
-        assert stale_diff.get('ok') is False and 'STALE_REVISION' in stale_diff['error']['message'], stale_diff
+        assert stale_diff.get('ok') is False and has_code(stale_diff, 'STALE_REVISION'), stale_diff
         listed = reader.tool('inventor_checkpoint_list', document_id=before['id'])
         assert checkpoint_id in {x['id'] for x in listed['checkpoints']}, listed
         current = state()
@@ -74,7 +82,7 @@ def main():
         assert compared['geometry_equivalence_proven'] is False
         print('Read-only diff passed: parameter changes, feature rename as removal/addition, volume delta = pi*1000 mm3; document state unchanged.', flush=True)
         refused = client.tool('inventor_checkpoint_restore', checkpoint_id=checkpoint_id)
-        assert refused.get('ok') is False and 'SOURCE_STILL_OPEN' in refused['error']['message'], refused
+        assert refused.get('ok') is False and has_code(refused, 'SOURCE_STILL_OPEN'), refused
         assert abs(part.ComponentDefinition.Parameters.Item('CheckpointWidth').Value-3)<1e-8
         part.Close(True)
         part = None

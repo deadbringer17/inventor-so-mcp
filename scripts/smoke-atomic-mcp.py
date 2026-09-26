@@ -9,6 +9,14 @@ import pythoncom
 import win32com.client
 
 
+def has_code(result, code):
+    """Error codes travel in error.code / error.details, not in the prose (see 08e2e34)."""
+    error = result.get('error') or {}
+    details = error.get('details') or {}
+    codes = (error.get('code'), details.get('code'), details.get('step_code'), details.get('reason'))
+    return code in codes or code in (error.get('message') or '')
+
+
 class Mcp:
     def __init__(self, server, readonly=False, extra_flags=None):
         flags = (['--read-only'] if readonly else []) + (extra_flags or [])
@@ -107,12 +115,12 @@ def main():
         assert preview.get('status') == 'preview_rolled_back', preview
         assert abs(width() - 2) < 1e-8
         failed = client.tool('inventor_atomic_batch', **request(fail=True))
-        assert failed.get('ok') is False and 'ROLLED_BACK' in failed['error']['message'], failed
+        assert failed.get('ok') is False and has_code(failed, 'ROLLED_BACK'), failed
         assert abs(width() - 2) < 1e-8
         stale = request()
         stale['expected_revision'] = 'stale'
         rejected = client.tool('inventor_atomic_batch', **stale)
-        assert rejected.get('ok') is False and 'STALE_REVISION' in rejected['error']['message'], rejected
+        assert rejected.get('ok') is False and has_code(rejected, 'STALE_REVISION'), rejected
         committed = client.tool('inventor_atomic_batch', **request())
         assert committed.get('status') == 'committed', committed
         assert abs(width() - 2.5) < 1e-8

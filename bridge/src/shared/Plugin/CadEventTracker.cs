@@ -22,14 +22,27 @@ internal sealed class CadEventTracker : IDisposable
         _events.OnActivateDocument += Activated;
         _events.OnCloseDocument += Closed;
     }
-    private void Record(string type, _Document doc)
+    /// <summary>
+    /// Change reasons that leave geometry and structure alone. Verified live on 2027: SaveAs reports
+    /// kQueryOnlyCmdType and an iProperty edit kFilePropertyEditCmdType, while feature, parameter and
+    /// visibility edits report kShapeEditCmdType or kNonShapeEditCmdType.
+    /// </summary>
+    private const int NonGeometricReasons = (int)(CommandTypesEnum.kQueryOnlyCmdType
+        | CommandTypesEnum.kFileOperationsCmdType | CommandTypesEnum.kFilePropertyEditCmdType);
+
+    private void Record(string type, _Document doc, Newtonsoft.Json.Linq.JObject? data = null)
     {
         string? id = null;
         try { id = "doc_" + doc.InternalName; } catch { /* closed document may be disconnected */ }
-        Journal.Append(type, id);
+        Journal.Append(type, id, data);
     }
     private void Changed(_Document doc, EventTimingEnum timing, CommandTypesEnum reason, NameValueMap context, out HandlingCodeEnum handling)
-    { handling = HandlingCodeEnum.kEventNotHandled; if (timing == EventTimingEnum.kAfter) Record("document_changed", doc); }
+    {
+        handling = HandlingCodeEnum.kEventNotHandled;
+        if (timing != EventTimingEnum.kAfter) return;
+        bool geometric = ((int)reason & ~NonGeometricReasons) != 0;
+        Record("document_changed", doc, geometric ? null : new Newtonsoft.Json.Linq.JObject { [CadEventJournal.GeometryFlag] = false });
+    }
     private void Created(_Document doc, EventTimingEnum timing, NameValueMap context, out HandlingCodeEnum handling)
     { handling = HandlingCodeEnum.kEventNotHandled; if (timing == EventTimingEnum.kAfter) Record("document_opened", doc); }
     private void Opened(_Document doc, string path, EventTimingEnum timing, NameValueMap context, out HandlingCodeEnum handling)

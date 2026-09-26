@@ -262,8 +262,8 @@ public static class CadBatchCommandCatalog
             new[] { "dir2:X|Y|Z", "count2:integer", "spacing_mm2:number" }, A),
         X("activate_positional_representation", "Activate a positional representation by name.",
             new[] { "name:string" }, None, A),
-        X("set_bom_structure", "Per-occurrence BOM structure override, stored in the assembly.",
-            new[] { "occurrence_id:string", "structure:normal|purchased|phantom|reference|inseparable" }, None, A),
+        X("set_bom_structure", "Per-occurrence BOM structure override, stored in the assembly: reference, or default to follow the component's own structure.",
+            new[] { "occurrence_id:string", "structure:default|reference" }, None, A),
 
         // Drawing (active drawing document)
         X("add_sheet", "Add a sheet; A-series size and orientation.",

@@ -7,6 +7,14 @@ import win32com.client
 
 Mcp = runpy.run_path(str(Path(__file__).with_name('smoke-atomic-mcp.py')))['Mcp']
 
+
+def has_code(result, code):
+    """Error codes travel in error.code / error.details, not in the prose (see 08e2e34)."""
+    error = result.get('error') or {}
+    details = error.get('details') or {}
+    codes = (error.get('code'), details.get('code'), details.get('step_code'), details.get('reason'))
+    return code in codes or code in (error.get('message') or '')
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--server', required=True)
@@ -46,14 +54,14 @@ def main():
                 expected_revision='stale' if stale else state['revision'], component_id=component,
                 translation_mm=[dx,0,0], minimum_clearance_mm=5, preview=preview, **rotation)
         stale = move(-20, False, True)
-        assert stale.get('ok') is False and 'STALE_REVISION' in stale['error']['message'], stale
+        assert stale.get('ok') is False and has_code(stale, 'STALE_REVISION'), stale
         preview = move(-20, True)
         assert preview.get('status') == 'preview_rolled_back', preview
         assert abs(b.Transformation.Translation.X - 5) < 1e-7
         for dx, expected in ((-26,'CLEARANCE_FAILED'),(-40,'INTERFERENCE')):
             rejected = move(dx, False)
-            assert rejected.get('ok') is False and expected in rejected['error']['message'], rejected
-            assert 'ROLLED_BACK' in rejected['error']['message']
+            assert rejected.get('ok') is False and has_code(rejected, expected), rejected
+            assert has_code(rejected, 'ROLLED_BACK')
             assert abs(b.Transformation.Translation.X - 5) < 1e-7
         committed = move(-20, False)
         assert committed.get('status') == 'committed', committed
@@ -64,7 +72,7 @@ def main():
         assert rotation_preview.get('status') == 'preview_rolled_back', rotation_preview
         assert abs(b.Transformation.Cell(1,1)-1)<1e-7
         rejected_rotation = move(0, False, angle=-90)
-        assert rejected_rotation.get('ok') is False and 'ROLLED_BACK' in rejected_rotation['error']['message'], rejected_rotation
+        assert rejected_rotation.get('ok') is False and has_code(rejected_rotation, 'ROLLED_BACK'), rejected_rotation
         assert abs(b.Transformation.Cell(1,1)-1)<1e-7
         rotation_commit = move(0, False, angle=90)
         assert rotation_commit.get('status') == 'committed', rotation_commit
@@ -86,7 +94,7 @@ def main():
             return client.tool('inventor_edit_constraint_safe', document_id=state['id'], expected_revision='stale' if stale else state['revision'],
                 constraint_id=constraint['id'], value=value, units=units, minimum_clearance_mm=5, preview=preview)
         result = edit(30, False, stale=True)
-        assert result.get('ok') is False and 'STALE_REVISION' in result['error']['message'], result
+        assert result.get('ok') is False and has_code(result, 'STALE_REVISION'), result
         result = edit(30, False, units='deg')
         assert result.get('ok') is False and 'units=mm' in result['error']['message'], result
         assert abs(b.Transformation.Translation.X-start_x)<1e-7
@@ -94,7 +102,7 @@ def main():
         assert result.get('status') == 'preview_rolled_back', result
         assert abs(b.Transformation.Translation.X-start_x)<1e-7
         result = edit(24, False)
-        assert result.get('ok') is False and 'CLEARANCE_FAILED' in result['error']['message'] and 'ROLLED_BACK' in result['error']['message'], result
+        assert result.get('ok') is False and has_code(result, 'CLEARANCE_FAILED') and has_code(result, 'ROLLED_BACK'), result
         assert abs(b.Transformation.Translation.X-start_x)<1e-7
         result = edit(30, False)
         assert result.get('status') == 'committed', result
