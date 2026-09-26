@@ -27,6 +27,7 @@ public sealed class FakeAddIn : System.IAsyncDisposable
     private int _sequence = 1;
     private int _visual = 1;
     private double _boltLengthCm = 1.0;
+    private readonly List<JObject> _events = new();
 
     public string DescriptorDirectory { get; }
     public List<string> Commands { get; } = new();
@@ -57,6 +58,17 @@ public sealed class FakeAddIn : System.IAsyncDisposable
 
     public string Revision { get { lock (_gate) return "fake:" + _sequence; } }
     private string Visual { get { lock (_gate) return "fake:v" + _visual; } }
+
+    /// <summary>Simulate an edit in Inventor: advances the revision (and the visual revision for geometry) and journals it.</summary>
+    public void RaiseDocumentChanged(bool geometry)
+    {
+        lock (_gate)
+        {
+            _sequence++;
+            if (geometry) _visual++;
+            _events.Add(new JObject { ["seq"] = _events.Count + 1, ["type"] = "document_changed", ["document_id"] = AssemblyId, ["geometry"] = geometry });
+        }
+    }
 
     private async Task Serve(CancellationToken ct)
     {
@@ -111,7 +123,15 @@ public sealed class FakeAddIn : System.IAsyncDisposable
             case "get_visual_revision":
                 return Ok(new JObject { ["document_id"] = (string?)p["document_id"] ?? AssemblyId, ["revision"] = Revision, ["visual_revision"] = Visual });
             case "get_events":
-                return Ok(new JObject { ["epoch"] = "fake", ["cursor"] = _sequence, ["resync_required"] = false, ["events"] = new JArray() });
+                lock (_gate)
+                {
+                    long after = (long?)p["after"] ?? 0;
+                    return Ok(new JObject
+                    {
+                        ["epoch"] = "fake", ["cursor"] = _events.Count, ["resync_required"] = false,
+                        ["events"] = new JArray(_events.Where(e => (long)e["seq"]! > after).Select(e => e.DeepClone())),
+                    });
+                }
             case "highlight_entity":
                 return Ok(new JObject { ["mode"] = p["mode"], ["highlighted"] = (p["entity_ids"] as JArray)?.Count ?? 0 });
             case "pick_entity":
