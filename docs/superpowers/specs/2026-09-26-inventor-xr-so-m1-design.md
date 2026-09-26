@@ -31,6 +31,7 @@ Fuori da M1: menu polso, Browser, breadcrumb, misure, section, scale modes diver
 | Pairing/trasporto | HTTPS con certificato self-signed pinnato; QR `{host, port, token monouso, sha256 cert}`; fallback codice 6 cifre + IP |
 | Repo | monorepo: progetto Unity in `Inventor XR SO/` dentro `inventor-so-mcp`; `.gitignore` Unity; Git LFS per binari |
 | Client MCP | client JSON-RPC/SSE minimo scritto a mano su `UnityWebRequest` + Newtonsoft.Json (niente SDK `ModelContextProtocol`: rischio IL2CPP/stripping, pinning su Android) |
+| Lettura GLB | reader proprio nel Core (GlbModel), niente glTFast: i GLB vengono solo da GlbBuilder di questo repo, testati insieme |
 
 Prerequisito ambiente: modulo **Android Build Support** (OpenJDK, SDK, NDK) da aggiungere all'editor 6000.6.3f1 via Unity Hub.
 
@@ -58,7 +59,7 @@ Assembly definition separati. I primi quattro non dipendono dal Meta SDK e sono 
 | `XrSo.Net` | JSON-RPC su Streamable HTTP, stream SSE, `CertificateHandler` con pinning sha256, bearer, backoff | Newtonsoft.Json |
 | `XrSo.Backend` | interfaccia tipizzata `IInventorBackend` (`GetCapabilities`, `GetSceneGraph`, `GetVisualRevision`, `DownloadAsset`, `PickEntity`, `Highlight`, `SubscribeEvents`) + DTO | Net |
 | `XrSo.Session` | stato sessione: server, documento attivo, revision, visual_revision, online/offline, read-only | Backend |
-| `XrSo.Scene` | scene graph → gerarchia GameObject, GLB via glTFast, instancing per definizione, cache asset su disco per `asset_id`, mappa `(primitive, triangolo) → face_id` da `extras.faces` | Backend, glTFast |
+| `XrSo.Scene` | scene graph → gerarchia GameObject, GLB via `GlbModel` (Core), instancing per definizione, cache asset su disco per `asset_id`, mappa `(primitive, triangolo) → face_id` da `extras.faces` | Backend |
 | `XrSo.Selection` | ray pick → occurrence/face, highlight locale (overlay sul range di indici), chiamata highlight a Inventor | Scene, Backend |
 | `XrSo.Pairing` | scan QR (Passthrough Camera API, permesso camera), inserimento manuale, storage credenziali in Android Keystore | Net |
 | `XrSo.App` | bootstrap, rig Meta XR, Home, scelta MR/Studio VR, UI minima | tutti |
@@ -132,7 +133,7 @@ Default di selezione (spec §14): assembly attivo → occurrence; part attiva �
 
 ## 6. Rischio tecnico prioritario
 
-glTFast deve preservare ordine degli indici e primitive così che i range di `extras.faces` restino validi. **Primo task del piano:** spike su GLB fixture prodotti da `GlbBuilder`. Se l'ordine non è garantito, `XrSo.Scene` legge accessor ed `extras` direttamente dal chunk JSON/BIN del GLB e costruisce la mappa da lì.
+Rischio eliminato: il Core legge direttamente i GLB di `GlbBuilder` (test sul formato reale nello stesso repo), la conversione di mano inverte l'avvolgimento dentro ogni triangolo senza cambiarne l'ordine, quindi i range di `extras.faces` restano validi.
 
 ## 7. Test
 
