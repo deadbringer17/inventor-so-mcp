@@ -27,7 +27,9 @@ public sealed class EventSubscriptionService : BackgroundService
     private readonly PluginClient _client;
     private readonly ILogger<EventSubscriptionService>? _logger;
     private readonly object _gate = new();
-    private readonly Dictionary<McpServer, HashSet<string>> _subscriptions = new();
+    // Keyed by session, not by McpServer: the SDK hands every request its own destination-bound
+    // wrapper (reference equality), so keying by the instance made unsubscribe a no-op (seen live).
+    private readonly Dictionary<string, (McpServer Server, HashSet<string> Uris)> _subscriptions = new(StringComparer.Ordinal);
     private readonly TimeSpan _interval;
     private long _cursor;
     private string? _epoch;
@@ -50,8 +52,10 @@ public sealed class EventSubscriptionService : BackgroundService
             throw new ModelContextProtocol.McpException("Only " + string.Join(", ", SubscribableUris) + " can be subscribed.");
         lock (_gate)
         {
-            if (!_subscriptions.TryGetValue(server, out var uris)) _subscriptions[server] = uris = new HashSet<string>(StringComparer.Ordinal);
+            var key = SessionKey(server);
+            var uris = _subscriptions.TryGetValue(key, out var entry) ? entry.Uris : new HashSet<string>(StringComparer.Ordinal);
             uris.Add(uri);
+            _subscriptions[key] = (server, uris);   // the latest request's handle sends from now on
         }
     }
 
@@ -59,9 +63,13 @@ public sealed class EventSubscriptionService : BackgroundService
     {
         lock (_gate)
         {
-            if (_subscriptions.TryGetValue(server, out var uris) && uris.Remove(uri) && uris.Count == 0) _subscriptions.Remove(server);
+            var key = SessionKey(server);
+            if (_subscriptions.TryGetValue(key, out var entry) && entry.Uris.Remove(uri) && entry.Uris.Count == 0) _subscriptions.Remove(key);
         }
     }
+
+    /// <summary>A stdio process serves one session, which may have no id; HTTP sessions always do.</summary>
+    public static string SessionKey(McpServer server) => server.SessionId ?? "";
 
     /// <summary>Resources affected by a batch of journal events.</summary>
     public static IReadOnlyCollection<string> AffectedUris(JArray events)
@@ -106,10 +114,10 @@ public sealed class EventSubscriptionService : BackgroundService
         // After an add-in restart or journal overflow the whole state may have moved: tell everyone.
         var uris = resync ? SubscribableUris : AffectedUris(events);
         if (uris.Count == 0) return;
-        List<(McpServer server, string uri)> targets;
+        List<(string key, McpServer server, string uri)> targets;
         lock (_gate)
-            targets = _subscriptions.SelectMany(s => s.Value.Where(uris.Contains).Select(u => (s.Key, u))).ToList();
-        foreach (var (server, uri) in targets)
+            targets = _subscriptions.SelectMany(s => s.Value.Uris.Where(uris.Contains).Select(u => (s.Key, s.Value.Server, u))).ToList();
+        foreach (var (key, server, uri) in targets)
         {
             try
             {
@@ -119,7 +127,7 @@ public sealed class EventSubscriptionService : BackgroundService
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 // A session that cannot be notified is gone; drop all its subscriptions.
-                lock (_gate) _subscriptions.Remove(server);
+                lock (_gate) _subscriptions.Remove(key);
             }
         }
     }

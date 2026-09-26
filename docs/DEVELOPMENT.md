@@ -395,3 +395,25 @@ Steps 1-3 of the checklist above ran on the workstation (final package 20260926-
 - Resource reads (`inventor://active-document` and the other add-in-backed resources) reached the client as the SDK's bare "An error occurred."; they now fail with an McpException carrying the code (verified live: `NO_DOCUMENT: no active Inventor document`).
 - Stable regression on the final build (package 20260926-150040-70f115b8): all 15 `scripts/smoke-*.py` pass live (smoke-mcp with `--live` and a document open, smoke-projection with the server as its positional argument). Their error assertions now use `has_code`, which reads `error.code` and `error.details` instead of the message (08e2e34 moved the codes there).
 - Unit/protocol suite: 859 passing on Windows.
+
+## Experimental tier, remaining live checks — 2026-09-26 (afternoon)
+
+Final package 20260926-154651-97cecaa3 on Inventor 2027 (module path checked in the running process).
+
+- Committed, not only previewed: shell (open-top, volume 11712 mm3 as computed), draft, split trim and split body, mirror of a feature (volume +1 boss) and of a body (the copy joins the body as a separate lump), combine, loft, sweep (volume as computed); every feature `kUpToDateHealth`.
+- `add_dimension`, every kind with the parameter value read back from Inventor: distance, horizontal_distance, vertical_distance, angle, radius, diameter, arc_length, plus a driven dimension. Sketch constraints midpoint (the solver moves the line so its midpoint lands on the centre), equal_radius and fix.
+- Assemblies: pattern_component and replace_component committed; compare_bom reports the quantity change, the added and the removed part; motion sampling on an angle constraint (degrees) and on both parameters of a rotational joint, value and revision restored afterwards.
+- `set_camera` perspective with fov, fov out of range refused; `get_tool_schema` list, one tool, unknown refused; `get_selection` and `inventor://selection` see an API selection without advancing the revision.
+- Remote host (`Inventor.So.Mcp.Http`, loopback): /healthz; 401 without or with a wrong token; initialize and tools/list (no switch_target); a session refused (403) for another token; batch and mesh over HTTP; /assets with ETag/304, 401 without a token, 404 for another client and for a bad id; scene with meshes; viewer page and script under the CSP; resources/subscribe notifications on the GET stream and none after unsubscribe; 429 from the rate limiter; audit lines carry the client name, never the token. The WebXR viewer, driven in a browser: connect, load, pick a face (portable id shown), preview, commit; Inventor then held the new value and geometry.
+
+Defects found and fixed in this round:
+
+- `split` removed the wrong side: `TrimSolid`'s flag keeps the positive side when true.
+- Late-bound enums reached callers as numbers (`"health": "11778"`, `"kind": "83910656"`), and `validate: ["sketch_fully_constrained"]` compared that number with an enum name, so it refused every sketch, fully constrained or not. Typed reads now.
+- `resources/unsubscribe` never removed anything: the SDK gives every request its own server wrapper, and subscriptions were keyed by that instance. Now keyed by session.
+- A preview or rolled-back batch restored the revision but not the visual revision, so the viewer reloaded unchanged geometry after every preview and overwrote the preview result. The journal now restores the visual revision too, from a bounded per-document history.
+- Stable `extrude` reported `volume_mm3: 0` for every feature: `SurfaceBody.Volume(0.0)` is rejected and the catch returned 0. Now precision 0.01, and null (not 0) if Inventor cannot evaluate it.
+
+Final regression on that build: part 64/64, assembly and drawing 50/50, XR 10/10, extra 29/29, assembly extras 20/20, HTTP host 22/22, all 15 smoke scripts (smoke-projection hit one TIMEOUT on drawing creation after a long run, then passed twice in 15-23 s). Unit suite 865 passing.
+
+Not verified: `selection_changed` comes from `UserInputEvents.OnSelect`, which Inventor raises for interactive picks only; an API `SelectSet.Select` does not raise it, so it needs a person clicking in Inventor. No real headset session (the viewer reports VR not supported in a desktop browser).

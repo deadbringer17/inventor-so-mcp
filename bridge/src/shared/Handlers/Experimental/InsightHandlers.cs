@@ -31,7 +31,7 @@ internal static class InsightX
             return result;
         }
         try { result["name"] = (string)((dynamic)item).Name; } catch { result["name"] = null; }
-        try { result["kind"] = ((dynamic)item).Type.ToString(); } catch { result["kind"] = item.GetType().Name; }
+        try { result["kind"] = ((ObjectTypeEnum)(int)((dynamic)item).Type).ToString(); } catch { result["kind"] = item.GetType().Name; }
         return result;
     }
 

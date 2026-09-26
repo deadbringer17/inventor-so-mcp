@@ -117,6 +117,46 @@ public sealed class CadEventJournalViewEventTests
     }
 
     [Fact]
+    public void RestoringARevisionAlsoRestoresTheVisualRevision()
+    {
+        // A preview edits and rolls back: an XR client must not re-download unchanged geometry.
+        var journal = new Bimwright.Ipt.Shared.Contracts.CadEventJournal();
+        journal.Append("document_changed", "doc");
+        string planned = journal.Revision("doc");
+        string visual = journal.VisualRevision("doc");
+        journal.Append("document_changed", "doc");
+        journal.Append("document_changed", "doc");
+        Assert.NotEqual(visual, journal.VisualRevision("doc"));
+
+        Assert.True(journal.TryRestoreRevision("doc", planned));
+        Assert.Equal(visual, journal.VisualRevision("doc"));
+    }
+
+    [Fact]
+    public void RestoringToBeforeAnyChangeClearsTheVisualRevision()
+    {
+        var journal = new Bimwright.Ipt.Shared.Contracts.CadEventJournal();
+        string untouched = journal.Revision("doc");
+        string visual = journal.VisualRevision("doc");
+        journal.Append("document_changed", "doc");
+        Assert.True(journal.TryRestoreRevision("doc", untouched));
+        Assert.Equal(visual, journal.VisualRevision("doc"));
+    }
+
+    [Fact]
+    public void VisualRevisionStaysWhenItsHistoryIsNoLongerKnown()
+    {
+        var journal = new Bimwright.Ipt.Shared.Contracts.CadEventJournal();
+        journal.Append("document_changed", "doc");
+        string planned = journal.Revision("doc");
+        for (int i = 0; i < 100; i++) journal.Append("document_changed", "doc");
+        string latest = journal.VisualRevision("doc");
+        Assert.True(journal.TryRestoreRevision("doc", planned));
+        // The restored point fell out of the bounded history: never guess an older token.
+        Assert.Equal(latest, journal.VisualRevision("doc"));
+    }
+
+    [Fact]
     public void NonGeometricChangeAdvancesRevisionButNotVisualRevision()
     {
         // Inventor reports a SaveAs as a query-only change and an iProperty edit as a file-property

@@ -468,7 +468,7 @@ public sealed class GetSketchInfoHandler : ExperimentalHandler
             });
         }
         string status;
-        try { status = ((dynamic)sketch).ConstraintStatus.ToString(); } catch { status = "unknown"; }
+        try { status = sketch.ConstraintStatus.ToString(); } catch { status = "unknown"; }
         return new JObject
         {
             ["sketch_name"] = sketch.Name,
