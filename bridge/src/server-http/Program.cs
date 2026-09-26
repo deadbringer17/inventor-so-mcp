@@ -1,4 +1,7 @@
+using System.Linq;
 using Bimwright.Ipt.Server;
+using Inventor.So.Mcp.Http.Pairing;
+using HostOptions = Inventor.So.Mcp.Http.Pairing.HostOptions;
 
 namespace Inventor.So.Mcp.Http;
 
@@ -24,10 +27,26 @@ public static class HttpProgram
         var config = InventorMcpConfig.Load(args);
         TokenRegistry tokens;
         WebApplication app;
+        PairingWindow? window = null;
+        PairingEndpoint? pairing = null;
+        System.Security.Cryptography.X509Certificates.X509Certificate2? certificate;
         try
         {
             tokens = TokenRegistry.Load(config);
-            app = HttpHost.Build(args, config, tokens);
+            certificate = PairingSetup.ResolveCertificate(config);
+            if (config.PairClientName != null)
+            {
+                if (string.IsNullOrWhiteSpace(config.HttpTokenFile))
+                    throw new InvalidOperationException("--pair needs --http-token-file: the new token is appended there.");
+                if (certificate == null)
+                    throw new InvalidOperationException("--pair needs HTTPS: use --http-self-signed (or --http-cert) with an https:// URL.");
+                if (tokens.Names.Contains(config.PairClientName))
+                    throw new InvalidOperationException("--pair: client '" + config.PairClientName + "' already has a token; choose another name.");
+                var store = new PairingStore(() => DateTimeOffset.UtcNow);
+                window = store.Open(config.PairClientName, PairingStore.DefaultTtl);
+                pairing = new PairingEndpoint(store, tokens, config.HttpTokenFile!);
+            }
+            app = HttpHost.Build(args, config, tokens, new HostOptions { Certificate = certificate, Pairing = pairing });
         }
         catch (Exception ex) when (ex is InvalidOperationException or IOException or System.Security.Cryptography.CryptographicException)
         {
@@ -36,6 +55,19 @@ public static class HttpProgram
         }
         Console.Error.WriteLine("inventor-so-mcp-http: listening on " + string.Join(", ", config.HttpUrls) +
             " for " + tokens.Count + " client token(s)" + (config.HttpAllowInsecureLan ? " (INSECURE LAN MODE)" : "") + ".");
+        if (window != null && pairing != null)
+        {
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
+            var host = config.PairHost ?? PairingSetup.LanAddresses().FirstOrDefault() ?? "127.0.0.1";
+            var sha = SelfSignedCertificate.Sha256Hex(certificate!);
+            var png = Path.Combine(Path.GetDirectoryName(config.HttpSelfSignedPath)!, "pairing-qr.png");
+            PairingSetup.Announce(Console.Error, window, host, PairingSetup.HttpsPort(config) ?? 443, sha, png);
+            pairing.Paired += (client, device) =>
+            {
+                Console.Error.WriteLine("inventor-so-mcp-http: paired '" + client + "'" + (device == null ? "" : " (" + device + ")") + ".");
+                try { File.Delete(png); } catch (IOException) { }
+            };
+        }
         await app.RunAsync();
         return 0;
     }

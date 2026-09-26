@@ -117,8 +117,8 @@ public static class BindingPolicy
                 problems.Add("'" + url + "' is not an http(s)://host:port URL.");
                 continue;
             }
-            if (scheme == "https" && string.IsNullOrWhiteSpace(config.HttpCertificatePath))
-                problems.Add("'" + url + "' needs a PFX certificate (--http-cert / INVENTOR_SO_HTTP_CERT).");
+            if (scheme == "https" && string.IsNullOrWhiteSpace(config.HttpCertificatePath) && !config.HttpSelfSignedCertificate)
+                problems.Add("'" + url + "' needs a certificate: a PFX (--http-cert / INVENTOR_SO_HTTP_CERT) or --http-self-signed.");
             if (scheme == "http" && !IsLoopback(host) && !config.HttpAllowInsecureLan)
                 problems.Add("'" + url + "' would expose plain HTTP beyond this machine. Use https with a certificate, or opt in with --http-allow-insecure-lan on a trusted network.");
         }

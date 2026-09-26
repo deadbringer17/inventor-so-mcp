@@ -55,6 +55,14 @@ public sealed class BindingPolicyTests
     [InlineData("ftp://127.0.0.1:21")]
     [InlineData("127.0.0.1:8787")]
     public void MalformedUrlsAreRefused(string url) => Assert.NotEmpty(BindingPolicy.Check(Config(url)));
+
+    [Fact]
+    public void HttpsWithTheSelfSignedCertificateIsAllowed()
+    {
+        var config = Config("https://0.0.0.0:8443");
+        config.HttpSelfSignedCertificate = true;
+        Assert.Empty(BindingPolicy.Check(config));
+    }
 }
 
 public sealed class TokenRegistryTests

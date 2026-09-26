@@ -32,6 +32,7 @@
   <ItemGroup>
     <ProjectReference Include="..\server\Bimwright.Ipt.Server.csproj" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.1.0" />
+    <PackageReference Include="QRCoder" Version="1.6.0" />
   </ItemGroup>
 
 </Project>
