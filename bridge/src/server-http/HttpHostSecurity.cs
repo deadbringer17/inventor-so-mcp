@@ -23,6 +23,8 @@ public sealed class TokenRegistry
     public int Count => _tokens.Count;
     public IEnumerable<string> Names => _tokens.Select(t => t.name);
 
+    public static bool IsValidName(string name) => name != null && NamePattern.IsMatch(name);
+
     /// <summary>Tokens from the token file ("name:token" per line, # comments) and INVENTOR_SO_HTTP_TOKEN ("default").</summary>
     public static TokenRegistry Load(InventorMcpConfig config)
     {
