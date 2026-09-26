@@ -51,4 +51,22 @@ public static class InventorErrorCodes
     // generic INVALID_ARGUMENT, which a caller cannot branch on. It is a distinct, retryable
     // outcome - nothing was changed - so it is a code of its own.
     public const string TRANSACTION_BUSY = "TRANSACTION_BUSY";
+
+    // A requested validation check failed before commit; the batch was rolled back.
+    public const string VALIDATION_FAILED = "VALIDATION_FAILED";
+
+    // The command or tool belongs to the experimental tier (implemented, not yet live-verified) and
+    // this server or add-in was not started with it enabled. Nothing ran.
+    public const string EXPERIMENTAL_DISABLED = "EXPERIMENTAL_DISABLED";
+
+    // A tessellation would exceed the requested triangle budget; retry with a coarser tolerance.
+    public const string MESH_TOO_LARGE = "MESH_TOO_LARGE";
+
+    // Change plans: the plan id is unknown or expired, or the plan no longer matches the document.
+    public const string PLAN_NOT_FOUND = "PLAN_NOT_FOUND";
+    public const string PLAN_MISMATCH = "PLAN_MISMATCH";
+
+    // Asset store and remote host.
+    public const string ASSET_NOT_FOUND = "ASSET_NOT_FOUND";
+    public const string RATE_LIMITED = "RATE_LIMITED";
 }

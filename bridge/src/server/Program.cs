@@ -15,15 +15,13 @@ var cfg = InventorMcpConfig.Load(args);
 var builder = Host.CreateApplicationBuilder(args);
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
-builder.Services.AddSingleton(cfg);
-builder.Services.AddSingleton<ServerState>();
-builder.Services.AddSingleton<PluginClient>();
+cfg.Transport = "stdio";
+builder.Services.AddInventorServices(cfg);
 
-var mcp = builder.Services
+builder.Services
     .AddMcpServer(o => o.ServerInstructions = ServerInstructions.Text)
     .WithStdioServerTransport()
-    .WithResources<CadResources>();
-mcp = Program.RegisterToolsets(mcp, Program.ResolveToolTypesForRegistration(cfg), cfg.FullAccess);
+    .AddInventorMcp(cfg);
 
 await builder.Build().RunAsync();
 
@@ -32,14 +30,16 @@ internal static partial class Program
     internal static IMcpServerBuilder RegisterToolsets(
         IMcpServerBuilder mcp,
         IEnumerable<Type> toolTypes,
-        bool fullAccess = false)
+        bool fullAccess = false,
+        bool experimental = false,
+        Func<string, bool>? exclude = null)
     {
         foreach (var toolType in toolTypes)
         {
             var methods = toolType.GetMethods().Where(method =>
-                SoToolPolicy.IsExposed(
-                    method.GetCustomAttribute<McpServerToolAttribute>()?.Name,
-                    fullAccess));
+                method.GetCustomAttribute<McpServerToolAttribute>()?.Name is { } name &&
+                SoToolPolicy.IsExposed(name, fullAccess, experimental) &&
+                exclude?.Invoke(name) != true);
             mcp = mcp.WithTools(methods.Select(method => McpServerTool.Create(method,
                 context => ActivatorUtilities.CreateInstance(context.Services!, toolType))));
         }
@@ -62,6 +62,11 @@ internal static partial class Program
         if (toolType == typeof(ToolBakerWriteTools)) return mcp.WithTools<ToolBakerWriteTools>();
         if (toolType == typeof(AssemblyTools)) return mcp.WithTools<AssemblyTools>();
         if (toolType == typeof(AssemblyQueryTools)) return mcp.WithTools<AssemblyQueryTools>();
+        if (toolType == typeof(CapabilityTools)) return mcp.WithTools<CapabilityTools>();
+        if (toolType == typeof(XrTools)) return mcp.WithTools<XrTools>();
+        if (toolType == typeof(InsightTools)) return mcp.WithTools<InsightTools>();
+        if (toolType == typeof(PlanningTools)) return mcp.WithTools<PlanningTools>();
+        if (toolType == typeof(ReleaseTools)) return mcp.WithTools<ReleaseTools>();
 
         throw new InvalidOperationException("Unsupported MCP tool type: " + toolType.FullName);
     }
@@ -76,6 +81,7 @@ internal static partial class Program
         }
 
         Add("meta",            typeof(MetaTools));
+        Add("meta",            typeof(CapabilityTools));
         Add("query",           typeof(QueryTools));
         Add("document",        typeof(DocumentTools));
         Add("document",        typeof(SafeDocumentTools));
@@ -91,6 +97,10 @@ internal static partial class Program
         Add("assembly",        typeof(AssemblyTools));
         Add("assembly",        typeof(SafeAssemblyTools));
         Add("assembly_query",  typeof(AssemblyQueryTools));
+        Add("xr",              typeof(XrTools));
+        Add("insight",         typeof(InsightTools));
+        Add("planning",        typeof(PlanningTools));
+        Add("export",          typeof(ReleaseTools));
         return types;
     }
 }

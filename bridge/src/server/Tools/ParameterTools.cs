@@ -52,13 +52,18 @@ public sealed class ParameterTools
         }
     }
 
-    [McpServerTool(Name = "inventor_atomic_batch"), Description("Execute up to 32 typed part-modeling operations in one reversible transaction. Requires document_id and revision from inventor://active-document. Validates rebuild/feature health before commit. preview=true executes then rolls back, leaving the revision untouched; it is not a read-only operation. Each operation has command (wire name, e.g. set_parameter) and arguments (a JSON object). The command names and their arguments are listed in the inventor://batch-commands resource. No scripting, file export or document lifecycle allowed. Inventor SO 2027 only.")]
-    public Task<string> AtomicBatch(string document_id, string expected_revision, AtomicOperation[] operations, bool preview = false, CancellationToken ct = default)
+    [McpServerTool(Name = "inventor_atomic_batch"), Description("Execute up to 32 typed operations in one reversible transaction on the active part, assembly or drawing (each command declares the document kinds it runs in). Requires document_id and revision from inventor://active-document. Always validates rebuild plus feature health (parts) or constraint/joint health (assemblies) before commit; validate adds checks such as [\"interference\",\"min_clearance:2mm\"] (vocabulary in inventor://batch-commands). A failed check rolls everything back with VALIDATION_FAILED details. preview=true executes then rolls back, leaving the revision untouched; it is not a read-only operation. Each operation has command (wire name, e.g. set_parameter) and arguments (a JSON object). The command names and their arguments are listed in the inventor://batch-commands resource. No scripting, file export or document lifecycle allowed. Inventor SO 2027 only.")]
+    public Task<string> AtomicBatch(string document_id, string expected_revision, AtomicOperation[] operations, bool preview = false,
+        string[]? validate = null, CancellationToken ct = default)
     {
         if (!TryBuildOperations(operations, out var wire, out var rejection))
             return Task.FromResult(rejection!.ToString(Formatting.Indented));
-        return Call("atomic_batch", new JObject { ["document_id"] = document_id, ["expected_revision"] = expected_revision,
-            ["operations"] = wire, ["preview"] = preview }, ct);
+        var request = new JObject { ["document_id"] = document_id, ["expected_revision"] = expected_revision,
+            ["operations"] = wire, ["preview"] = preview };
+        // Only sent when asked, so an add-in that predates validation keeps receiving the exact
+        // request shape it was verified with.
+        if (validate != null) request["validate"] = new JArray(validate);
+        return Call("atomic_batch", request, ct);
     }
 
     /// <summary>

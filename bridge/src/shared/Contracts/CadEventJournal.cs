@@ -11,6 +11,7 @@ public sealed class CadEventJournal
     private readonly object _gate = new();
     private readonly Queue<JObject> _events = new();
     private readonly Dictionary<string, long> _revisions = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> _visual = new(StringComparer.Ordinal);
     private readonly int _capacity;
     private long _sequence;
     public string Epoch { get; } = Guid.NewGuid().ToString("N");
@@ -48,14 +49,41 @@ public sealed class CadEventJournal
         }
     }
 
-    public void Append(string type, string? documentId)
+    /// <summary>
+    /// Token that advances only when a document's geometry or structure may have changed
+    /// (<c>document_changed</c>), never on save, activation or selection. An XR client compares it to
+    /// decide whether to fetch meshes again; <see cref="Revision"/> is the stricter plan token.
+    /// </summary>
+    public string VisualRevision(string documentId)
+    {
+        lock (_gate) return Epoch + ":v" + (_visual.TryGetValue(documentId, out var revision) ? revision : 0);
+    }
+
+    /// <summary>Event types that describe view state only; they never advance a document revision.</summary>
+    public static bool IsViewEvent(string type) => type == "selection_changed" || type == "camera_changed";
+
+    public void Append(string type, string? documentId) => Append(type, documentId, null);
+
+    /// <summary>
+    /// Record an event. Document events advance the document's revision (plans made before it are
+    /// stale); <c>document_changed</c> also advances its visual revision. View events (selection,
+    /// camera) are journalled for subscribers but advance neither: moving the camera must never
+    /// invalidate somebody's change plan.
+    /// </summary>
+    public void Append(string type, string? documentId, JObject? data)
     {
         lock (_gate)
         {
             long sequence = ++_sequence;
-            if (documentId != null) _revisions[documentId] = sequence;
-            _events.Enqueue(new JObject { ["sequence"] = sequence, ["type"] = type,
-                ["document_id"] = documentId, ["utc"] = DateTimeOffset.UtcNow.ToString("O") });
+            if (documentId != null && !IsViewEvent(type))
+            {
+                _revisions[documentId] = sequence;
+                if (type == "document_changed") _visual[documentId] = sequence;
+            }
+            var entry = new JObject { ["sequence"] = sequence, ["type"] = type,
+                ["document_id"] = documentId, ["utc"] = DateTimeOffset.UtcNow.ToString("O") };
+            if (data != null) entry["data"] = data;
+            _events.Enqueue(entry);
             while (_events.Count > _capacity) _events.Dequeue();
         }
     }

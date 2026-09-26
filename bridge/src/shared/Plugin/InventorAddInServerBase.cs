@@ -97,6 +97,7 @@ public abstract class InventorAddInServerBase : InvApi.ApplicationAddInServer
                 IsDeadlineExceeded = () => elapsed.ElapsedMilliseconds >= env.TimeoutMs,
                 ReadOnly = o.ReadOnly || env.ReadOnly,
                 RequireAtomicWrites = RequireAtomicWrites,
+                AllowExperimental = EnvFlag("INVENTOR_SO_EXPERIMENTAL"),
                 EnableSendCode = o.EnableSendCode,
                 InventorYear = o.Year,
                 TargetId = descriptor.TargetId,
