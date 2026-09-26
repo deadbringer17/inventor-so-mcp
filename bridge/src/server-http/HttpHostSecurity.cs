@@ -30,7 +30,10 @@ public sealed class TokenRegistry
     public static TokenRegistry Load(InventorMcpConfig config)
     {
         var registry = new TokenRegistry();
-        if (!string.IsNullOrWhiteSpace(config.HttpTokenFile))
+        // A not-yet-existing token file means zero tokens, not a failure: --pair writes the
+        // first line itself (spec §3.1, first-time pairing). An existing but unreadable file
+        // (permissions, a directory in its place, ...) still surfaces as before.
+        if (!string.IsNullOrWhiteSpace(config.HttpTokenFile) && File.Exists(config.HttpTokenFile))
         {
             int lineNumber = 0;
             foreach (var raw in File.ReadAllLines(config.HttpTokenFile!))

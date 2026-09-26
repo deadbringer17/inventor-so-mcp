@@ -57,11 +57,24 @@ public static class HttpProgram
             " for " + tokens.Count + " client token(s)" + (config.HttpAllowInsecureLan ? " (INSECURE LAN MODE)" : "") + ".");
         if (window != null && pairing != null)
         {
-            Console.OutputEncoding = System.Text.Encoding.UTF8;
             var host = config.PairHost ?? PairingSetup.LanAddresses().FirstOrDefault() ?? "127.0.0.1";
             var sha = SelfSignedCertificate.Sha256Hex(certificate!);
+            var port = PairingSetup.HttpsPort(config) ?? 443;
             var png = Path.Combine(Path.GetDirectoryName(config.HttpSelfSignedPath)!, "pairing-qr.png");
-            PairingSetup.Announce(Console.Error, window, host, PairingSetup.HttpsPort(config) ?? 443, sha, png);
+            // A display or file-I/O failure here (no console, redirected stdout, unwritable PNG
+            // directory, ...) must never crash the host: the pairing window is already open and
+            // the headset can still redeem it, it just needs the plain-text fallback below.
+            try
+            {
+                Console.OutputEncoding = System.Text.Encoding.UTF8;
+                PairingSetup.Announce(Console.Error, window, host, port, sha, png);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Console.Error.WriteLine("inventor-so-mcp-http: could not display the pairing QR code (" + ex.Message + "); pair with these details instead:");
+                Console.Error.WriteLine("  PC: " + host + ":" + port + "   code: " + window.Code);
+                Console.Error.WriteLine("  Certificate: " + SelfSignedCertificate.Display(sha));
+            }
             pairing.Paired += (client, device) =>
             {
                 Console.Error.WriteLine("inventor-so-mcp-http: paired '" + client + "'" + (device == null ? "" : " (" + device + ")") + ".");

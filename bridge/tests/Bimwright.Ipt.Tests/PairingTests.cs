@@ -150,6 +150,16 @@ public sealed class TokenFileTests : IDisposable
         Assert.Equal("quest3", registry.Authenticate(token));
     }
 
+    /// <summary>First-time pairing (spec §3.1): --pair needs a token file that does not exist yet.</summary>
+    [Fact]
+    public void LoadOnAMissingTokenFileYieldsAnEmptyRegistry()
+    {
+        Assert.False(File.Exists(File1));
+        var registry = TokenRegistry.Load(new InventorMcpConfig { HttpTokenFile = File1 });
+        Assert.Equal(0, registry.Count);
+        Assert.Empty(registry.Names);
+    }
+
     [Fact]
     public void AppendAfterALineWithoutNewlineStartsANewLine()
     {
