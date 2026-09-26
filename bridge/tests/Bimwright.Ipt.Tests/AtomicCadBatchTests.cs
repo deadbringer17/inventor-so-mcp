@@ -66,11 +66,25 @@ public sealed class AtomicCadBatchTests
         Assert.Equal("revision-after-edit", (string?)result["revision"]);
     }
 
-    [Fact]
-    public void FailedPreviewNeverRestoresTheRevision()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void RolledBackFailureKeepsThePlannedRevision(bool preview)
     {
+        // The rollback put the model back as it was read, so fixing one argument needs no re-read.
         var backend = new Backend();
-        Assert.Throws<CadBatchException>(() => AtomicCadBatch.Run(backend, "doc", "revision", Steps(true), true));
+        var error = Assert.Throws<CadBatchException>(() => AtomicCadBatch.Run(backend, "doc", "revision", Steps(true), preview));
+        Assert.Equal(InventorErrorCodes.ROLLED_BACK, error.Code);
+        Assert.Equal("revision", backend.RestoredRevision);
+        Assert.Equal("revision", backend.Revision);
+    }
+
+    [Fact]
+    public void FailedRollbackNeverRestoresTheRevision()
+    {
+        var backend = new Backend { FailRollback = true };
+        var error = Assert.Throws<CadBatchException>(() => AtomicCadBatch.Run(backend, "doc", "revision", Steps(true), false));
+        Assert.Equal(InventorErrorCodes.ROLLBACK_FAILED, error.Code);
         Assert.Null(backend.RestoredRevision);
     }
 

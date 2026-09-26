@@ -19,6 +19,14 @@ BASE = (80.0, 60.0, 10.0)
 TOP = (40.0, 30.0, 8.0)
 
 
+def has_code(result, code):
+    """Error codes travel in error.code / error.details, not in the prose (see 08e2e34)."""
+    error = result.get('error') or {}
+    details = error.get('details') or {}
+    codes = (error.get('code'), details.get('code'), details.get('step_code'), details.get('reason'))
+    return code in codes or code in (error.get('message') or '')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--server', required=True)
@@ -292,7 +300,7 @@ def main():
         face_origin = client.tool('inventor_create_joint_safe', document_id=current['id'],
             expected_revision=current['revision'], joint_type='rotational', origin_a_id=pin_face['id'],
             origin_b_id=hole_face['id'], minimum_clearance_mm=0, preview=True)
-        assert face_origin.get('ok') is False and 'JOINT_ORIGIN_REJECTED' in face_origin['error']['message'], face_origin
+        assert face_origin.get('ok') is False and has_code(face_origin, 'JOINT_ORIGIN_REJECTED'), face_origin
 
         current = state()
         joint = client.tool('inventor_create_joint_safe', document_id=current['id'],
@@ -323,7 +331,7 @@ def main():
         assert block_parameters['document_id'] == block['document_id'], block_parameters
         assert block_parameters['count'] > 0, block_parameters
         missing = client.tool('inventor_list_parameters', document_id='doc_{00000000-0000-0000-0000-000000000000}')
-        assert missing.get('ok') is False and 'DOCUMENT_NOT_OPEN' in missing['error']['message'], missing
+        assert missing.get('ok') is False and has_code(missing, 'DOCUMENT_NOT_OPEN'), missing
 
         thickness = next(prm for prm in block_parameters['parameters'] if prm['name'].lower() == 'd1')
 

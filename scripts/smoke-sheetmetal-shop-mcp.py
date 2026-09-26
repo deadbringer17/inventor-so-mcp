@@ -21,6 +21,14 @@ PANEL_Y_MM = 80.0
 FLANGE_MM = 20.0
 
 
+def has_code(result, code):
+    """Error codes travel in error.code / error.details, not in the prose (see 08e2e34)."""
+    error = result.get('error') or {}
+    details = error.get('details') or {}
+    codes = (error.get('code'), details.get('code'), details.get('step_code'), details.get('reason'))
+    return code in codes or code in (error.get('message') or '')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--server', required=True)
@@ -97,7 +105,7 @@ def main():
         refused_bend = batch(dict(command='sheet_metal_unfold',
             arguments=dict(stationary_face_id=stationary['id'], bend_face_ids=[stationary['id']])),
             expect_failure=True)
-        assert 'NOT_A_BEND_FACE' in refused_bend['error']['message'], refused_bend
+        assert has_code(refused_bend, 'NOT_A_BEND_FACE'), refused_bend
 
         one_bend = batch(dict(command='sheet_metal_unfold',
             arguments=dict(stationary_face_id=stationary['id'],
@@ -159,7 +167,7 @@ def main():
         else:
             refused_row = batch(dict(command='sheet_metal_punch',
                 arguments=dict(sketch_name=punch_sketch, punch='keyhole.ide', table_row=1)), expect_failure=True)
-            assert 'PUNCH_NOT_TABLE_DRIVEN' in refused_row['error']['message'], refused_row
+            assert has_code(refused_row, 'PUNCH_NOT_TABLE_DRIVEN'), refused_row
         print('Punch catalog rows reported: table_driven=' + str(punched['table_driven']) +
               ', rows=' + str(len(punched['table_rows'])), flush=True)
 
@@ -179,7 +187,7 @@ def main():
                    key=lambda f: f['area_mm2'])
         refused_rip = batch(dict(command='sheet_metal_rip',
             arguments=dict(face_id=wall['id'], rip_type='face_extents')), expect_failure=True)
-        assert 'RIP_REJECTED' in refused_rip['error']['message'], refused_rip
+        assert has_code(refused_rip, 'RIP_REJECTED'), refused_rip
         missing_points = batch(dict(command='sheet_metal_rip',
             arguments=dict(face_id=wall['id'], rip_type='point_to_point', sketch_name='nope', gap_mm=1)),
             expect_failure=True)

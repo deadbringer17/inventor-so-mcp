@@ -10,6 +10,14 @@ import win32com.client
 Mcp = runpy.run_path(str(Path(__file__).with_name('smoke-atomic-mcp.py')))['Mcp']
 
 
+def has_code(result, code):
+    """Error codes travel in error.code / error.details, not in the prose (see 08e2e34)."""
+    error = result.get('error') or {}
+    details = error.get('details') or {}
+    codes = (error.get('code'), details.get('code'), details.get('step_code'), details.get('reason'))
+    return code in codes or code in (error.get('message') or '')
+
+
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -52,7 +60,7 @@ def main():
             return doc
         initial = state()
         rejected = client.tool('inventor_save_artifact', document_id=initial['id'], expected_revision='stale', format='native')
-        assert rejected.get('ok') is False and 'STALE_REVISION' in rejected['error']['message'], rejected
+        assert rejected.get('ok') is False and has_code(rejected, 'STALE_REVISION'), rejected
         for format in ('native', 'step', 'native'):
             doc = state()
             result = client.tool('inventor_save_artifact', document_id=doc['id'], expected_revision=doc['revision'], format=format)

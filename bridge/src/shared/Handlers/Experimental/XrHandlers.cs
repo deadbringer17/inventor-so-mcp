@@ -54,8 +54,14 @@ public sealed class GetDisplayMeshHandler : ExperimentalHandler
             {
                 ordinal++;
                 X.Deadline(ctx, "while tessellating");
-                face.CalculateFacets(toleranceCm, out int vertexCount, out int facetCount,
-                    out double[] coordinates, out double[] normalVectors, out int[] vertexIndices);
+                // The typed call passes null SAFEARRAYs and Inventor answers DISP_E_TYPEMISMATCH
+                // (verified live on 2027); late binding with pre-sized empty arrays works.
+                dynamic facetSource = face;
+                int vertexCount = 0, facetCount = 0;
+                double[] coordinates = new double[0], normalVectors = new double[0];
+                int[] vertexIndices = new int[0];
+                facetSource.CalculateFacets(toleranceCm, out vertexCount, out facetCount,
+                    out coordinates, out normalVectors, out vertexIndices);
                 if (facetCount <= 0 || vertexCount <= 0) continue;
                 triangles += facetCount;
                 if (triangles > maxTriangles)
@@ -351,15 +357,19 @@ public sealed class RaycastEntityHandler : ExperimentalHandler
         var d = X.Vec3(p, "direction");
         var direction = app.TransientGeometry.CreateUnitVector(d[0], d[1], d[2]);
         double radius = UnitConvert.MmToCm(X.Num(p, "radius_mm", 0.5));
-        dynamic definition = doc switch
+        // Typed calls: the late-bound FindUsingRay cannot convert the UnitVector argument.
+        ObjectsEnumerator found, points;
+        switch (doc)
         {
-            PartDocument part => part.ComponentDefinition,
-            AssemblyDocument assembly => assembly.ComponentDefinition,
-            _ => throw new CodedFailureException(InventorErrorCodes.WRONG_DOCUMENT_TYPE, "Raycasts work in parts and assemblies."),
-        };
-        ObjectsEnumerator found = null!;
-        ObjectsEnumerator points = null!;
-        definition.FindUsingRay(origin, direction, radius, out found, out points, true);
+            case PartDocument part:
+                part.ComponentDefinition.FindUsingRay(origin, direction, radius, out found, out points, true);
+                break;
+            case AssemblyDocument assembly:
+                assembly.ComponentDefinition.FindUsingRay(origin, direction, radius, out found, out points, true);
+                break;
+            default:
+                throw new CodedFailureException(InventorErrorCodes.WRONG_DOCUMENT_TYPE, "Raycasts work in parts and assemblies.");
+        }
         for (int i = 1; i <= found.Count; i++)
         {
             if (found[i] is not Face face) continue;
@@ -390,7 +400,7 @@ public sealed class PickEntityHandler : ExperimentalHandler
     protected override JToken Run(InventorCommandContext ctx, Application app, JObject p)
     {
         var assembly = X.ActiveAssembly(app, Name);
-        var occurrence = X.Resolve(assembly, X.Str(p, "occurrence_id"), out _) as ComponentOccurrence
+        var occurrence = X.Resolve((global::Inventor.Document)assembly, X.Str(p, "occurrence_id"), out _) as ComponentOccurrence
             ?? throw new ArgumentException("REFERENCE_TYPE_MISMATCH: occurrence_id is not an occurrence.");
         if (occurrence.Suppressed) throw new ArgumentException("The occurrence is suppressed.");
         var definition = occurrence.Definition.Document as global::Inventor.Document
@@ -401,7 +411,7 @@ public sealed class PickEntityHandler : ExperimentalHandler
         if (raw is not FaceProxy proxy) throw new InvalidOperationException("Inventor returned no face proxy.");
         return new JObject
         {
-            ["entity_id"] = X.Describe(assembly, proxy),
+            ["entity_id"] = X.Describe((global::Inventor.Document)assembly, proxy),
             ["type"] = "face_proxy",
             ["surface"] = proxy.SurfaceType.ToString(),
             ["occurrence_name"] = occurrence.Name,

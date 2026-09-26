@@ -8,6 +8,14 @@ import win32com.client
 Mcp = runpy.run_path(str(Path(__file__).with_name('smoke-atomic-mcp.py')))['Mcp']
 
 
+def has_code(result, code):
+    """Error codes travel in error.code / error.details, not in the prose (see 08e2e34)."""
+    error = result.get('error') or {}
+    details = error.get('details') or {}
+    codes = (error.get('code'), details.get('code'), details.get('step_code'), details.get('reason'))
+    return code in codes or code in (error.get('message') or '')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--server', required=True)
@@ -73,7 +81,7 @@ def main():
             assert abs(part.ComponentDefinition.MassProperties.Volume - volume) < 1e-8
             if command == 'hole':
                 rejected = batch(False, invalid=True)
-                assert rejected.get('ok') is False and 'ROLLED_BACK' in rejected['error']['message'], rejected
+                assert rejected.get('ok') is False and has_code(rejected, 'ROLLED_BACK'), rejected
                 assert part.ComponentDefinition.Sketches.Count == baseline_sketches
                 assert part.ComponentDefinition.Features.Count == baseline
                 assert abs(part.ComponentDefinition.MassProperties.Volume - volume) < 1e-8

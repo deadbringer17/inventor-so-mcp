@@ -17,6 +17,14 @@ Mcp = runpy.run_path(str(Path(__file__).with_name('smoke-atomic-mcp.py')))['Mcp'
 DEFAULT_WORKSPACE = Path(os.environ['LOCALAPPDATA']) / 'InventorSO' / 'workspace'
 
 
+def has_code(result, code):
+    """Error codes travel in error.code / error.details, not in the prose (see 08e2e34)."""
+    error = result.get('error') or {}
+    details = error.get('details') or {}
+    codes = (error.get('code'), details.get('code'), details.get('step_code'), details.get('reason'))
+    return code in codes or code in (error.get('message') or '')
+
+
 def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -88,7 +96,7 @@ def main():
 
         current = state()
         stale = client.tool('inventor_save_document_safe', document_id=current['id'], expected_revision='stale')
-        assert stale.get('ok') is False and 'STALE_REVISION' in stale['error']['message'], stale
+        assert stale.get('ok') is False and has_code(stale, 'STALE_REVISION'), stale
         saved = client.tool('inventor_save_document_safe', document_id=current['id'], expected_revision=current['revision'])
         assert saved.get('status') == 'saved_in_place' and saved['dependents_saved'] is False, saved
         assert not document.Dirty and digest(part_path) != before, saved
@@ -134,7 +142,7 @@ def main():
         assert drawing_path.parent == workspace and drawing_path.exists(), saved_drawing
         renamed = client.tool('inventor_save_document_safe', document_id=drawing['document_id'],
             expected_revision=ctx_revision(client), name='sotest renamed')
-        assert renamed.get('ok') is False and 'ALREADY_ON_DISK' in renamed['error']['message'], renamed
+        assert renamed.get('ok') is False and has_code(renamed, 'ALREADY_ON_DISK'), renamed
         closed_drawing = client.tool('inventor_close_document_safe', document_id=drawing['document_id'])
         assert closed_drawing.get('status') == 'closed', closed_drawing
         print('Saved the drawing draft into the workspace as ' + drawing_path.name, flush=True)
@@ -146,9 +154,9 @@ def main():
         current = state()
         assert current['id'] == 'doc_' + outside.InternalName, current
         refused = client.tool('inventor_save_document_safe', document_id=current['id'], expected_revision=current['revision'])
-        assert refused.get('ok') is False and 'OUTSIDE_WORKSPACE' in refused['error']['message'], refused
+        assert refused.get('ok') is False and has_code(refused, 'OUTSIDE_WORKSPACE'), refused
         refused = client.tool('inventor_close_document_safe', document_id=current['id'])
-        assert refused.get('ok') is False and 'OUTSIDE_WORKSPACE' in refused['error']['message'], refused
+        assert refused.get('ok') is False and has_code(refused, 'OUTSIDE_WORKSPACE'), refused
         assert outside.InternalName in {d.InternalName for d in app.Documents}, 'Refused close must leave the document open'
         outside.Close(True)
         outside = None
@@ -156,7 +164,7 @@ def main():
         print('Refused in-place save and close for a document outside the workspace', flush=True)
 
         held = client.tool('inventor_close_document_safe', document_id=part['document_id'])
-        assert held.get('ok') is False and 'REFERENCED_BY_OPEN_DOCUMENT' in held['error']['message'], held
+        assert held.get('ok') is False and has_code(held, 'REFERENCED_BY_OPEN_DOCUMENT'), held
 
         closed = client.tool('inventor_close_document_safe', document_id=assembly['document_id'])
         assert closed.get('status') == 'closed' and closed['saved_on_close'] is False and closed['file_retained'] is True, closed
@@ -166,7 +174,7 @@ def main():
         client.tool('inventor_atomic_batch', document_id=current['id'], expected_revision=current['revision'],
             operations=[dict(command='set_parameter', arguments=dict(name='PlateWidth', value='45 mm'))])
         dirty = client.tool('inventor_close_document_safe', document_id=part['document_id'])
-        assert dirty.get('ok') is False and 'UNSAVED_CHANGES' in dirty['error']['message'], dirty
+        assert dirty.get('ok') is False and has_code(dirty, 'UNSAVED_CHANGES'), dirty
         discarded = client.tool('inventor_close_document_safe', document_id=part['document_id'], discard_changes=True)
         assert discarded.get('status') == 'closed' and discarded['discarded_changes'] is True, discarded
         assert digest(part_path) == part_hash, 'Discarding changes must not rewrite the saved file'

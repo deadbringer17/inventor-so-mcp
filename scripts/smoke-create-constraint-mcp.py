@@ -8,6 +8,14 @@ import win32com.client
 
 Mcp = runpy.run_path(str(Path(__file__).with_name('smoke-atomic-mcp.py')))['Mcp']
 
+
+def has_code(result, code):
+    """Error codes travel in error.code / error.details, not in the prose (see 08e2e34)."""
+    error = result.get('error') or {}
+    details = error.get('details') or {}
+    codes = (error.get('code'), details.get('code'), details.get('step_code'), details.get('reason'))
+    return code in codes or code in (error.get('message') or '')
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--server', required=True)
@@ -39,13 +47,13 @@ def main():
                     return client.tool('inventor_insert_component_safe', document_id=state['id'], expected_revision=state['revision'],
                         source_document_id=source, translation_mm=[0,0,z], minimum_clearance_mm=5, preview=preview)
                 result = insert(60, source='doc_missing')
-                assert result.get('ok') is False and 'SOURCE_NOT_READY' in result['error']['message'], result
+                assert result.get('ok') is False and has_code(result, 'SOURCE_NOT_READY'), result
                 result = insert(60)
                 assert result.get('status') == 'preview_rolled_back' and result.get('component_id') is None, result
                 assert definition.Occurrences.Count == 1
                 for z, error in ((20, 'INTERFERENCE'), (34, 'CLEARANCE_FAILED')):
                     result = insert(z, False)
-                    assert result.get('ok') is False and error in result['error']['message'] and 'ROLLED_BACK' in result['error']['message'], result
+                    assert result.get('ok') is False and has_code(result, error) and has_code(result, 'ROLLED_BACK'), result
                     assert definition.Occurrences.Count == 1
                 result = insert(60, False)
                 assert result.get('status') == 'committed' and result['component_id'].startswith('ent_'), result
@@ -82,7 +90,7 @@ def main():
                 assert all(abs(x-y)<1e-7 for x,y in zip(pose(), initial))
                 if kind == 'flush':
                     result = create(20, False)
-                    assert result.get('ok') is False and 'ROLLED_BACK' in result['error']['message'], result
+                    assert result.get('ok') is False and has_code(result, 'ROLLED_BACK'), result
                     assert definition.Constraints.Count == 0
                     assert all(abs(x-y)<1e-7 for x,y in zip(pose(), initial))
                 result = create(safe, False)

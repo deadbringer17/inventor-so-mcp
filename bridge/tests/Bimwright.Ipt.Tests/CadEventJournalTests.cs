@@ -115,4 +115,20 @@ public sealed class CadEventJournalViewEventTests
         Assert.NotEqual(visual, journal.VisualRevision("doc_a"));
         Assert.StartsWith(journal.Epoch + ":v", journal.VisualRevision("doc_a"));
     }
+
+    [Fact]
+    public void NonGeometricChangeAdvancesRevisionButNotVisualRevision()
+    {
+        // Inventor reports a SaveAs as a query-only change and an iProperty edit as a file-property
+        // change; the tracker flags both geometry:false.
+        var journal = new Bimwright.Ipt.Shared.Contracts.CadEventJournal();
+        journal.Append("document_changed", "doc_a");
+        var visual = journal.VisualRevision("doc_a");
+        var revision = journal.Revision("doc_a");
+        journal.Append("document_changed", "doc_a", new Newtonsoft.Json.Linq.JObject { [Bimwright.Ipt.Shared.Contracts.CadEventJournal.GeometryFlag] = false });
+        Assert.NotEqual(revision, journal.Revision("doc_a"));
+        Assert.Equal(visual, journal.VisualRevision("doc_a"));
+        journal.Append("document_changed", "doc_a", new Newtonsoft.Json.Linq.JObject { [Bimwright.Ipt.Shared.Contracts.CadEventJournal.GeometryFlag] = true });
+        Assert.NotEqual(visual, journal.VisualRevision("doc_a"));
+    }
 }

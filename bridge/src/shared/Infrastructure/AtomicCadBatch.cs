@@ -185,6 +185,10 @@ public static class AtomicCadBatch
                     "ROLLBACK_FAILED: inspect CAD before continuing. Step " + index + ": " + error.Message +
                     "; rollback: " + rollbackError.Message, index, command, stepCode, error);
             }
+            // The rollback left the model as it was read, so the caller's revision stays valid, as
+            // after a preview: fixing one argument must not force a re-read. Verified live on 2027:
+            // the aborted transaction still raises change events that advanced the revision.
+            try { backend.RestoreRevision(expectedRevision); } catch { /* the refusal already stands */ }
             throw new CadBatchException(InventorErrorCodes.ROLLED_BACK,
                 "ROLLED_BACK: step " + index + ": " + error.Message, index, command, stepCode, error);
         }

@@ -72,14 +72,14 @@ internal static class X
         => Active(app) as DrawingDocument ?? throw new CodedFailureException(InventorErrorCodes.WRONG_DOCUMENT_TYPE, command + " needs an active drawing document.");
 
     /// <summary>Parameters of the active part or assembly.</summary>
-    public static Parameters ParametersOf(global::Inventor.Document doc) => doc switch
+    public static global::Inventor.Parameters ParametersOf(global::Inventor.Document doc) => doc switch
     {
         PartDocument part => part.ComponentDefinition.Parameters,
         AssemblyDocument assembly => assembly.ComponentDefinition.Parameters,
         _ => throw new CodedFailureException(InventorErrorCodes.WRONG_DOCUMENT_TYPE, "Parameters exist in part and assembly documents."),
     };
 
-    public static Parameter? FindParameter(Parameters parameters, string name)
+    public static Parameter? FindParameter(global::Inventor.Parameters parameters, string name)
     {
         foreach (Parameter parameter in parameters)
             if (string.Equals(parameter.Name, name, StringComparison.Ordinal)) return parameter;

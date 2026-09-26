@@ -9,6 +9,14 @@ import win32com.client
 
 Mcp = runpy.run_path(str(Path(__file__).with_name('smoke-atomic-mcp.py')))['Mcp']
 
+
+def has_code(result, code):
+    """Error codes travel in error.code / error.details, not in the prose (see 08e2e34)."""
+    error = result.get('error') or {}
+    details = error.get('details') or {}
+    codes = (error.get('code'), details.get('code'), details.get('step_code'), details.get('reason'))
+    return code in codes or code in (error.get('message') or '')
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--server', required=True)
@@ -56,7 +64,7 @@ def main():
         def undisturbed():
             assert app.Documents.Count == count and app.ActiveDocument.InternalName == part.InternalName
         result = create(2, stale=True)
-        assert result.get('ok') is False and 'STALE_REVISION' in result['error']['message'], result
+        assert result.get('ok') is False and has_code(result, 'STALE_REVISION'), result
         count = app.Documents.Count
         result = create(2)
         assert result.get('status') == 'preview_rolled_back' and result['view_count'] == 4, result
@@ -66,7 +74,7 @@ def main():
         # branch on error.code without parsing the message.
         result = create(100, False)
         assert result.get('ok') is False, result
-        assert result['error']['code'] == 'VIEW_OUTSIDE_LAYOUT' or 'E_INVALIDARG' in result['error']['message'], result
+        assert result['error']['code'] == 'VIEW_OUTSIDE_LAYOUT' or has_code(result, 'E_INVALIDARG'), result
         undisturbed()
         result = create(4, False)
         assert result.get('ok') is False and result['error']['code'] == 'VIEW_OUTSIDE_LAYOUT', result
@@ -104,7 +112,7 @@ def main():
         s = state()
         exported = client.tool('inventor_save_artifact', document_id=s['id'], expected_revision=s['revision'], format=args.format)
         if args.expect_outside_project:
-            assert exported.get('ok') is False and 'REFERENCE_OUTSIDE_PROJECT' in exported['error']['message'], exported
+            assert exported.get('ok') is False and has_code(exported, 'REFERENCE_OUTSIDE_PROJECT'), exported
             print('Native copy rejected out-of-project references without changing project.', flush=True)
             return
         assert exported.get('ok') is not False, exported
