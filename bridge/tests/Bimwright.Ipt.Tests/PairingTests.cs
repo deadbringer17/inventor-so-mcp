@@ -124,3 +124,46 @@ public sealed class SelfSignedCertificateTests : IDisposable
     [Fact]
     public void DisplayGroupsByFourUppercase() => Assert.Equal("ABCD 0123", SelfSignedCertificate.Display("abcd0123"));
 }
+
+public sealed class TokenFileTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "so-tokens-" + Guid.NewGuid().ToString("N"));
+    private string File1 => Path.Combine(_dir, "sub", "tokens.txt");
+
+    public void Dispose() { try { Directory.Delete(_dir, true); } catch { } }
+
+    [Fact]
+    public void AppendCreatesTheFileAndLoadReadsIt()
+    {
+        var token = TokenRegistry.Generate();
+        TokenFile.Append(File1, "quest3", token);
+        var registry = TokenRegistry.Load(new InventorMcpConfig { HttpTokenFile = File1 });
+        Assert.Equal("quest3", registry.Authenticate(token));
+    }
+
+    [Fact]
+    public void AppendAfterALineWithoutNewlineStartsANewLine()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(File1)!);
+        var first = TokenRegistry.Generate();
+        System.IO.File.WriteAllText(File1, "laptop:" + first);
+        var second = TokenRegistry.Generate();
+        TokenFile.Append(File1, "quest3", second);
+        var registry = TokenRegistry.Load(new InventorMcpConfig { HttpTokenFile = File1 });
+        Assert.Equal(new[] { "laptop", "quest3" }, registry.Names);
+    }
+
+    [Fact]
+    public void AddWhileAuthenticatingIsSafe()
+    {
+        var registry = new TokenRegistry();
+        var known = TokenRegistry.Generate();
+        registry.Add("known", known);
+        Parallel.For(0, 200, i =>
+        {
+            if (i % 2 == 0) registry.Add("c" + i, TokenRegistry.Generate());
+            else Assert.Equal("known", registry.Authenticate(known));
+        });
+        Assert.Equal(101, registry.Count);
+    }
+}

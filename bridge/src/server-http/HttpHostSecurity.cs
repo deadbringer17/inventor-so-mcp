@@ -18,10 +18,11 @@ public sealed class TokenRegistry
 {
     public const int MinimumTokenLength = 32;
     private static readonly Regex NamePattern = new("^[A-Za-z0-9_.-]{1,40}$", RegexOptions.CultureInvariant);
+    private readonly object _gate = new();
     private readonly List<(string name, byte[] hash)> _tokens = new();
 
-    public int Count => _tokens.Count;
-    public IEnumerable<string> Names => _tokens.Select(t => t.name);
+    public int Count { get { lock (_gate) return _tokens.Count; } }
+    public IEnumerable<string> Names { get { lock (_gate) return _tokens.Select(t => t.name).ToArray(); } }
 
     public static bool IsValidName(string name) => name != null && NamePattern.IsMatch(name);
 
@@ -51,9 +52,12 @@ public sealed class TokenRegistry
         if (!NamePattern.IsMatch(name)) throw new InvalidOperationException(source + ": client name must be 1-40 letters, digits, '.', '_' or '-'.");
         if (token.Length < MinimumTokenLength) throw new InvalidOperationException(source + ": tokens must be at least " + MinimumTokenLength + " characters (use --generate-token).");
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(token));
-        if (_tokens.Any(t => t.name == name)) throw new InvalidOperationException(source + ": duplicate client name '" + name + "'.");
-        if (_tokens.Any(t => CryptographicOperations.FixedTimeEquals(t.hash, hash))) throw new InvalidOperationException(source + ": duplicate token.");
-        _tokens.Add((name, hash));
+        lock (_gate)
+        {
+            if (_tokens.Any(t => t.name == name)) throw new InvalidOperationException(source + ": duplicate client name '" + name + "'.");
+            if (_tokens.Any(t => CryptographicOperations.FixedTimeEquals(t.hash, hash))) throw new InvalidOperationException(source + ": duplicate token.");
+            _tokens.Add((name, hash));
+        }
     }
 
     /// <summary>
@@ -64,13 +68,35 @@ public sealed class TokenRegistry
     {
         if (string.IsNullOrEmpty(presented) || presented.Length > 4096) return null;
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(presented));
+        (string name, byte[] hash)[] snapshot;
+        lock (_gate) snapshot = _tokens.ToArray();
         string? match = null;
-        foreach (var (name, stored) in _tokens)
+        foreach (var (name, stored) in snapshot)
             if (CryptographicOperations.FixedTimeEquals(stored, hash)) match = name;
         return match;
     }
 
     public static string Generate() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+}
+
+/// <summary>The token file of the remote host: "name:token" per line.</summary>
+public static class TokenFile
+{
+    /// <summary>Append one line, creating the file and its directory if needed.</summary>
+    public static void Append(string path, string name, string token)
+    {
+        var full = Path.GetFullPath(path);
+        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+        var prefix = File.Exists(full) && new FileInfo(full).Length > 0 && !EndsWithNewline(full) ? Environment.NewLine : "";
+        File.AppendAllText(full, prefix + name + ":" + token + Environment.NewLine);
+    }
+
+    private static bool EndsWithNewline(string path)
+    {
+        using var stream = File.OpenRead(path);
+        stream.Seek(-1, SeekOrigin.End);
+        return stream.ReadByte() == '\n';
+    }
 }
 
 /// <summary>Checks the listening configuration before anything is bound.</summary>
