@@ -20,6 +20,7 @@ public sealed class SystemHttpTransport : IHttpTransport, IDisposable
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         if (request.Timeout != Timeout.InfiniteTimeSpan) timeout.CancelAfter(request.Timeout);
+        int before = _trust.RejectionCount;
         try
         {
             using var message = ToMessage(request);
@@ -27,11 +28,12 @@ public sealed class SystemHttpTransport : IHttpTransport, IDisposable
             var body = await response.Content.ReadAsByteArrayAsync(timeout.Token);
             return new TransportResponse((int)response.StatusCode, Headers(response), body);
         }
-        catch (HttpRequestException ex) { throw Wrap(ex); }
+        catch (HttpRequestException ex) { throw Wrap(ex, before); }
     }
 
     public async Task<int> StreamLinesAsync(TransportRequest request, Action<string> onLine, CancellationToken ct)
     {
+        int before = _trust.RejectionCount;
         try
         {
             using var message = ToMessage(request);
@@ -42,14 +44,19 @@ public sealed class SystemHttpTransport : IHttpTransport, IDisposable
             while ((line = await reader.ReadLineAsync(ct)) != null) onLine(line);
             return (int)response.StatusCode;
         }
-        catch (HttpRequestException ex) { throw Wrap(ex); }
+        catch (HttpRequestException ex) { throw Wrap(ex, before); }
         catch (IOException ex) when (!ct.IsCancellationRequested) { throw new TransportException(ex.Message, ex); }
     }
 
     public void Dispose() => _http.Dispose();
 
-    private Exception Wrap(HttpRequestException ex) =>
-        _trust.LastRejected ? new CertificateRejectedException(_trust.LastPresentedSha256) : new TransportException(ex.Message, ex);
+    /// <summary>
+    /// A pin rejection is only this request's if <see cref="ServerTrust.RejectionCount"/> moved during
+    /// it; a stale or concurrent rejection on a long-lived trust must not be misreported as this
+    /// request's certificate having changed.
+    /// </summary>
+    private Exception Wrap(HttpRequestException ex, int rejectionsBefore) =>
+        _trust.RejectionCount != rejectionsBefore ? new CertificateRejectedException(_trust.LastPresentedSha256) : new TransportException(ex.Message, ex);
 
     private static HttpRequestMessage ToMessage(TransportRequest request)
     {
