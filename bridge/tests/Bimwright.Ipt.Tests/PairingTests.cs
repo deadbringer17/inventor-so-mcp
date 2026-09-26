@@ -8,6 +8,7 @@ using Bimwright.Ipt.Server;
 using Inventor.So.Mcp.Http;
 using Inventor.So.Mcp.Http.Pairing;
 using Xunit;
+using System.Security.Cryptography;
 
 namespace Bimwright.Ipt.Tests;
 
@@ -80,4 +81,46 @@ public sealed class PairingStoreTests
         store.Open("quest3", PairingStore.DefaultTtl);
         Assert.Equal(PairingStore.Invalid, store.Redeem(old.OneTimeToken).ErrorCode);
     }
+}
+
+public sealed class SelfSignedCertificateTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "so-cert-" + Guid.NewGuid().ToString("N"));
+    private string Pfx => Path.Combine(_dir, "server.pfx");
+
+    public void Dispose() { try { Directory.Delete(_dir, true); } catch { } }
+
+    [Fact]
+    public void CreatesAServerCertificateWithKeyAndSubjectAltNames()
+    {
+        using var cert = SelfSignedCertificate.LoadOrCreate(Pfx, new[] { "localhost", "127.0.0.1", "192.168.1.20" });
+        Assert.True(cert.HasPrivateKey);
+        Assert.True(File.Exists(Pfx));
+        var san = cert.Extensions.OfType<X509SubjectAlternativeNameExtension>().Single();
+        Assert.Contains(IPAddress.Parse("192.168.1.20"), san.EnumerateIPAddresses());
+        Assert.Contains("localhost", san.EnumerateDnsNames());
+        Assert.Matches("^[0-9a-f]{64}$", SelfSignedCertificate.Sha256Hex(cert));
+    }
+
+    [Fact]
+    public void ReloadKeepsTheFingerprintEvenIfTheHostsChange()
+    {
+        string first, second;
+        using (var a = SelfSignedCertificate.LoadOrCreate(Pfx, new[] { "localhost" })) first = SelfSignedCertificate.Sha256Hex(a);
+        using (var b = SelfSignedCertificate.LoadOrCreate(Pfx, new[] { "localhost", "10.0.0.9" })) second = SelfSignedCertificate.Sha256Hex(b);
+        Assert.Equal(first, second);
+    }
+
+    [Fact]
+    public void AnExpiringCertificateIsReplaced()
+    {
+        string first;
+        var longAgo = DateTimeOffset.UtcNow - SelfSignedCertificate.Validity + TimeSpan.FromDays(10);
+        using (var old = SelfSignedCertificate.LoadOrCreate(Pfx, new[] { "localhost" }, longAgo)) first = SelfSignedCertificate.Sha256Hex(old);
+        using var renewed = SelfSignedCertificate.LoadOrCreate(Pfx, new[] { "localhost" });
+        Assert.NotEqual(first, SelfSignedCertificate.Sha256Hex(renewed));
+    }
+
+    [Fact]
+    public void DisplayGroupsByFourUppercase() => Assert.Equal("ABCD 0123", SelfSignedCertificate.Display("abcd0123"));
 }
