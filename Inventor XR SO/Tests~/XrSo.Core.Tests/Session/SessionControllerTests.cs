@@ -14,12 +14,15 @@ public class SessionControllerTests
     private sealed class ManualDelay : IDelay
     {
         private readonly List<TaskCompletionSource<bool>> _pending = new();
-        public List<TimeSpan> Requested { get; } = new();
+        private readonly List<TimeSpan> _requested = new();
+
+        /// <summary>A snapshot taken under the lock: safe to poll while the session keeps requesting delays in the background.</summary>
+        public List<TimeSpan> Requested { get { lock (_pending) return new List<TimeSpan>(_requested); } }
 
         public Task Delay(TimeSpan duration, CancellationToken ct)
         {
             var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            lock (_pending) { Requested.Add(duration); _pending.Add(tcs); }
+            lock (_pending) { _requested.Add(duration); _pending.Add(tcs); }
             ct.Register(() => tcs.TrySetCanceled());
             return tcs.Task;
         }
