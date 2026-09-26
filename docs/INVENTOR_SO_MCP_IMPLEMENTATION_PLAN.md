@@ -229,7 +229,7 @@ JSON Lines, un record per `tools/call` di scrittura (e per ogni rifiuto): `times
 
 ## 24. Politica di esposizione
 
-Tool MCP: ~70 dopo questa iterazione (P + X), sotto l'obiettivo 80–120. Catalogo batch: 36 comandi P + ~45 comandi X su part/assembly/drawing.
+Superficie MCP governata dalla policy dopo questa iterazione: **65 tool** con contratto (47 P + 18 X), sotto l'obiettivo 80–120. I tool legacy non revisionati restano registrabili solo con `--full-access`. Catalogo batch: **36 comandi P + 46 comandi X** su part/assembly/drawing. Ogni tool senza contratto in `ToolContracts` è invisibile per costruzione.
 
 ## 25. Discovery (F26, F27)
 

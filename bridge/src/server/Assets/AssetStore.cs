@@ -78,14 +78,43 @@ public sealed class AssetStore
         if (string.IsNullOrWhiteSpace(directory) || !Path.IsPathFullyQualified(directory))
             throw new ArgumentException("Asset directory must be an absolute path.");
         if (maxBytes <= 0 || totalBytes < maxBytes) throw new ArgumentException("Asset limits must be positive and total >= per-asset.");
-        _directory = Path.GetFullPath(directory);
+        // Each server process owns a subdirectory: a stdio server and the HTTP host commonly run side
+        // by side on one workstation, and neither may delete or serve the other's files.
+        var root = Path.GetFullPath(directory);
+        _directory = Path.Combine(root, "p" + Environment.ProcessId + "-" + Guid.NewGuid().ToString("N").Substring(0, 8));
         _ttl = ttl;
         _maxBytes = maxBytes;
         _totalBytes = totalBytes;
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
         Directory.CreateDirectory(_directory);
-        foreach (var stale in Directory.EnumerateFiles(_directory, "a_*"))
-            try { File.Delete(stale); } catch { /* locked by another process: it stays unaddressable */ }
+        RemoveLeftovers(root);
+    }
+
+    /// <summary>This process's own storage directory.</summary>
+    public string StorageDirectory => _directory;
+
+    /// <summary>
+    /// Files from before this store existed are never addressable: loose files from older versions and
+    /// the subdirectories of server processes that are no longer running are removed.
+    /// </summary>
+    private void RemoveLeftovers(string root)
+    {
+        foreach (var stale in Directory.EnumerateFiles(root, "a_*"))
+            try { File.Delete(stale); } catch { /* locked: stays unaddressable */ }
+        foreach (var dir in Directory.EnumerateDirectories(root, "p*"))
+        {
+            if (string.Equals(Path.GetFullPath(dir), _directory, StringComparison.OrdinalIgnoreCase)) continue;
+            var name = Path.GetFileName(dir);
+            int dash = name.IndexOf('-');
+            if (dash > 1 && int.TryParse(name.Substring(1, dash - 1), out int pid) && IsAlive(pid)) continue;
+            try { Directory.Delete(dir, recursive: true); } catch { /* in use: leave it */ }
+        }
+    }
+
+    private static bool IsAlive(int pid)
+    {
+        try { using var process = System.Diagnostics.Process.GetProcessById(pid); return !process.HasExited; }
+        catch { return false; }
     }
 
     public long MaxBytes => _maxBytes;

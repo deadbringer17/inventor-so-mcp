@@ -29,12 +29,18 @@ public sealed class AuditLog
     private readonly string? _directory;
     private readonly Func<DateTimeOffset> _clock;
 
-    public AuditLog(InventorMcpConfig config) : this(config.AuditEnabled ? config.AuditDirectory : null) { }
+    private readonly string _stream;
 
-    public AuditLog(string? directory, Func<DateTimeOffset>? clock = null)
+    public AuditLog(InventorMcpConfig config) : this(config.AuditEnabled ? config.AuditDirectory : null, null, config.Transport) { }
+
+    /// <param name="stream">Host kind in the file name. Each process writes its own file
+    /// (audit-YYYYMMDD-&lt;stream&gt;-&lt;pid&gt;.jsonl): a stdio server and the HTTP host appending to one file
+    /// would contend for it, and a log write must never be what fails a CAD operation.</param>
+    public AuditLog(string? directory, Func<DateTimeOffset>? clock = null, string stream = "stdio")
     {
         _directory = string.IsNullOrWhiteSpace(directory) ? null : Path.GetFullPath(directory);
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
+        _stream = string.IsNullOrWhiteSpace(stream) ? "server" : stream;
     }
 
     public bool Enabled => _directory != null;
@@ -47,7 +53,11 @@ public sealed class AuditLog
         return contract == null || contract.Access is not ("query" or "meta");
     }
 
-    public string? CurrentFile => _directory == null ? null : Path.Combine(_directory, "audit-" + _clock().ToString("yyyyMMdd") + ".jsonl");
+    public string? CurrentFile => _directory == null ? null
+        : Path.Combine(_directory, "audit-" + _clock().ToString("yyyyMMdd") + "-" + _stream + "-" + Environment.ProcessId + ".jsonl");
+
+    /// <summary>Records that could not be written (disk full, permissions); reported, never silently lost.</summary>
+    public long FailedWrites { get; private set; }
 
     public void Write(JObject record)
     {
@@ -56,8 +66,18 @@ public sealed class AuditLog
         var line = record.ToString(Formatting.None) + "\n";
         lock (_gate)
         {
-            Directory.CreateDirectory(_directory);
-            File.AppendAllText(CurrentFile!, line, new UTF8Encoding(false));
+            try
+            {
+                Directory.CreateDirectory(_directory);
+                File.AppendAllText(CurrentFile!, line, new UTF8Encoding(false));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // The CAD operation already happened (or was refused); failing the tool call now
+                // would misreport it. Keep the record on stderr, which MCP hosts collect.
+                FailedWrites++;
+                Console.Error.WriteLine("inventor-so-mcp: audit write failed (" + ex.Message + "): " + line.TrimEnd());
+            }
         }
     }
 

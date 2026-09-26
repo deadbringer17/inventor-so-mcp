@@ -204,6 +204,29 @@ public sealed class AuditLogTests : System.IDisposable
     }
 
     [Fact]
+    public void EachProcessAndHostWritesItsOwnFile()
+    {
+        var http = new AuditLog(_dir, null, "http");
+        var stdio = new AuditLog(_dir, null, "stdio");
+        Assert.NotEqual(http.CurrentFile, stdio.CurrentFile);
+        Assert.Contains("-http-" + System.Environment.ProcessId, http.CurrentFile);
+    }
+
+    [Fact]
+    public void AnUnwritableLogNeverThrows()
+    {
+        var file = Path.Combine(Path.GetTempPath(), "so-audit-file-" + System.Guid.NewGuid().ToString("N"));
+        File.WriteAllText(file, "not a directory");
+        try
+        {
+            var log = new AuditLog(file);   // the "directory" is a file: every write fails
+            log.Write(new JObject { ["tool"] = "a" });
+            Assert.Equal(1, log.FailedWrites);
+        }
+        finally { File.Delete(file); }
+    }
+
+    [Fact]
     public void DisabledLogWritesNothing()
     {
         var log = new AuditLog((string?)null);

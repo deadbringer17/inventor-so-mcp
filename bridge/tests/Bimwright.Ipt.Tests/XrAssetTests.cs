@@ -294,7 +294,7 @@ public sealed class AssetStoreTests : System.IDisposable
     {
         var store = Store();
         var a = store.Put(new byte[] { 1, 2, 3 }, "application/json", "quest");
-        File.WriteAllBytes(Path.Combine(_dir, a.Id + ".bin"), new byte[] { 6, 6, 6 });
+        File.WriteAllBytes(Path.Combine(store.StorageDirectory, a.Id + ".bin"), new byte[] { 6, 6, 6 });
         Assert.False(store.TryRead(a.Id, "quest", out _, out _));
     }
 
@@ -306,6 +306,22 @@ public sealed class AssetStoreTests : System.IDisposable
         File.WriteAllBytes(stale, new byte[] { 1 });
         _ = Store();
         Assert.False(File.Exists(stale));
+    }
+
+    [Fact]
+    public void ProcessesKeepTheirOwnDirectoriesAndDeadOnesAreRemoved()
+    {
+        Directory.CreateDirectory(_dir);
+        var dead = Path.Combine(_dir, "p999999-deadbeef");
+        Directory.CreateDirectory(dead);
+        File.WriteAllBytes(Path.Combine(dead, "a_x.bin"), new byte[] { 1 });
+        var first = Store();
+        var kept = first.Put(new byte[] { 7 }, "image/png", "quest");
+        var second = Store();   // a second server process on the same workstation
+        Assert.NotEqual(first.StorageDirectory, second.StorageDirectory);
+        Assert.False(Directory.Exists(dead));
+        Assert.True(first.TryRead(kept.Id, "quest", out _, out _));   // the live sibling was not touched
+        Assert.False(second.TryRead(kept.Id, "quest", out _, out _));  // and is not served by the other process
     }
 
     [Fact]

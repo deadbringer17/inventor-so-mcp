@@ -417,6 +417,76 @@ tolerances. Matching is by exact name: renames appear as removal/addition.
 It does not prove B-Rep equivalence. Older checkpoints remain recoverable but
 cannot be compared if they lack a semantic snapshot.
 
+### Discovery: what can this installation do?
+
+`inventor_get_capabilities` answers from what is actually running: server transport,
+read-only/experimental state, whether the add-in answers, the commands it registered and
+which batch commands are runnable. `inventor_get_tool_schema` publishes the semantic
+contract of every tool (tier, read/write, revision required, previewable, rollback,
+validators, external effects). Neither touches the model.
+
+### Validated batches and change plans
+
+`inventor_atomic_batch` now runs in parts, assemblies and drawings (each catalogue
+command declares where it applies) and accepts `validate`, a list of checks run once
+before commit, e.g. `["interference", "min_clearance:2mm"]`. A failed check rolls the
+whole batch back with `VALIDATION_FAILED` and the offending pair or distance in
+`details.step_details`. Vocabulary: `inventor://batch-commands`.
+
+For changes a person should approve, `inventor_plan_change` previews the operations for
+real (executed, then aborted, revision restored), estimates the impact and returns a
+`plan_id` bound to the revision and to a SHA-256 of the operations;
+`inventor_commit_plan` commits exactly that plan or refuses (`PLAN_MISMATCH`,
+`PLAN_NOT_FOUND`, `STALE_REVISION`). `inventor_validate_bom` and `inventor_compare_bom`
+analyse the verified BOM query server-side.
+
+### Remote host and Meta Quest (WebXR)
+
+`server-http/Inventor.So.Mcp.Http.dll` in the package is the same server over
+Streamable HTTP, for clients on the network such as the headset:
+
+```powershell
+# one token per client; the name identifies the client in the audit log
+dotnet server-http\Inventor.So.Mcp.Http.dll --generate-token quest >> "$env:LOCALAPPDATA\InventorSO\http-tokens.txt"
+# loopback only (default): http://127.0.0.1:8787
+dotnet server-http\Inventor.So.Mcp.Http.dll --target 2027 --http-token-file "$env:LOCALAPPDATA\InventorSO\http-tokens.txt" --enable-experimental
+# on the LAN: HTTPS with your certificate (password in INVENTOR_SO_HTTP_CERT_PASSWORD)
+dotnet server-http\Inventor.So.Mcp.Http.dll --target 2027 --http-token-file ... --http-urls https://0.0.0.0:8443 --http-cert C:\certs\pc.pfx --enable-experimental
+```
+
+- `/mcp` — MCP endpoint, bearer token required; sessions are bound to their token.
+- `/assets/{id}` — GLB meshes and other assets produced by the tools, only for the token that produced them.
+- `/viewer/` — WebXR viewer: open it in the Quest browser, paste the token, *Load active document*,
+  point and trigger to pick a face (it is highlighted in Inventor too), preview and commit a
+  parameter change of a part; the model reloads only the geometry that changed.
+- `/healthz` — liveness, no data.
+
+Plain HTTP is accepted only on loopback; a LAN address needs a certificate, or the explicit
+`--http-allow-insecure-lan` for an isolated lab network. CORS is closed unless origins are
+listed with `--http-origins`. Requests are rate limited per client (`--http-rate-limit`,
+default 240/min). Every non-read tool call is appended to
+`%LOCALAPPDATA%\InventorSO\inventor-so-mcp\audit\audit-YYYYMMDD-<host>-<pid>.jsonl` (no tokens, no argument
+values). `inventor_switch_target` is not offered over HTTP: pin the instance with `--target`.
+
+### Experimental tier
+
+XR meshes, scene graph, camera, highlight, sketch inspection, dependency and semantic
+queries, assembly health, drawing validation, motion studies, release packages and 46
+additional batch commands (sweep, loft, shell, draft, split, thicken, thread, mirror,
+combine, work geometry, representations, suppression, component replacement and
+patterns, drawing sheets and views, ...) are implemented but **not yet verified against
+a live Inventor**. They stay out of the default build and the default tool list:
+
+```powershell
+./scripts/build-inventor-so.ps1 -Experimental          # add-in compiled with the experimental handlers
+$env:INVENTOR_SO_EXPERIMENTAL = '1'                     # set before starting Inventor: add-in admits them
+dotnet server\Inventor.So.Mcp.Server.dll --enable-experimental ...   # server lists the tools
+```
+
+The plan, with the corrections made to the original specification and the status of
+each item, is in [`docs/INVENTOR_SO_MCP_IMPLEMENTATION_PLAN.md`](docs/INVENTOR_SO_MCP_IMPLEMENTATION_PLAN.md).
+Promotion of a capability to production requires its live checks (see the development status).
+
 ## Original NeonGlay project documentation (reference only, not the install path)
 
 The Python source below is preserved as a modeling reference, not the new
