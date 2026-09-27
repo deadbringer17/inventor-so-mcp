@@ -10,8 +10,10 @@
 /[Rr]ecordings/
 /*.csproj
 /*.sln
+/*.slnx
 /.vs/
 /.idea/
+/.vscode/
 *.apk
 *.aab
 # .NET projects under Tests~
