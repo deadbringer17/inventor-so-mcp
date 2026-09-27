@@ -11,7 +11,8 @@ using Newtonsoft.Json.Linq;
 // Inventor XR SO test host: the real HTTPS host and pairing in front of FakeAddIn (two bolts and a
 // plate), so the Unity client and the headset can be developed without Inventor.
 bool lan = args.Contains("--lan");
-bool churn = args.Contains("--churn");
+int churnIndex = Array.IndexOf(args, "--churn");
+int churnSeconds = churnIndex >= 0 && churnIndex + 1 < args.Length && int.TryParse(args[churnIndex + 1], out var s) ? s : 0;
 int stateIndex = Array.IndexOf(args, "--state");
 string state = stateIndex >= 0 && stateIndex + 1 < args.Length ? args[stateIndex + 1] : Path.Combine(Path.GetTempPath(), "xrso-testhost");
 Directory.CreateDirectory(state);
@@ -56,12 +57,12 @@ Console.Out.Flush();
 using var stop = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };
 _ = Task.Run(() => { while (Console.In.Read() >= 0) { } stop.Cancel(); });
-if (churn)
+if (churnSeconds > 0)
     _ = Task.Run(async () =>
     {
         while (!stop.IsCancellationRequested)
         {
-            await Task.Delay(TimeSpan.FromSeconds(20), stop.Token).ContinueWith(_ => { });
+            await Task.Delay(TimeSpan.FromSeconds(churnSeconds), stop.Token).ContinueWith(_ => { });
             if (!stop.IsCancellationRequested) addIn.RaiseDocumentChanged(true);
         }
     });

@@ -1,7 +1,7 @@
 {
   "name": "InventorXrSo.Tests.EditMode",
   "rootNamespace": "InventorXrSo.Tests",
-  "references": ["InventorXrSo.Core", "UnityEngine.TestRunner", "UnityEditor.TestRunner"],
+  "references": ["InventorXrSo.Core", "InventorXrSo.Unity", "UnityEngine.TestRunner", "UnityEditor.TestRunner"],
   "includePlatforms": ["Editor"],
   "overrideReferences": true,
   "precompiledReferences": ["nunit.framework.dll", "Newtonsoft.Json.dll"],

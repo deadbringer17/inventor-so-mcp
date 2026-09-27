@@ -1,0 +1,7 @@
+{
+  "name": "InventorXrSo.Unity",
+  "rootNamespace": "InventorXrSo.Unity",
+  "references": ["InventorXrSo.Core"],
+  "includePlatforms": [],
+  "autoReferenced": true
+}
