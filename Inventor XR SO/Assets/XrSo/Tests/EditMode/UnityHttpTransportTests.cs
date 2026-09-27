@@ -65,6 +65,32 @@ namespace InventorXrSo.Tests
             }
         }
 
+        [UnityTest]
+        public IEnumerator CancellingFromAThreadPoolThreadAbortsWithoutUnityErrors()
+        {
+            using (var host = TestHostProcess.Start())
+            {
+                var mcp = new McpClient(new UnityHttpTransport(ServerTrust.Pinned(host.CertSha256)), host.BaseUrl, host.EditorToken);
+                var init = Subscribe(mcp);
+                yield return Await(init);
+                Assert.IsNull(init.Exception, init.Exception?.ToString());
+
+                var cts = new CancellationTokenSource();
+                // No --churn: the server never pushes an event, so this stays pending until cancelled.
+                var stream = mcp.RunEventStreamAsync(_ => { }, cts.Token);
+                yield return null; // let SendWebRequest actually start before cancelling.
+
+                // Cancel from a thread-pool thread: the registration callback then runs off the main
+                // thread, which is exactly the race UnityHttpTransport must hop back from before
+                // calling UnityWebRequest.Abort().
+                Task.Run(() => cts.Cancel());
+
+                yield return Await(stream.ContinueWith(_ => { }));
+                Assert.IsTrue(stream.IsCanceled, stream.Exception?.ToString());
+                LogAssert.NoUnexpectedReceived();
+            }
+        }
+
         private static async Task<JObject> Call(McpClient mcp)
         {
             await mcp.InitializeAsync(CancellationToken.None);

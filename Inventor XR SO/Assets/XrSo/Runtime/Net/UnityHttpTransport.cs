@@ -19,17 +19,25 @@ namespace InventorXrSo.Unity.Net
 
         public Task<TransportResponse> SendAsync(TransportRequest request, CancellationToken ct)
         {
+            var tcs = new TaskCompletionSource<TransportResponse>();
+            if (ct.IsCancellationRequested)
+            {
+                tcs.TrySetCanceled(ct);
+                return tcs.Task;
+            }
             int before = _trust.RejectionCount;
             var web = Create(request, new DownloadHandlerBuffer());
-            var tcs = new TaskCompletionSource<TransportResponse>();
-            var registration = ct.Register(() => web.Abort());
+            var done = new int[1];
+            var context = SynchronizationContext.Current;
+            var registration = ct.Register(() => AbortSafely(web, context, done));
             web.SendWebRequest().completed += _ =>
             {
+                Interlocked.Exchange(ref done[0], 1);
                 registration.Dispose();
                 try
                 {
                     if (ct.IsCancellationRequested) tcs.TrySetCanceled(ct);
-                    else if (web.result == UnityWebRequest.Result.ConnectionError) tcs.TrySetException(Failure(web, before));
+                    else if (IsFailure(web)) tcs.TrySetException(Failure(web, before));
                     else tcs.TrySetResult(new TransportResponse((int)web.responseCode, Headers(web), web.downloadHandler.data));
                 }
                 finally { web.Dispose(); }
@@ -39,23 +47,55 @@ namespace InventorXrSo.Unity.Net
 
         public Task<int> StreamLinesAsync(TransportRequest request, Action<string> onLine, CancellationToken ct)
         {
+            var tcs = new TaskCompletionSource<int>();
+            if (ct.IsCancellationRequested)
+            {
+                tcs.TrySetCanceled(ct);
+                return tcs.Task;
+            }
             int before = _trust.RejectionCount;
             var web = Create(request, new LineDownloadHandler(onLine));
-            var tcs = new TaskCompletionSource<int>();
-            var registration = ct.Register(() => web.Abort());
+            var done = new int[1];
+            var context = SynchronizationContext.Current;
+            var registration = ct.Register(() => AbortSafely(web, context, done));
             web.SendWebRequest().completed += _ =>
             {
+                Interlocked.Exchange(ref done[0], 1);
                 registration.Dispose();
                 try
                 {
                     if (ct.IsCancellationRequested) tcs.TrySetCanceled(ct);
-                    else if (web.result == UnityWebRequest.Result.ConnectionError) tcs.TrySetException(Failure(web, before));
+                    else if (IsFailure(web)) tcs.TrySetException(Failure(web, before));
                     else tcs.TrySetResult((int)web.responseCode);
                 }
                 finally { web.Dispose(); }
             };
             return tcs.Task;
         }
+
+        /// <summary>
+        /// Cancellation can run this on whatever thread called <c>Cancel()</c> (or synchronously on the
+        /// registering thread if the token is already cancelled). <see cref="UnityWebRequest.Abort"/>
+        /// must run on the thread that owns it, so when the current thread isn't the one the request was
+        /// created on, hop back via the captured <see cref="SynchronizationContext"/>. <paramref
+        /// name="done"/>[0] — set to 1 by the completion handler before it disposes the request — is
+        /// checked both before posting and again once the posted callback actually runs, so a late abort
+        /// never touches a disposed <see cref="UnityWebRequest"/>. A one-element array (rather than a
+        /// <c>ref</c> parameter) carries the flag so it can be captured by the <see
+        /// cref="SynchronizationContext.Post"/> delegate.
+        /// </summary>
+        private static void AbortSafely(UnityWebRequest web, SynchronizationContext context, int[] done)
+        {
+            void AbortIfNotDone()
+            {
+                if (Volatile.Read(ref done[0]) == 0) web.Abort();
+            }
+            if (context != null && SynchronizationContext.Current != context) context.Post(_ => AbortIfNotDone(), null);
+            else AbortIfNotDone();
+        }
+
+        private static bool IsFailure(UnityWebRequest web) =>
+            web.result == UnityWebRequest.Result.ConnectionError || web.result == UnityWebRequest.Result.DataProcessingError;
 
         private UnityWebRequest Create(TransportRequest request, DownloadHandler download)
         {
