@@ -12,6 +12,7 @@ using InventorXrSo.Unity.Net;
 using InventorXrSo.Unity.Pairing;
 using InventorXrSo.Unity.Scene;
 using InventorXrSo.Unity.Ui;
+using InventorXrSo.Xr.Voice;
 using UnityEngine;
 
 namespace InventorXrSo.Xr
@@ -46,6 +47,7 @@ namespace InventorXrSo.Xr
         private DesignWorkspace _design;
         private AssemblyWorkspace _assembly;
         private LamieraWorkspace _lamiera;
+        private VoiceRig _voice;
 
         public void Configure(CadSceneView view, SelectionVisuals visuals, ControllerRay controllerRay, EnvironmentModeController env, Transform centerEye, QrScanner scanner)
         {
@@ -87,6 +89,11 @@ namespace InventorXrSo.Xr
             _design.ActiveChanged += _inspect.SetDesignActive;
             _assembly.ActiveChanged += _inspect.SetAssemblyActive;
             _lamiera.ActiveChanged += _inspect.SetLamieraActive;
+            // Voice enablement follows the active workspace: re-evaluate whenever the mode changes.
+            _design.ActiveChanged += _ => NotifyVoiceModeChanged();
+            _assembly.ActiveChanged += _ => NotifyVoiceModeChanged();
+            _lamiera.ActiveChanged += _ => NotifyVoiceModeChanged();
+            _inspect.InspectionRequested += NotifyVoiceModeChanged;
             ray.Picked += OnPicked;
             ray.PickedNothing += OnPickedNothing;
             ray.CanPick = false;
@@ -116,6 +123,7 @@ namespace InventorXrSo.Xr
 
         private void StopSession()
         {
+            if (_voice != null) { Destroy(_voice.gameObject); _voice = null; }
             _inspect?.Bind(null, null);
             _design?.Bind(null);
             _assembly?.Bind(null);
@@ -148,6 +156,7 @@ namespace InventorXrSo.Xr
             _design.SetOnline(status == SessionStatus.Online);
             _assembly.SetOnline(status == SessionStatus.Online);
             _lamiera.SetOnline(status == SessionStatus.Online);
+            if (status != SessionStatus.Online) _voice?.NotifyDisconnected();
             RefreshHome();
         }
 
@@ -235,7 +244,8 @@ namespace InventorXrSo.Xr
         {
             StopSession();
             _run = new CancellationTokenSource();
-            var backend = new InventorBackend(new UnityHttpTransport(ServerTrust.Pinned(_server.CertSha256)), _server,
+            var transport = new UnityHttpTransport(ServerTrust.Pinned(_server.CertSha256));
+            var backend = new InventorBackend(transport, _server,
                 new FileAssetCache(Path.Combine(Application.persistentDataPath, "assets")));
             _session = new SessionController(backend, new TaskDelay());
             _selection = new SelectionService(backend);
@@ -243,6 +253,9 @@ namespace InventorXrSo.Xr
             _design.Bind(backend);
             _assembly.Bind(backend);
             _lamiera.Bind(backend, backend);
+            // Voice reuses the backend's transport and the paired server; M5 exposes only the Lamiera surface.
+            _voice = VoiceRig.Create(head.parent, head, head.GetComponent<Camera>(), transport, _server,
+                WorkspaceVoiceTarget.ForLamiera(_lamiera), ray.Controller);
             _selection.Changed += selectionVisuals.Show;
             _session.StatusChanged += OnStatusChanged;
             _session.SceneLoaded += OnSceneLoaded;
@@ -313,6 +326,7 @@ namespace InventorXrSo.Xr
             _design?.SetVisible(false);
             _assembly?.SetVisible(false);
             _lamiera?.SetVisible(false);
+            _voice?.NotifyModeChanged();
             ray.CanPick = false;
             sceneView.gameObject.SetActive(false);
             _home.gameObject.SetActive(true);
@@ -354,6 +368,8 @@ namespace InventorXrSo.Xr
             // Auto-open only on the transition to primary and only from plain inspection: never over an authoring workspace.
             if (primary && _inSession && !_design.Active && !_assembly.Active && !_lamiera.Active) OpenLamiera();
         }
+
+        private void NotifyVoiceModeChanged() { _voice?.NotifyModeChanged(); }
 
         private void LeaveSession()
         {

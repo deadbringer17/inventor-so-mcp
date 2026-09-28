@@ -50,6 +50,24 @@ Quest. Le evidenze sotto sono solo quelle eseguite davvero in quell'ambiente.
   `Sviluppo — sola vista`, Detach.
 - Voce: `MicrophoneCapture`, permesso `RECORD_AUDIO`, `PushToTalkInput` sul
   pulsante B, `VoicePanel`, `VoiceRig`.
+- `AppController` crea il rig vocale all'avvio della sessione, con lo stesso
+  trasporto pinnato del backend, e lo distrugge alla chiusura. Chiude la
+  cattura a ogni cambio di workspace e alla perdita di connessione.
+- `WorkspaceVoiceTarget` collega la voce solo a Lamiera. In Design, Assembly e
+  Ispeziona ogni comando vocale risponde "Comando non disponibile in questa
+  modalità".
+
+## Lacune note rispetto alla spec
+
+- Il mirror vocale di `Smusso`, `Raccordo`, `Misura`, `Isola` e `Crea schizzo`
+  (spec M5, sezione Voce) non è collegato: quei comandi vivono nei workspace
+  Design e Ispeziona, che non espongono ancora `IsEnabled`/`Invoke`.
+- La direzione del manipolatore flangia è stimata dalla geometria; il campo
+  numerico resta autorevole.
+- Non è verificato che il contesto Design restituisca gli spigoli liberi della
+  lamiera usati per selezionare i bordi della flangia.
+- Nella Home il microfono si può ancora aprire, ma nessun comando è
+  abilitato.
 
 ## Evidenze eseguite
 
