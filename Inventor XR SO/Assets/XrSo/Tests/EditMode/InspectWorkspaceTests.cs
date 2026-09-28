@@ -113,5 +113,20 @@ namespace InventorXrSo.Tests
             Assert.AreEqual(0, measure.PinnedCount);
             backend.Result.SetCanceled();
         }
+
+        [Test]
+        public void LamieraTabRaisesTheRequestShowsItsModeAndTintsWhenPrimary()
+        {
+            int requests = 0; _workspace.LamieraRequested += () => requests++;
+            var tab = _root.GetComponentsInChildren<Button>(true).Single(b => b.GetComponentInChildren<Text>().text == "Lamiera");
+            tab.onClick.Invoke(); Assert.AreEqual(1, requests);
+            Assert.AreEqual(UiFactory.Key, tab.colors.normalColor);
+            _workspace.SetLamieraPrimary(true); Assert.AreEqual(UiFactory.Accent, tab.colors.normalColor);
+            _workspace.SetLamieraPrimary(false); Assert.AreEqual(UiFactory.Key, tab.colors.normalColor);
+            _workspace.SetLamieraActive(true);
+            Assert.True(_workspace.DesignActive); Assert.True(_root.GetComponentsInChildren<Text>(true).Any(t => t.text == "LAMIERA"));
+            _workspace.SetLamieraActive(false);
+            Assert.False(_workspace.DesignActive); Assert.True(_root.GetComponentsInChildren<Text>(true).Any(t => t.text == "INSPECT"));
+        }
     }
 }

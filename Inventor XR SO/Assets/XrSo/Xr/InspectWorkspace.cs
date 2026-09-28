@@ -29,6 +29,7 @@ namespace InventorXrSo.Xr
         private EnvironmentModeController _environment;
         private HomePanel _panel;
         private Canvas _wrist, _breadcrumb, _compact;
+        private Button _lamieraTab;
         private Text _compactText, _modeText;
         private SectionPlane _section;
         private MeasurementView _measure;
@@ -55,7 +56,17 @@ namespace InventorXrSo.Xr
         public bool Measuring => _measure != null && _measure.Measuring;
         public event Action DesignRequested;
         public event Action AssemblyRequested;
+        public event Action LamieraRequested;
         public void SetAssemblyActive(bool active) { SetDesignActive(active); if (active) _modeText.text = "ASSEMBLY"; }
+        public void SetLamieraActive(bool active) { SetDesignActive(active); if (active) _modeText.text = "LAMIERA"; }
+        /// <summary>Sheet-metal part: the Lamiera tab is highlighted as the primary mode.</summary>
+        public void SetLamieraPrimary(bool primary)
+        {
+            if (_lamieraTab == null) return;
+            var colors = _lamieraTab.colors;
+            colors.normalColor = colors.selectedColor = primary ? UiFactory.Accent : UiFactory.Key;
+            _lamieraTab.colors = colors;
+        }
         public event Action InspectionRequested;
         public bool DesignActive { get; private set; }
         public void SetDesignActive(bool active)
@@ -75,20 +86,22 @@ namespace InventorXrSo.Xr
             _panel.transform.localScale = Vector3.one * 0.0008f;
             XrUi.MakeInteractive(_panel.Canvas, head.GetComponent<Camera>());
             _panel.gameObject.SetActive(false);
-            _wrist = UiFactory.WorldCanvas(_hand, "Polso Ispeziona", new Vector2(560, 150));
+            _wrist = UiFactory.WorldCanvas(_hand, "Polso Ispeziona", new Vector2(640, 150));
             _wrist.transform.localPosition = new Vector3(0, 0.09f, 0.03f);
             XrUi.MakeInteractive(_wrist, head.GetComponent<Camera>());
             var bg = UiFactory.Panel(_wrist.transform, "Background", UiFactory.Background); UiFactory.Stretch(bg);
             _modeText = UiFactory.Label(bg, "INSPECT", 24, FontStyle.Bold);
             Position(_modeText.rectTransform, new Vector2(0, 48), new Vector2(270, 40));
-            var tools = UiFactory.Button(bg, "Ispeziona", UiFactory.Accent, 24, () => Open("tools"));
-            Position((RectTransform)tools.transform, new Vector2(-210, -15), new Vector2(130, 65));
-            var browser = UiFactory.Button(bg, "Browser", UiFactory.Key, 24, () => Open("browser"));
-            Position((RectTransform)browser.transform, new Vector2(-70, -15), new Vector2(130, 65));
-            var design = UiFactory.Button(bg, "Design", UiFactory.Key, 24, () => DesignRequested?.Invoke());
-            Position((RectTransform)design.transform, new Vector2(70, -15), new Vector2(130,65));
-            var assembly = UiFactory.Button(bg, "Assembly", UiFactory.Key, 22, () => AssemblyRequested?.Invoke());
-            Position((RectTransform)assembly.transform, new Vector2(210, -15), new Vector2(130,65));
+            var tools = UiFactory.Button(bg, "Ispeziona", UiFactory.Accent, 21, () => Open("tools"));
+            Position((RectTransform)tools.transform, new Vector2(-256, -15), new Vector2(120, 65));
+            var browser = UiFactory.Button(bg, "Browser", UiFactory.Key, 21, () => Open("browser"));
+            Position((RectTransform)browser.transform, new Vector2(-128, -15), new Vector2(120, 65));
+            var design = UiFactory.Button(bg, "Design", UiFactory.Key, 21, () => DesignRequested?.Invoke());
+            Position((RectTransform)design.transform, new Vector2(0, -15), new Vector2(120, 65));
+            var assembly = UiFactory.Button(bg, "Assembly", UiFactory.Key, 20, () => AssemblyRequested?.Invoke());
+            Position((RectTransform)assembly.transform, new Vector2(128, -15), new Vector2(120, 65));
+            _lamieraTab = UiFactory.Button(bg, "Lamiera", UiFactory.Key, 21, () => LamieraRequested?.Invoke());
+            Position((RectTransform)_lamieraTab.transform, new Vector2(256, -15), new Vector2(120, 65));
 
             _breadcrumb = UiFactory.WorldCanvas(transform, "Contesto", new Vector2(800, 50));
             _breadcrumb.transform.localScale = Vector3.one * 0.00065f;
