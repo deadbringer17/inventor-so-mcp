@@ -1,3 +1,4 @@
+using Inventor.So.Mcp.Http.Voice;
 using Inventor.So.Mcp.Http.Pairing;
 using System.Threading.RateLimiting;
 using Bimwright.Ipt.Server;
@@ -12,7 +13,7 @@ using PairingEndpoint = Inventor.So.Mcp.Http.Pairing.PairingEndpoint;
 namespace Inventor.So.Mcp.Http;
 
 /// <summary>
-/// The remote host (plan §21-22): Streamable HTTP MCP on <c>/mcp</c>, <c>GET /assets/{id}</c>, the
+/// The remote host (plan §21-22): Streamable HTTP MCP on <c>/mcp</c>, <c>GET /assets/{id}</c>, <c>POST /voice/transcribe</c> (local speech engine, off by default), the
 /// WebXR viewer on <c>/viewer/</c> and an anonymous <c>/healthz</c>. The named pipe to Inventor
 /// stays local; only this process listens on the network, and only as configured.
 /// </summary>
@@ -46,7 +47,10 @@ public static class HttpHost
         });
 
         var services = builder.Services;
+        options?.ConfigureServices?.Invoke(services);
         services.AddSingleton(tokens);
+        services.TryAddSingleton<ISpeechEngine>(_ => ExternalProcessSpeechEngine.FromConfig(config));
+        services.AddSingleton(new VoiceEndpoint.Settings(config.VoiceDiagnostics));
         services.AddHttpContextAccessor();
         services.AddSingleton<ICallerIdentity, HttpCallerIdentity>();
         services.AddInventorServices(config);
@@ -121,6 +125,7 @@ public static class HttpHost
             })
             .RequireAuthorization()
             .RequireRateLimiting(RatePolicy);
+        VoiceEndpoint.Map(app);
         MapViewer(app);
         return app;
     }

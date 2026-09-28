@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Newtonsoft.Json;
@@ -12,6 +13,8 @@ public sealed class HostOptions
     public X509Certificate2? Certificate { get; init; }
     /// <summary>When set, POST /pair is mapped (anonymous, rate limited).</summary>
     public PairingEndpoint? Pairing { get; init; }
+    /// <summary>Extra service registrations made before the defaults (tests and embedders: a speech engine, log providers).</summary>
+    public Action<IServiceCollection>? ConfigureServices { get; init; }
 }
 
 /// <summary>

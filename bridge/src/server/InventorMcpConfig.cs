@@ -42,6 +42,13 @@ public sealed class InventorMcpConfig
     /// <summary>Host written into the pairing QR code; default: this PC's first LAN IPv4 address.</summary>
     public string? PairHost { get; set; }
 
+    // --- Voice transcription (POST /voice/transcribe on the remote host; off unless a command is set) ---
+    /// <summary>Local command that transcribes a WAV file (path appended, or replaces {wav}); null = voice disabled.</summary>
+    public string? VoiceCommand { get; set; }
+    public int VoiceTimeoutMs { get; set; } = 15000;
+    /// <summary>Opt-in: log duration/outcome metadata of each transcription (never audio or text).</summary>
+    public bool VoiceDiagnostics { get; set; }
+
     // --- Asset store ---
     public string AssetDirectory { get; set; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InventorSO", "inventor-so-mcp", "assets");
@@ -98,6 +105,9 @@ public sealed class InventorMcpConfig
         if (o["httpAllowInsecureLan"] is { } il) c.HttpAllowInsecureLan = il.Value<bool>();
         if (o["httpAllowedOrigins"] is JArray origins) c.HttpAllowedOrigins = origins.Select(x => x.Value<string>()!).ToList();
         if (o["httpRateLimitPerMinute"] is { } rl) c.HttpRateLimitPerMinute = rl.Value<int>();
+        if (o["voiceCommand"] is { } vc) c.VoiceCommand = vc.Value<string>();
+        if (o["voiceTimeoutMs"] is { } vt) c.VoiceTimeoutMs = vt.Value<int>();
+        if (o["voiceDiagnostics"] is { } vd) c.VoiceDiagnostics = vd.Value<bool>();
         if (o["publicBaseUrl"] is { } pb) c.PublicBaseUrl = pb.Value<string>();
         if (o["assetDirectory"] is { } ad) c.AssetDirectory = ad.Value<string>()!;
         if (o["assetTtlMinutes"] is { } at) c.AssetTtlMinutes = at.Value<int>();
@@ -136,6 +146,10 @@ public sealed class InventorMcpConfig
         if (Bool("INVENTOR_SO_HTTP_ALLOW_INSECURE_LAN") is { } lan) c.HttpAllowInsecureLan = lan;
         if (Bool("INVENTOR_SO_HTTP_SELF_SIGNED") is { } selfSigned) c.HttpSelfSignedCertificate = selfSigned;
         if (Int("INVENTOR_SO_HTTP_RATE_LIMIT") is { } rate) c.HttpRateLimitPerMinute = rate;
+        var voiceCommand = Environment.GetEnvironmentVariable("INVENTOR_SO_VOICE_COMMAND");
+        if (!string.IsNullOrWhiteSpace(voiceCommand)) c.VoiceCommand = voiceCommand.Trim();
+        if (Int("INVENTOR_SO_VOICE_TIMEOUT_MS") is { } voiceTimeout) c.VoiceTimeoutMs = voiceTimeout;
+        if (Bool("INVENTOR_SO_VOICE_DIAGNOSTICS") is { } voiceDiag) c.VoiceDiagnostics = voiceDiag;
         var publicUrl = Environment.GetEnvironmentVariable("INVENTOR_SO_PUBLIC_URL");
         if (!string.IsNullOrWhiteSpace(publicUrl)) c.PublicBaseUrl = publicUrl.Trim();
         if (Bool("INVENTOR_SO_AUDIT") is { } audit) c.AuditEnabled = audit;
@@ -165,6 +179,9 @@ public sealed class InventorMcpConfig
                 case "--http-allow-insecure-lan": c.HttpAllowInsecureLan = true; break;
                 case "--http-origins":         c.HttpAllowedOrigins = SplitCsv(Next(args, ref i)); break;
                 case "--http-rate-limit":      if (int.TryParse(Next(args, ref i), out var r)) c.HttpRateLimitPerMinute = r; break;
+                case "--voice-command":        c.VoiceCommand = Next(args, ref i); break;
+                case "--voice-timeout-ms":     if (int.TryParse(Next(args, ref i), out var vt)) c.VoiceTimeoutMs = vt; break;
+                case "--voice-diagnostics":    c.VoiceDiagnostics = true; break;
                 case "--public-url":           c.PublicBaseUrl = Next(args, ref i); break;
                 case "--no-audit":             c.AuditEnabled = false; break;
                 case "--toolsets":             c.Toolsets = SplitCsv(Next(args, ref i)); break;
