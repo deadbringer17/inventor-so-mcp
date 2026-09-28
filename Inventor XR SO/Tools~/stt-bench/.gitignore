@@ -1,0 +1,11 @@
+# Audio e risultati con trascrizioni: mai nel repository.
+recordings/
+results/
+*.wav
+*.flac
+*.mp3
+*.ogg
+models/
+__pycache__/
+.pytest_cache/
+.venv/
