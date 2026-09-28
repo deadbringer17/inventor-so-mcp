@@ -2,6 +2,10 @@ using System;
 using System.IO;
 using UnityEditor;
 using UnityEditor.Build;
+using UnityEditor.XR.Management;
+using UnityEditor.XR.Management.Metadata;
+using UnityEngine.XR.Management;
+using Unity.XR.Oculus;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
@@ -30,6 +34,7 @@ namespace InventorXrSo.Editor
             PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.Android, false);
             PlayerSettings.SetGraphicsAPIs(BuildTarget.Android, new[] { GraphicsDeviceType.Vulkan });
             ConfigureUrp();
+            ConfigureXr();
             CreateMaterials();
             AssetDatabase.SaveAssets();
         }
@@ -47,6 +52,45 @@ namespace InventorXrSo.Editor
                 Debug.LogException(ex);
                 EditorApplication.Exit(1);
             }
+        }
+
+        public static void ConfigureXr()
+        {
+            if (!EditorBuildSettings.TryGetConfigObject<XRGeneralSettingsPerBuildTarget>(XRGeneralSettings.settingsKey, out var targets))
+            {
+                const string path = "Assets/Xr/XRGeneralSettingsPerBuildTarget.asset";
+                targets = AssetDatabase.LoadAssetAtPath<XRGeneralSettingsPerBuildTarget>(path);
+                if (targets == null)
+                {
+                    Directory.CreateDirectory("Assets/Xr");
+                    targets = ScriptableObject.CreateInstance<XRGeneralSettingsPerBuildTarget>();
+                    AssetDatabase.CreateAsset(targets, path);
+                }
+                EditorBuildSettings.AddConfigObject(XRGeneralSettings.settingsKey, targets, true);
+            }
+            if (!targets.HasManagerSettingsForBuildTarget(BuildTargetGroup.Android))
+                targets.CreateDefaultManagerSettingsForBuildTarget(BuildTargetGroup.Android);
+            var settings = targets.SettingsForBuildTarget(BuildTargetGroup.Android);
+            settings.InitManagerOnStart = true;
+            if (!XRPackageMetadataStore.AssignLoader(settings.Manager, typeof(OculusLoader).FullName, BuildTargetGroup.Android))
+                throw new BuildFailedException("Cannot assign the Android Oculus XR loader.");
+            var oculus = AssetDatabase.LoadAssetAtPath<OculusSettings>("Assets/Xr/Settings/OculusSettings.asset");
+            if (oculus == null) throw new BuildFailedException("Oculus settings asset is missing.");
+            oculus.TargetQuest3 = true;
+            EditorBuildSettings.AddConfigObject("Unity.XR.Oculus.Settings", oculus, true);
+            EditorUtility.SetDirty(oculus);
+            EditorUtility.SetDirty(settings.Manager);
+            EditorUtility.SetDirty(settings);
+            EditorUtility.SetDirty(targets);
+        }
+
+        public static void ValidateXr()
+        {
+            var settings = XRGeneralSettingsPerBuildTarget.XRGeneralSettingsForBuildTarget(BuildTargetGroup.Android);
+            if (settings != null && settings.InitManagerOnStart && settings.Manager != null)
+                foreach (var loader in settings.Manager.activeLoaders)
+                    if (loader is OculusLoader) return;
+            throw new BuildFailedException("Android XR loader is missing or disabled. Run Inventor XR SO/Configure Project before building.");
         }
 
         private static void ConfigureUrp()
@@ -85,6 +129,31 @@ namespace InventorXrSo.Editor
                 m.SetColor("_EmissionColor", new Color(0.05f, 0.15f, 0.35f));
             });
             Create("FaceHighlight", Shader.Find("XrSo/HighlightOverlay"), m => m.SetColor("_Color", new Color(1f, 0.6f, 0.1f, 0.6f)));
+            Create("Ray", Shader.Find("Universal Render Pipeline/Unlit"), m => m.SetColor("_BaseColor", new Color(0.8f, 0.9f, 1f)));
+            UpgradeInspectionMaterials();
+        }
+
+        [MenuItem("Inventor XR SO/Upgrade M2 Materials")]
+        public static void UpgradeInspectionMaterials()
+        {
+            var shader = Shader.Find("XrSo/CadSurface");
+            if (shader == null) throw new InvalidOperationException("M2 CAD shader is missing.");
+            foreach (var name in new[] { "CadBody", "OccurrenceHighlight" })
+            {
+                var material = AssetDatabase.LoadAssetAtPath<Material>(MaterialsFolder + "/" + name + ".mat");
+                if (material == null || material.shader == shader) continue;
+                var color = material.GetColor("_BaseColor");
+                material.shader = shader;
+                material.SetColor("_BaseColor", color);
+                EditorUtility.SetDirty(material);
+            }
+            AssetDatabase.SaveAssets();
+        }
+
+        public static void UpgradeInspectionMaterialsBatch()
+        {
+            try { UpgradeInspectionMaterials(); EditorApplication.Exit(0); }
+            catch (Exception ex) { Debug.LogException(ex); EditorApplication.Exit(1); }
         }
 
         private static void Create(string name, Shader shader, Action<Material> setup)

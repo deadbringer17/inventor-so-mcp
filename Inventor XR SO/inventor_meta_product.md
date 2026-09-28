@@ -1438,6 +1438,8 @@ QUEST ↔ MCP ↔ INVENTOR
 
 # 53. Seconda milestone Unity
 
+Implementazione M2: [uso e limiti](README.md#uso-m2), [verifica tecnica e collaudo](../docs/xr-m2-verification.md). Le verifiche automatiche non sostituiscono l'accettazione su Quest con Inventor reale.
+
 ```text
 Inspect
 +
@@ -1482,6 +1484,10 @@ Commit
 
 # 55. Quarta milestone Unity
 
+Specifica tecnica: [M4 — Assembly](../docs/superpowers/specs/2026-09-27-inventor-xr-so-m4-design.md).
+Sequenza di lavoro: [piano M4](../docs/superpowers/plans/2026-09-27-inventor-xr-so-m4.md).
+Implementazione e risultati dei test sono tracciati nella [verifica M4](../docs/xr-m4-verification.md), che distingue prove automatiche, native, HTTPS e sul Quest.
+
 ```text
 Assembly
 +
@@ -1497,6 +1503,9 @@ Joints
 ---
 
 # 56. Quinta milestone Unity
+
+Specifica tecnica: [M5 — Lamiera, sviluppo piano e voce](../docs/superpowers/specs/2026-09-28-inventor-xr-so-m5-design.md).
+Sequenza di lavoro: [piano M5](../docs/superpowers/plans/2026-09-28-inventor-xr-so-m5.md).
 
 ```text
 Sheet Metal

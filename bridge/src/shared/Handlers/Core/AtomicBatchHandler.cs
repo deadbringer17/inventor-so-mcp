@@ -28,9 +28,22 @@ public sealed class AtomicBatchHandler : IInventorCommand
                 IsRegistered = command => ctx.Commands != null && ctx.Commands.ContainsKey(command),
                 SupportsCheck = InventorBatchBackend.SupportsCheck,
                 Validate = p["validate"],
+                IncludePreviewMesh = (bool?)p["include_preview_mesh"] ?? false,
             };
             var data = AtomicCadBatch.Run(backend, (string?)p["document_id"] ?? "", (string?)p["expected_revision"] ?? "",
                 operations, (bool?)p["preview"] ?? false, ctx.IsDeadlineExceeded, options);
+#if SO_EXPERIMENTAL
+            if (ctx.AllowExperimental && (string?)data["status"] == "committed" && backend.CommittedTransactionId != null
+                && (backend.DocumentKind == CadDocumentKinds.Part || backend.DocumentKind == CadDocumentKinds.Assembly)
+                && p["history_owner"]?.Type == JTokenType.String)
+            {
+                // Recording must never turn a successful CAD commit into a reported rollback.
+                try { data["history_ticket"] = Experimental.XrHistoryState.For(ctx).History.Record(
+                    (string)p["history_owner"]!, (string)data["document_id"]!, (string)p["expected_revision"]!,
+                    (string)data["revision"]!, backend.CommittedTransactionId); }
+                catch { data["history_unavailable"] = true; }
+            }
+#endif
             return InventorCommandResult.Success(Guid.Empty, data, new());
         }
         catch (CadBatchException failure)
@@ -49,7 +62,7 @@ public sealed class AtomicBatchHandler : IInventorCommand
     }
 }
 
-internal sealed class InventorBatchBackend : ICadBatchBackend, ICadBatchValidatingBackend, IDisposable
+internal sealed class InventorBatchBackend : ICadBatchBackend, ICadBatchValidatingBackend, ICadBatchPreviewBackend, IDisposable
 {
     /// <summary>Pairwise interference/clearance is O(n²) COM calls; beyond this the check is refused, not truncated.</summary>
     private const int MaxClearanceOccurrences = 60;
@@ -58,6 +71,7 @@ internal sealed class InventorBatchBackend : ICadBatchBackend, ICadBatchValidati
     private readonly Application _app;
     private readonly global::Inventor.Document _doc;
     private Transaction? _transaction;
+    public string? CommittedTransactionId { get; private set; }
     private bool? _priorInteractionDisabled;
     public InventorBatchBackend(InventorCommandContext ctx)
     {
@@ -78,6 +92,43 @@ internal sealed class InventorBatchBackend : ICadBatchBackend, ICadBatchValidati
     public string DocumentKind { get; }
     public string DocumentId => _app.ActiveDocument == null ? "" : EntityReferences.DocumentId(_app.ActiveDocument);
     public string Revision => _ctx.Events!.Revision(EntityReferences.DocumentId(_doc));
+
+    public JObject CapturePreview()
+    {
+        EnsureOwned();
+#if SO_EXPERIMENTAL
+        if (_doc is AssemblyDocument assembly) return Experimental.AssemblyPreviewMesh.Capture(_ctx, assembly);
+        // Preview topology disappears at Abort: never export portable IDs for it.
+        var result = new Experimental.GetDisplayMeshHandler().Execute(_ctx, new JObject
+        {
+            ["document_id"] = EntityReferences.DocumentId(_doc),
+            ["include_face_ids"] = false, ["tolerance_mm"] = 0.1, ["max_triangles"] = 500_000,
+        });
+        if (!result.Ok) throw new CodedFailureException(result.Error?.Code ?? InventorErrorCodes.API_ERROR,
+            result.Error?.Message ?? "Preview tessellation failed.", result.Error?.Details);
+        var payload = (JObject)result.Data!;
+        var sketches = new JArray();
+        var part = (PartDocument)_doc;
+        int entities = 0;
+        foreach (PlanarSketch sketch in part.ComponentDefinition.Sketches)
+        {
+            if (sketches.Count >= 256 || (entities += sketch.SketchEntities.Count) > 20000)
+                throw new ArgumentException("Preview sketch geometry exceeds the supported limit.");
+            var snapshot = new Experimental.GetSketchInfoHandler().Execute(_ctx, new JObject
+            { ["sketch_name"] = sketch.Name, ["max_entities"] = 20000 });
+            if (!snapshot.Ok) throw new CodedFailureException(snapshot.Error?.Code ?? InventorErrorCodes.API_ERROR,
+                snapshot.Error?.Message ?? "Sketch preview failed.", snapshot.Error?.Details);
+            var data = (JObject)snapshot.Data!;
+            data["frame"] = Experimental.DesignContextXrHandler.SketchFrame(_app, sketch);
+            data["visible"] = sketch.Visible;
+            sketches.Add(data);
+        }
+        payload["sketches"] = sketches;
+        return payload;
+#else
+        throw new CodedFailureException(InventorErrorCodes.EXPERIMENTAL_DISABLED, "Preview meshes require an experimental build.");
+#endif
+    }
 
     /// <summary>Checks this build can run. Sketch and drawing checks ride on the experimental build.</summary>
     public static bool SupportsCheck(string name) => name switch
@@ -113,7 +164,11 @@ internal sealed class InventorBatchBackend : ICadBatchBackend, ICadBatchValidati
     {
         EnsureOwned();
         if (_ctx.Commands == null || !_ctx.Commands.TryGetValue(command, out var handler)) throw new ArgumentException("Unregistered batch command " + command);
-        var result = handler.Execute(_ctx, arguments);
+        InventorCommandResult result;
+        var previous = _ctx.OwnedBatchTransaction;
+        _ctx.OwnedBatchTransaction = _transaction;
+        try { result = handler.Execute(_ctx, arguments); }
+        finally { _ctx.OwnedBatchTransaction = previous; }
         // Carry the failing handler's own code structurally; AtomicCadBatch lifts it into the
         // batch result's details.step_code rather than re-parsing it out of a sentence.
         if (!result.Ok) throw new CodedFailureException(result.Error?.Code ?? InventorErrorCodes.API_ERROR,
@@ -217,9 +272,29 @@ internal sealed class InventorBatchBackend : ICadBatchBackend, ICadBatchValidati
         if (_transaction == null || !ReferenceEquals(_app.TransactionManager.CurrentTransaction, _transaction))
             throw new InvalidOperationException("TRANSACTION_OWNERSHIP_LOST: refusing to end another transaction.");
     }
-    public void Commit() { EnsureOwned(); _transaction!.End(); _transaction = null; }
+    public void Commit()
+    {
+        EnsureOwned();
+        _transaction!.MergeWithPrevious = false;
+        string id = _transaction.Id.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        _transaction.End(); _transaction = null; CommittedTransactionId = id;
+        ObserveOwnedEnd();
+    }
     public void RestoreRevision(string revision) => _ctx.Events!.TryRestoreRevision(EntityReferences.DocumentId(_doc), revision);
-    public void Rollback() { if (_transaction != null) { EnsureOwned(); _transaction.Abort(); _transaction = null; } }
+    public void Rollback()
+    {
+        if (_transaction == null) return;
+        EnsureOwned(); bool root = !_transaction.HasParentTransaction;
+        _transaction.Abort(); _transaction = null;
+        if (root) ObserveOwnedEnd();
+    }
+    private void ObserveOwnedEnd()
+    {
+#if SO_EXPERIMENTAL
+        // An observational failure after End must not misreport a committed transaction.
+        try { Experimental.XrHistoryState.For(_ctx).ObserveOwnedEnd(_app); } catch { }
+#endif
+    }
     public void Dispose()
     {
         // The runner owns rollback; restore user interaction even if rollback itself failed.

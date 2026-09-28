@@ -72,4 +72,37 @@ public class SelectionTests
         Assert.Equal(SelectionKind.None, service.Current.Kind);
         Assert.Equal("clear", backend.Calls.Last());
     }
+
+    [Fact]
+    public async Task FailedHighlightDoesNotLeaveLocalSelection()
+    {
+        var backend = new FakeBackend { FailNext = new InvalidOperationException("disconnected") };
+        var service = new SelectionService(backend);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.SelectAsync("part", null, "f", None));
+        Assert.Equal(SelectionKind.None, service.Current.Kind);
+    }
+
+    [Fact]
+    public async Task SceneResetMakesTheNextAssemblyClickAnOccurrence()
+    {
+        var backend = new FakeBackend();
+        var service = new SelectionService(backend);
+        await service.SelectAsync("assembly", "ent_1", "f3", None);
+        service.ResetLocal();
+        Assert.Single(backend.Calls); // No clear command on the new active document.
+        await service.SelectAsync("assembly", "ent_1", "f3", None);
+        Assert.Equal(SelectionKind.Occurrence, service.Current.Kind);
+    }
+
+    [Fact]
+    public async Task SceneResetDuringPickCannotRestoreAStaleFace()
+    {
+        var backend = new FakeBackend();
+        var service = new SelectionService(backend);
+        await service.SelectAsync("assembly", "ent_1", "f3", None);
+        backend.Pick = (_, _) => { service.ResetLocal(); return "old-proxy"; };
+        await service.SelectAsync("assembly", "ent_1", "f3", None);
+        Assert.Equal(SelectionKind.None, service.Current.Kind);
+        Assert.DoesNotContain("highlight:old-proxy", backend.Calls);
+    }
 }

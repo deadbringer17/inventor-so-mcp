@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using InventorXrSo.Core.Backend;
 using InventorXrSo.Core.Mcp;
+using InventorXrSo.Core.Net;
 
 namespace InventorXrSo.Core.Session
 {
@@ -33,10 +34,12 @@ namespace InventorXrSo.Core.Session
         public DocumentState Document { get; private set; }
         public LoadedScene Scene { get; private set; }
         public string LastError { get; private set; }
+        public bool CertificateChanged { get; private set; }
         public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(5);
 
         public event Action<SessionStatus> StatusChanged;
         public event Action<LoadedScene> SceneLoaded;
+        public event Action<DocumentState> DocumentStateChanged;
 
         public async Task RunAsync(CancellationToken ct)
         {
@@ -65,6 +68,13 @@ namespace InventorXrSo.Core.Session
                 {
                     return;
                 }
+                catch (CertificateRejectedException ex)
+                {
+                    CertificateChanged = true;
+                    LastError = ex.Message;
+                    SetStatus(SessionStatus.NeedsPairing);
+                    return;
+                }
                 catch (McpUnauthorizedException ex)
                 {
                     LastError = ex.Message;
@@ -89,6 +99,7 @@ namespace InventorXrSo.Core.Session
         /// <summary>Re-read the document state; reload the scene only when the document or its geometry changed.</summary>
         private async Task RefreshAsync(CancellationToken ct)
         {
+            var previous = Document;
             DocumentState state;
             try { state = await _backend.GetDocumentStateAsync(ct); }
             catch (McpToolException ex) when (ex.Code == "NO_DOCUMENT")
@@ -111,11 +122,15 @@ namespace InventorXrSo.Core.Session
                 SceneLoaded?.Invoke(scene);
             }
             else Document = state;
+            if (previous?.DocumentId != Document.DocumentId || previous?.Revision != Document.Revision || previous?.VisualRevision != Document.VisualRevision)
+                DocumentStateChanged?.Invoke(Document);
+            LastError = null;
             SetStatus(SessionStatus.Online);
         }
 
         private void ClearSceneForNoDocument()
         {
+            bool hadDocument = Document != null;
             Document = null;
             if (Scene != null)
             {
@@ -123,6 +138,7 @@ namespace InventorXrSo.Core.Session
                 SceneLoaded?.Invoke(null);
             }
             SetStatus(SessionStatus.NoDocument);
+            if (hadDocument) DocumentStateChanged?.Invoke(null);
         }
 
         private async Task RunConnectedAsync(CancellationToken ct)
@@ -147,8 +163,13 @@ namespace InventorXrSo.Core.Session
                         linked.Token.ThrowIfCancellationRequested();
                         if (done == events)
                         {
-                            // A closed or unsupported stream leaves the poll; a broken one means offline.
-                            try { await events; }
+                            // An unsupported stream uses polling. An established stream closing is a
+                            // lost connection: reconnect and subscribe again, preserving the model.
+                            try
+                            {
+                                await events;
+                                throw new TransportException("The event stream closed.");
+                            }
                             catch (McpException ex) when (ex.Code == "EVENT_STREAM_UNSUPPORTED") { }
                             events = never;
                             continue;

@@ -1,5 +1,11 @@
 # Inventor XR SO — Milestone 1 Implementation Plan
 
+**Execution update (2026-09-27):** implementation resumed after committed C2;
+C3–C9 source, scene generation and build tooling implemented. See
+[verification record](../../xr-m1-verification.md) for final test/build evidence
+and the completed physical Quest 3 / Inventor 2027 acceptance checklist. The original
+step checkboxes below are historical instructions, not current test results.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** First real loop Quest 3 ↔ Inventor SO MCP ↔ Inventor 2027: pair the headset with the PC, load the active document at 1:1, select an occurrence or a face, highlight it on the headset and in Inventor, follow active-document changes, survive network loss.

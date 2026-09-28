@@ -22,6 +22,7 @@ public sealed class FakeBackend : IInventorBackend
     public Exception FailNext { get; set; }
     public Func<string, string, string> Pick { get; set; } = (occ, face) => "proxy:" + occ + ":" + face;
     public Action RaiseChanged { get; private set; }
+    public bool CloseEventsImmediately { get; set; }
 
     private Task Step(string call)
     {
@@ -50,6 +51,7 @@ public sealed class FakeBackend : IInventorBackend
     public async Task RunEventsAsync(Action onChanged, CancellationToken ct)
     {
         await Step("events");
+        if (CloseEventsImmediately) return;
         RaiseChanged = onChanged;
         // A fresh stream per connection, open until the session cancels it.
         var open = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);

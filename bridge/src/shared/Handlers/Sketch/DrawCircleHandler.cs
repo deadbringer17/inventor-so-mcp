@@ -31,11 +31,16 @@ public sealed class DrawCircleHandler : HandlerBase, IInventorCommand
             var def = part.ComponentDefinition;
             var sketch = SketchSupport.ResolveTargetSketch(def, (string?)p["sketch_name"]);
             var center = SketchSupport.Pt(app, p.Value<double>("cx"), p.Value<double>("cy"));
-            sketch.SketchCircles.AddByCenterRadius(center, UnitConvert.MmToCm(radiusMm));
+            var circle = sketch.SketchCircles.AddByCenterRadius(center, UnitConvert.MmToCm(radiusMm));
+            var dimensions = new JArray();
+            if ((bool?)p["add_dimensions"] == true)
+                dimensions.Add(sketch.DimensionConstraints.AddRadius((SketchEntity)circle,
+                    SketchDimensions.Text(app,p,app.TransientGeometry.CreatePoint2d(center.X+circle.Radius+0.5,center.Y+0.5)),false).Parameter.Name);
             return Ok(ctx, new JObject
             {
                 ["sketch_name"] = sketch.Name,
                 ["entity_id"] = sketch.SketchEntities.Count.ToString(),
+                ["dimensions"] = dimensions,
             });
         }
         catch (ArgumentException ex) { return Fail(ctx, InventorErrorCodes.INVALID_ARGUMENT, ex.Message); }

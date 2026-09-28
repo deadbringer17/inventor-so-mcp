@@ -13,6 +13,7 @@ namespace InventorXrSo.Core.Selection
     public sealed class SelectionService
     {
         private readonly IInventorBackend _backend;
+        private int _generation;
 
         public SelectionService(IInventorBackend backend) { _backend = backend; }
 
@@ -28,30 +29,42 @@ namespace InventorXrSo.Core.Selection
 
         public async Task SelectAsync(string documentKind, string occurrenceId, string faceId, CancellationToken ct)
         {
+            ct.ThrowIfCancellationRequested();
+            int generation = ++_generation;
             var kind = Resolve(documentKind, Current, occurrenceId);
             bool hadServerHighlight = Current.Kind != SelectionKind.None;
             // The view shows the selection at once; Inventor follows after the round trips.
             Set(kind == SelectionKind.Occurrence
                 ? new Selection(kind, occurrenceId, null, occurrenceId)
                 : new Selection(kind, occurrenceId, faceId, occurrenceId == null ? faceId : null));
-            if (hadServerHighlight) await _backend.ClearHighlightAsync(ct);
-            if (kind == SelectionKind.Face && occurrenceId != null)
+            try
             {
-                // Only the entity id was missing: no second Changed event.
-                try { Current = new Selection(kind, occurrenceId, faceId, await _backend.PickFaceAsync(occurrenceId, faceId, ct)); }
-                catch
+                if (hadServerHighlight) await _backend.ClearHighlightAsync(ct);
+                ct.ThrowIfCancellationRequested();
+                if (generation != _generation) return;
+                if (kind == SelectionKind.Face && occurrenceId != null)
                 {
-                    Set(Selection.None);
-                    throw;
+                    var entityId = await _backend.PickFaceAsync(occurrenceId, faceId, ct);
+                    ct.ThrowIfCancellationRequested();
+                    if (generation != _generation) return;
+                    Current = new Selection(kind, occurrenceId, faceId, entityId);
                 }
+                await _backend.HighlightAsync(new[] { Current.EntityId }, ct);
             }
-            await _backend.HighlightAsync(new[] { Current.EntityId }, ct);
+            catch
+            {
+                if (generation == _generation) Set(Selection.None);
+                throw;
+            }
         }
+
+        /// <summary>A new scene invalidates entity ids without issuing a command on the new document.</summary>
+        public void ResetLocal() { ++_generation; Set(Selection.None); }
 
         public async Task ClearAsync(CancellationToken ct)
         {
             if (Current.Kind == SelectionKind.None) return;
-            Set(Selection.None);
+            ResetLocal();
             await _backend.ClearHighlightAsync(ct);
         }
 

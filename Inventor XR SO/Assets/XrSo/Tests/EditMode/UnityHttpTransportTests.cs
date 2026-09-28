@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using InventorXrSo.Core.Mcp;
 using InventorXrSo.Core.Net;
+using InventorXrSo.Core.Pairing;
 using InventorXrSo.Unity.Net;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
@@ -18,6 +19,43 @@ namespace InventorXrSo.Tests
             var deadline = DateTime.UtcNow.AddSeconds(30);
             while (!task.IsCompleted && DateTime.UtcNow < deadline) yield return null;
             Assert.IsTrue(task.IsCompleted, "timed out");
+        }
+
+        [UnityTest]
+        public IEnumerator QrPairsOverPinnedUnityTransportAndRunsMcp()
+        {
+            using (var host = TestHostProcess.Start())
+            {
+                var client = new PairingClient(trust => new UnityHttpTransport(trust));
+                var pairing = client.PairWithQrAsync(PairingPayload.Parse(host.QrPayload), "quest-test", CancellationToken.None);
+                yield return Await(pairing);
+                Assert.IsNull(pairing.Exception, pairing.Exception?.GetBaseException().GetType().Name);
+                Assert.AreEqual(host.CertSha256, pairing.Result.CertSha256);
+                var mcp = new McpClient(new UnityHttpTransport(ServerTrust.Pinned(pairing.Result.CertSha256)),
+                    pairing.Result.BaseUrl, pairing.Result.Token);
+                var call = Call(mcp);
+                yield return Await(call);
+                Assert.IsNull(call.Exception, call.Exception?.GetBaseException().GetType().Name);
+                Assert.IsTrue((bool)call.Result["capabilities"]["xr_mesh"]);
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator ManualPairingProbesThenPinsTheConfirmedCertificate()
+        {
+            using (var host = TestHostProcess.Start())
+            {
+                var client = new PairingClient(trust => new UnityHttpTransport(trust));
+                var uri = new Uri(host.BaseUrl);
+                var probe = client.ProbeFingerprintAsync(uri.Host, uri.Port, CancellationToken.None);
+                yield return Await(probe);
+                Assert.IsNull(probe.Exception);
+                Assert.AreEqual(host.CertSha256, probe.Result);
+                var pair = client.PairAsync(uri.Host, uri.Port, host.PairCode, ServerTrust.Pinned(probe.Result), "quest-test", CancellationToken.None);
+                yield return Await(pair);
+                Assert.IsNull(pair.Exception, pair.Exception?.GetBaseException().GetType().Name);
+                Assert.AreEqual(host.CertSha256, pair.Result.CertSha256);
+            }
         }
 
         [UnityTest]

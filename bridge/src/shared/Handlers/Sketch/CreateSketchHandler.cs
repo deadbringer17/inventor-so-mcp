@@ -27,6 +27,11 @@ public sealed class CreateSketchHandler : HandlerBase, IInventorCommand
             return Fail(ctx, InventorErrorCodes.INVALID_ARGUMENT, "plane is required");
 
         var def = part.ComponentDefinition;
+        var name = (string?)p["name"];
+        if (name != null && (string.IsNullOrWhiteSpace(name) || name.Length > 128))
+            return Fail(ctx, InventorErrorCodes.INVALID_ARGUMENT, "name must contain 1 to 128 characters.");
+        if (name != null && EntityResolver.FindSketch(def, name) != null)
+            return Fail(ctx, InventorErrorCodes.INVALID_ARGUMENT, "A sketch with this name already exists.");
         object planarEntity;
         try
         {
@@ -40,6 +45,7 @@ public sealed class CreateSketchHandler : HandlerBase, IInventorCommand
         try
         {
             var sketch = def.Sketches.Add(planarEntity, false);
+            if (name != null) sketch.Name = name;
             return Ok(ctx, new JObject
             {
                 ["sketch_name"] = sketch.Name,

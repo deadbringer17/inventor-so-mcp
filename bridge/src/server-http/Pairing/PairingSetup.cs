@@ -17,7 +17,8 @@ public static class PairingSetup
     public static X509Certificate2? ResolveCertificate(InventorMcpConfig config)
     {
         if (!string.IsNullOrWhiteSpace(config.HttpCertificatePath))
-            return new X509Certificate2(config.HttpCertificatePath!, config.HttpCertificatePassword, X509KeyStorageFlags.EphemeralKeySet);
+            // SChannel needs a user key container when serving TLS on Windows.
+            return new X509Certificate2(config.HttpCertificatePath!, config.HttpCertificatePassword, X509KeyStorageFlags.UserKeySet);
         return config.HttpSelfSignedCertificate
             ? SelfSignedCertificate.LoadOrCreate(config.HttpSelfSignedPath, CertificateHosts(config))
             : null;

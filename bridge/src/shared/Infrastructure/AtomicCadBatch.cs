@@ -32,6 +32,12 @@ public interface ICadBatchValidatingBackend
     void Validate(ValidationSpec spec);
 }
 
+/// <summary>Capture the tentative part while the owned transaction is still open.</summary>
+public interface ICadBatchPreviewBackend
+{
+    JObject CapturePreview();
+}
+
 /// <summary>What the caller of a batch is allowed to run, and against which kind of document.</summary>
 public sealed class CadBatchOptions
 {
@@ -48,6 +54,7 @@ public sealed class CadBatchOptions
     public Func<string, bool>? SupportsCheck { get; set; }
     /// <summary>The raw <c>validate</c> argument, parsed against <see cref="DocumentKind"/>.</summary>
     public JToken? Validate { get; set; }
+    public bool IncludePreviewMesh { get; set; }
 }
 
 /// <summary>
@@ -109,6 +116,10 @@ public static class AtomicCadBatch
         JArray operations, bool preview, Func<bool>? expired, CadBatchOptions? options)
     {
         options ??= new CadBatchOptions();
+        if (options.IncludePreviewMesh && (!preview || backend is not ICadBatchPreviewBackend
+            || (options.DocumentKind != CadDocumentKinds.Part && options.DocumentKind != CadDocumentKinds.Assembly) || !options.AllowExperimental))
+            throw new CadBatchException(InventorErrorCodes.INVALID_ARGUMENT,
+                "Preview meshes require an experimental part or assembly preview backend.");
         if (string.IsNullOrWhiteSpace(documentId) || string.IsNullOrWhiteSpace(expectedRevision))
             throw new CadBatchException(InventorErrorCodes.INVALID_ARGUMENT, "document_id and expected_revision are required.");
         if (operations.Count < 1 || operations.Count > 32)
@@ -162,6 +173,15 @@ public static class AtomicCadBatch
                 throw new CadBatchException(InventorErrorCodes.TIMEOUT, "Batch deadline exceeded before commit.", index);
             if (backend.DocumentId != documentId)
                 throw new CadBatchException(InventorErrorCodes.DOCUMENT_CHANGED, "DOCUMENT_CHANGED before commit.", index);
+            JObject? previewMesh = null;
+            if (options.IncludePreviewMesh)
+            {
+                previewMesh = ((ICadBatchPreviewBackend)backend).CapturePreview();
+                if (expired?.Invoke() == true)
+                    throw new CadBatchException(InventorErrorCodes.TIMEOUT, "Batch expired while capturing preview.");
+                if (backend.DocumentId != documentId)
+                    throw new CadBatchException(InventorErrorCodes.DOCUMENT_CHANGED, "Document changed while capturing preview.");
+            }
             if (preview)
             {
                 backend.Rollback();
@@ -173,6 +193,7 @@ public static class AtomicCadBatch
             var outcome = new JObject { ["status"] = preview ? "preview_rolled_back" : "committed", ["steps"] = results,
                 ["document_id"] = documentId, ["revision"] = backend.Revision };
             if (checks != null) outcome["validated"] = checks.ToJson();
+            if (previewMesh != null) outcome["preview_mesh"] = previewMesh;
             return outcome;
         }
         catch (Exception error)

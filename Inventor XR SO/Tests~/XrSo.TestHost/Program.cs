@@ -11,6 +11,8 @@ using Newtonsoft.Json.Linq;
 // Inventor XR SO test host: the real HTTPS host and pairing in front of FakeAddIn (two bolts and a
 // plate), so the Unity client and the headset can be developed without Inventor.
 bool lan = args.Contains("--lan");
+int hostIndex = Array.IndexOf(args, "--pair-host");
+string? pairHost = hostIndex >= 0 && hostIndex + 1 < args.Length ? args[hostIndex + 1] : null;
 int churnIndex = Array.IndexOf(args, "--churn");
 int churnSeconds = churnIndex >= 0 && churnIndex + 1 < args.Length && int.TryParse(args[churnIndex + 1], out var s) ? s : 0;
 int stateIndex = Array.IndexOf(args, "--state");
@@ -21,6 +23,9 @@ await using var addIn = new FakeAddIn(Path.Combine(state, "targets-" + Environme
 var tokens = new TokenRegistry();
 var editorToken = TokenRegistry.Generate();
 tokens.Add("editor", editorToken);
+int tokenFileIndex = Array.IndexOf(args, "--token-file");
+string tokenFile = tokenFileIndex >= 0 && tokenFileIndex + 1 < args.Length
+    ? args[tokenFileIndex + 1] : Path.Combine(state, "tokens-" + Environment.ProcessId + ".txt");
 var config = new InventorMcpConfig
 {
     // Assignment, not collection-init: InventorMcpConfig.HttpUrls defaults to a non-empty list
@@ -28,12 +33,17 @@ var config = new InventorMcpConfig
     HttpUrls = new List<string> { lan ? "https://0.0.0.0:8443" : "https://127.0.0.1:0" },
     HttpSelfSignedCertificate = true,
     HttpSelfSignedPath = Path.Combine(state, "server.pfx"),
-    HttpTokenFile = Path.Combine(state, "tokens-" + Environment.ProcessId + ".txt"),
+    HttpTokenFile = tokenFile,
     DescriptorDirectory = addIn.DescriptorDirectory,
     AssetDirectory = Path.Combine(state, "assets"),
     AuditDirectory = Path.Combine(state, "audit"),
     EnableExperimental = true,
 };
+if (tokenFileIndex >= 0)
+{
+    tokens = TokenRegistry.Load(config);
+    tokens.Add("editor", editorToken);
+}
 var certificate = PairingSetup.ResolveCertificate(config);
 var sha = SelfSignedCertificate.Sha256Hex(certificate);
 var store = new PairingStore(() => DateTimeOffset.UtcNow);
@@ -43,7 +53,7 @@ var app = HttpHost.Build(Array.Empty<string>(), config, tokens,
 await app.StartAsync();
 
 var address = new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>().Addresses.First());
-var host = lan ? PairingSetup.LanAddresses().FirstOrDefault() ?? "127.0.0.1" : "127.0.0.1";
+var host = pairHost ?? (lan ? PairingSetup.LanAddresses().FirstOrDefault() ?? "127.0.0.1" : "127.0.0.1");
 var baseUrl = "https://" + host + ":" + address.Port;
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 PairingSetup.Announce(Console.Error, window, host, address.Port, sha, Path.Combine(state, "pairing-qr.png"));

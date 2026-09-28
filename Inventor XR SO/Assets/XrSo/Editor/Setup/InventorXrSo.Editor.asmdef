@@ -1,7 +1,21 @@
 {
   "name": "InventorXrSo.Editor",
   "rootNamespace": "InventorXrSo.Editor",
-  "references": ["Unity.RenderPipelines.Universal.Runtime", "Unity.RenderPipelines.Core.Runtime"],
-  "includePlatforms": ["Editor"],
+  "references": [
+    "InventorXrSo.Core",
+    "InventorXrSo.Unity",
+    "InventorXrSo.Xr",
+    "Oculus.VR",
+    "Oculus.VR.Editor",
+    "Unity.RenderPipelines.Universal.Runtime",
+    "Unity.RenderPipelines.Core.Runtime",
+    "UnityEngine.UI",
+    "Unity.XR.Management",
+    "Unity.XR.Management.Editor",
+    "Unity.XR.Oculus"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
   "autoReferenced": false
 }

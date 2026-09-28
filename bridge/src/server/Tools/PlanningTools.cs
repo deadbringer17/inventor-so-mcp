@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Bimwright.Ipt.Server.Assets;
 using Bimwright.Ipt.Server.Planning;
 using Bimwright.Ipt.Shared.Contracts;
 using ModelContextProtocol.Server;
@@ -24,21 +25,26 @@ public sealed class PlanningTools
     private readonly ChangePlanStore _plans;
     private readonly InventorMcpConfig _config;
     private readonly ICallerIdentity _caller;
+    private readonly AssetStore _assets;
 
-    public PlanningTools(PluginClient client, ChangePlanStore plans, InventorMcpConfig config, ICallerIdentity caller)
+    public PlanningTools(PluginClient client, ChangePlanStore plans, InventorMcpConfig config, ICallerIdentity caller, AssetStore assets)
     {
         _client = client; _plans = plans; _config = config; _caller = caller;
+        _assets = assets;
     }
 
     [McpServerTool(Name = "inventor_plan_change"), Description("Plan a change without applying it. operations uses the inventor_atomic_batch vocabulary (resource inventor://batch-commands); validate optionally adds checks such as [\"interference\",\"min_clearance:2mm\"]; intent is free text kept with the plan for the approver. The server checks the plan against the catalogue, runs a real preview (executed then rolled back, revision restored), estimates impact (dependent features of edited parameters when dependency analysis is available) and returns a plan_id valid 15 minutes, bound to document_id, expected_revision and the SHA-256 of the operations. Show the preview to the user; commit with inventor_commit_plan. Requires write permission because the preview edits then aborts.")]
     public async Task<string> PlanChange(string document_id, string expected_revision, AtomicOperation[] operations,
-        string[]? validate = null, string? intent = null, CancellationToken ct = default)
+        string[]? validate = null, string? intent = null, CancellationToken ct = default,
+        [Description("Experimental parts and assemblies: capture the actual preview as a GLB before rollback. Returns preview.asset; never selects transient preview topology.")] bool include_preview_mesh = false)
     {
         if (!ParameterTools.TryBuildOperations(operations, out var ops, out var rejection))
             return rejection!.ToString(Formatting.None);
         JToken? checks = validate == null ? null : new JArray(validate);
         try
         {
+            if (include_preview_mesh && !(_config.EnableExperimental || _config.FullAccess))
+                throw new PlanException(InventorErrorCodes.EXPERIMENTAL_DISABLED, "Preview meshes require experimental mode.");
             CheckOperations(ops, _config.EnableExperimental || _config.FullAccess);
             if (intent != null && intent.Length > 2000) throw new PlanException(InventorErrorCodes.INVALID_ARGUMENT, "intent is limited to 2000 characters.");
         }
@@ -52,7 +58,21 @@ public sealed class PlanningTools
             {
                 ["document_id"] = document_id, ["expected_revision"] = expected_revision,
                 ["operations"] = ops, ["preview"] = true, ["validate"] = checks,
+                ["include_preview_mesh"] = include_preview_mesh,
             }, ct);
+            if (include_preview_mesh)
+            {
+                var bytes = PreviewMeshAsset.Build(preview, document_id, expected_revision);
+                preview["sketches"] = preview["preview_mesh"]?["sketches"]?.DeepClone() ?? new JArray();
+                var asset = _assets.Put(bytes, "model/gltf-binary", _caller.Client, new JObject
+                {
+                    ["kind"] = "design_preview", ["document_id"] = document_id,
+                    ["source_revision"] = expected_revision,
+                });
+                preview.Remove("preview_mesh");
+                preview["asset"] = asset.ToJson(_config.PublicBaseUrl);
+                preview["units"] = "m";
+            }
         }
         catch (InventorGatewayException ex)
         {
@@ -60,6 +80,8 @@ public sealed class PlanningTools
             failed["planned"] = false;
             return failed.ToString(Formatting.None);
         }
+        catch (Exception ex) when (ex is FormatException or ArgumentException)
+        { return XrTools.Error(InventorErrorCodes.API_ERROR, "Preview mesh rejected: " + ex.Message); }
 
         var plan = _plans.Create(_caller.Client, document_id, expected_revision, ops, checks, intent);
         plan.Preview = preview;
@@ -81,6 +103,7 @@ public sealed class PlanningTools
             {
                 ["document_id"] = plan.DocumentId, ["expected_revision"] = plan.Revision,
                 ["operations"] = plan.Operations, ["preview"] = false, ["validate"] = plan.Validate,
+                ["history_owner"] = plan.Preview?["asset"] != null && (_config.EnableExperimental || _config.FullAccess) ? _caller.Client : null,
             }, ct);
             committed["plan_id"] = plan.Id;
             committed["operations_sha256"] = plan.Hash;
@@ -98,6 +121,19 @@ public sealed class PlanningTools
             ["operation_count"] = p.Operations.Count, ["expires_utc"] = p.ExpiresUtc.ToString("O"),
         })),
     }.ToString(Formatting.None);
+
+    [McpServerTool(Name = "inventor_history_xr"), Description("Read or execute this client's XR Undo/Redo for the active part. action is status, undo or redo. Undo/redo requires the latest history ticket, document and revision; refuses intervening desktop/foreign transactions and busy Inventor commands. Never retries uncertain outcomes. Creating a new preview can clear Inventor's redo stack. Experimental, write permission required even for status.")]
+    public Task<string> HistoryXr(string document_id, string expected_revision, string action = "status", string? ticket = null, CancellationToken ct = default)
+    {
+        if (!(_config.EnableExperimental || _config.FullAccess))
+            return Task.FromResult(XrTools.Error(InventorErrorCodes.EXPERIMENTAL_DISABLED,"XR history requires experimental mode."));
+        if (action != "status" && action != "undo" && action != "redo")
+            return Task.FromResult(XrTools.Error(InventorErrorCodes.INVALID_ARGUMENT,"action must be status, undo or redo."));
+        if (action != "status" && string.IsNullOrWhiteSpace(ticket))
+            return Task.FromResult(XrTools.Error(InventorErrorCodes.INVALID_ARGUMENT,"Undo/redo requires the latest history ticket."));
+        return Call("history_xr",new JObject { ["document_id"] = document_id, ["expected_revision"] = expected_revision,
+            ["action"] = action, ["ticket"] = ticket, ["owner"] = _caller.Client },ct);
+    }
 
     [McpServerTool(Name = "inventor_sample_parameter_motion"), Description("Collision-aware motion study without changing the model: set one parameter (a constraint offset or angle, a joint parameter or a user parameter) to steps values evenly spaced from from_value to to_value (in the parameter's own units, e.g. mm or deg), and at each sample rebuild and run checks - rebuild, interference, min_clearance:<n>mm (assemblies). Everything runs inside one transaction that is always aborted; the revision is restored. Returns per-sample results, first_failure and the valid sub-ranges. steps 2-100. Requires document_id/expected_revision and write permission (it edits then aborts). Experimental tier.")]
     public Task<string> SampleParameterMotion(string document_id, string expected_revision, string parameter, double from_value, double to_value,

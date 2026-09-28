@@ -130,7 +130,7 @@ public sealed class CreateConstraintHandler : HandlerBase, IInventorCommand
     /// Inventor would otherwise infer an axis from a plane, or a plane from a cylinder, and build a
     /// constraint the caller never asked for.
     /// </summary>
-    private static (object Entity, ComponentOccurrence Occurrence) ResolveEntity(
+    internal static (object Entity, ComponentOccurrence Occurrence) ResolveEntity(
         global::Inventor.Document doc, ConstraintCreateRequest request, string id)
     {
         if (request.NeedsEdges)

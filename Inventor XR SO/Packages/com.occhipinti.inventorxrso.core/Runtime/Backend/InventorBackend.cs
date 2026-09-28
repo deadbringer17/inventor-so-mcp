@@ -10,7 +10,7 @@ using Newtonsoft.Json.Linq;
 
 namespace InventorXrSo.Core.Backend
 {
-    public sealed class InventorBackend : IInventorBackend
+    public sealed partial class InventorBackend : IInventorBackend
     {
         private readonly IHttpTransport _transport;
         private readonly PairedServer _server;

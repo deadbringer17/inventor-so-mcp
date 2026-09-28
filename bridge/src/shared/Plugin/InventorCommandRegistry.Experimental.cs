@@ -26,6 +26,14 @@ public static partial class InventorCommandRegistry
         add(new SetCameraHandler());
         add(new RaycastEntityHandler());
         add(new PickEntityHandler());
+        add(new InspectXrHandler());
+        add(new DesignContextXrHandler());
+        add(new AssemblyContextXrHandler());
+        add(new AssemblyMoveHandler());
+        add(new AssemblyConstraintHandler());
+        add(new AssemblyJointHandler());
+        add(new XrHistoryHandler());
+        add(new ActivateOpenDocumentXrHandler());
 
         // Inspection and intelligence (queries)
         add(new GetSketchInfoHandler());

@@ -10,6 +10,25 @@ namespace InventorXrSo.Core.Tests.Session;
 
 public class SessionControllerTests
 {
+    [Fact]
+    public async Task NonVisualRevisionNotifiesInspectionWithoutReloadingMeshes()
+    {
+        var backend = Backend();
+        var session = new SessionController(backend, new ManualDelay());
+        var changed = new TaskCompletionSource<DocumentState>(TaskCreationOptions.RunContinuationsAsynchronously);
+        session.DocumentStateChanged += state => { if (state?.Revision == "properties-r2") changed.TrySetResult(state); };
+        using var cts = new CancellationTokenSource();
+        var run = session.RunAsync(cts.Token);
+        await Until(() => session.Status == SessionStatus.Online && backend.RaiseChanged != null);
+        var original = session.Scene;
+        backend.State = new DocumentState("doc", "properties-r2", "v1");
+        backend.RaiseChanged();
+        var state = await changed.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.Equal("properties-r2", state.Revision);
+        Assert.Same(original, session.Scene);
+        Assert.Single(backend.Calls.Where(c => c == "scene"));
+        cts.Cancel(); await run;
+    }
     /// <summary>Delays complete when the test says so; each one is recorded.</summary>
     private sealed class ManualDelay : IDelay
     {
@@ -62,6 +81,39 @@ public class SessionControllerTests
         Assert.False(session.ReadOnly);
         Assert.Equal(2, loaded.Models.Count);
         Assert.Equal("v1", session.Document.VisualRevision);
+        cts.Cancel();
+        await run;
+    }
+
+    [Fact]
+    public async Task AChangedCertificateStopsWithoutRetry()
+    {
+        var backend = Backend();
+        backend.FailNext = new CertificateRejectedException(new string('0', 64));
+        var delay = new ManualDelay();
+        var session = new SessionController(backend, delay);
+        await session.RunAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(SessionStatus.NeedsPairing, session.Status);
+        Assert.True(session.CertificateChanged);
+        Assert.Empty(delay.Requested);
+        Assert.Single(backend.Calls);
+    }
+
+    [Fact]
+    public async Task ClosedEventStreamKeepsSceneAndReconnects()
+    {
+        var backend = Backend();
+        backend.CloseEventsImmediately = true;
+        var delay = new ManualDelay();
+        var session = new SessionController(backend, delay);
+        using var cts = new CancellationTokenSource();
+        var run = session.RunAsync(cts.Token);
+        await Until(() => session.Status == SessionStatus.Offline);
+        Assert.NotNull(session.Scene);
+        backend.CloseEventsImmediately = false;
+        delay.ReleaseAll();
+        await Until(() => session.Status == SessionStatus.Online && backend.RaiseChanged != null);
+        Assert.Equal(2, backend.Calls.Count(call => call == "connect"));
         cts.Cancel();
         await run;
     }

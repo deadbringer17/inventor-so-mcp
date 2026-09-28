@@ -1,4 +1,4 @@
-using System.Security.Cryptography.X509Certificates;
+using Inventor.So.Mcp.Http.Pairing;
 using System.Threading.RateLimiting;
 using Bimwright.Ipt.Server;
 using Bimwright.Ipt.Server.Assets;
@@ -41,7 +41,7 @@ public static class HttpHost
             kestrel.Limits.MaxRequestBodySize = MaxRequestBodyBytes;
             var certificate = options?.Certificate;
             if (certificate == null && !string.IsNullOrWhiteSpace(config.HttpCertificatePath))
-                certificate = new X509Certificate2(config.HttpCertificatePath!, config.HttpCertificatePassword, X509KeyStorageFlags.EphemeralKeySet);
+                certificate = PairingSetup.ResolveCertificate(config);
             if (certificate != null) kestrel.ConfigureHttpsDefaults(https => https.ServerCertificate = certificate);
         });
 

@@ -1,0 +1,6 @@
+ZXing.Net 0.16.9, Michael Jahn and ZXing contributors.
+Source: https://github.com/micjahn/ZXing.Net
+Package: https://api.nuget.org/v3-flatcontainer/zxing.net/0.16.9/zxing.net.0.16.9.nupkg
+Binary: lib/netstandard2.0/zxing.dll, unmodified.
+SHA-256: 9786851e12e76081ce7e27488b7f67fbbd10786f1cbcacc7d4f394b922045a68
+License: Apache-2.0 (see LICENSE-ZXing.txt).
