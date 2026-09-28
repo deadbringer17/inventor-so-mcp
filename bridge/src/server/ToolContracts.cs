@@ -122,6 +122,7 @@ public static class ToolContracts
 
         // ---- Experimental: XR / visualization ----
         XQ("inventor_get_display_mesh", PA, "GLB asset: inventor://assets/{id} and GET /assets/{id}"),
+        XQ("inventor_get_flat_pattern_mesh", Pa, "GLB asset of the flat pattern (no face ids) + flat_pattern_identity"),
         XQ("inventor_get_scene_graph", PA, "JSON scene graph + optional composed GLB asset"),
         XQ("inventor_get_visual_revision", PAD),
         new() { Name = "inventor_inspect_xr", Tier = Experimental, Access = "query", RequiresRevision = true, Documents = PA, Verification = Pending },

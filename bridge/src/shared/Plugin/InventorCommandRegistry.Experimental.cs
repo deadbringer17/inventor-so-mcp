@@ -18,6 +18,7 @@ public static partial class InventorCommandRegistry
     {
         // XR / visualization (queries and view state)
         add(new GetDisplayMeshHandler());
+        add(new FlatPatternMeshHandler());
         add(new GetSceneGraphHandler());
         add(new GetVisualRevisionHandler());
         add(new HighlightEntityHandler());

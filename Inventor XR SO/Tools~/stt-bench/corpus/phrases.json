@@ -1,0 +1,709 @@
+{
+ "version": 1,
+ "language": "it",
+ "entries": [
+  {
+   "id": "cmd-flange-01",
+   "kind": "command",
+   "text": "flangia",
+   "expected": {
+    "command_id": "sheetmetal.flange"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-flange-02",
+   "kind": "command",
+   "text": "fai una flangia",
+   "expected": {
+    "command_id": "sheetmetal.flange"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-flange-03",
+   "kind": "command",
+   "text": "crea una flangia",
+   "expected": {
+    "command_id": "sheetmetal.flange"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-flat_pattern-01",
+   "kind": "command",
+   "text": "crea sviluppo",
+   "expected": {
+    "command_id": "sheetmetal.flat_pattern"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-flat_pattern-02",
+   "kind": "command",
+   "text": "sviluppo piano",
+   "expected": {
+    "command_id": "sheetmetal.flat_pattern"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-flat_pattern-03",
+   "kind": "command",
+   "text": "fai lo sviluppo",
+   "expected": {
+    "command_id": "sheetmetal.flat_pattern"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-chamfer-01",
+   "kind": "command",
+   "text": "smusso",
+   "expected": {
+    "command_id": "feature.chamfer"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-chamfer-02",
+   "kind": "command",
+   "text": "fai uno smusso",
+   "expected": {
+    "command_id": "feature.chamfer"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-chamfer-03",
+   "kind": "command",
+   "text": "crea uno smusso",
+   "expected": {
+    "command_id": "feature.chamfer"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-fillet-01",
+   "kind": "command",
+   "text": "raccordo",
+   "expected": {
+    "command_id": "feature.fillet"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-fillet-02",
+   "kind": "command",
+   "text": "fai un raccordo",
+   "expected": {
+    "command_id": "feature.fillet"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-fillet-03",
+   "kind": "command",
+   "text": "crea un raccordo",
+   "expected": {
+    "command_id": "feature.fillet"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-measure-01",
+   "kind": "command",
+   "text": "misura",
+   "expected": {
+    "command_id": "inspect.measure"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-measure-02",
+   "kind": "command",
+   "text": "misurazione",
+   "expected": {
+    "command_id": "inspect.measure"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-measure-03",
+   "kind": "command",
+   "text": "fai una misura",
+   "expected": {
+    "command_id": "inspect.measure"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-isolate-01",
+   "kind": "command",
+   "text": "isola",
+   "expected": {
+    "command_id": "inspect.isolate"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-isolate-02",
+   "kind": "command",
+   "text": "isola componente",
+   "expected": {
+    "command_id": "inspect.isolate"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-isolate-03",
+   "kind": "command",
+   "text": "isola il pezzo",
+   "expected": {
+    "command_id": "inspect.isolate"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-cancel-01",
+   "kind": "command",
+   "text": "annulla",
+   "expected": {
+    "command_id": "draft.cancel"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-cancel-02",
+   "kind": "command",
+   "text": "annulla bozza",
+   "expected": {
+    "command_id": "draft.cancel"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-cancel-03",
+   "kind": "command",
+   "text": "annulla operazione",
+   "expected": {
+    "command_id": "draft.cancel"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-apply-01",
+   "kind": "command",
+   "text": "applica",
+   "expected": {
+    "command_id": "draft.apply"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-apply-02",
+   "kind": "command",
+   "text": "conferma",
+   "expected": {
+    "command_id": "draft.apply"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-apply-03",
+   "kind": "command",
+   "text": "applica modifica",
+   "expected": {
+    "command_id": "draft.apply"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-create-01",
+   "kind": "command",
+   "text": "crea schizzo",
+   "expected": {
+    "command_id": "sketch.create"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-create-02",
+   "kind": "command",
+   "text": "nuovo schizzo",
+   "expected": {
+    "command_id": "sketch.create"
+   },
+   "note": ""
+  },
+  {
+   "id": "cmd-create-03",
+   "kind": "command",
+   "text": "fai uno schizzo",
+   "expected": {
+    "command_id": "sketch.create"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-01",
+   "kind": "numeric",
+   "text": "zero",
+   "expected": {
+    "value": 0,
+    "unit": null
+   },
+   "note": ""
+  },
+  {
+   "id": "num-02",
+   "kind": "numeric",
+   "text": "cinque millimetri",
+   "expected": {
+    "value": 5,
+    "unit": "mm"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-03",
+   "kind": "numeric",
+   "text": "dodici millimetri",
+   "expected": {
+    "value": 12,
+    "unit": "mm"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-04",
+   "kind": "numeric",
+   "text": "ventuno millimetri",
+   "expected": {
+    "value": 21,
+    "unit": "mm"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-05",
+   "kind": "numeric",
+   "text": "ventitre millimetri",
+   "expected": {
+    "value": 23,
+    "unit": "mm"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-06",
+   "kind": "numeric",
+   "text": "quarantacinque gradi",
+   "expected": {
+    "value": 45,
+    "unit": "deg"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-07",
+   "kind": "numeric",
+   "text": "novanta gradi",
+   "expected": {
+    "value": 90,
+    "unit": "deg"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-08",
+   "kind": "numeric",
+   "text": "centoventi",
+   "expected": {
+    "value": 120,
+    "unit": null
+   },
+   "note": ""
+  },
+  {
+   "id": "num-09",
+   "kind": "numeric",
+   "text": "centoventi millimetri",
+   "expected": {
+    "value": 120,
+    "unit": "mm"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-10",
+   "kind": "numeric",
+   "text": "centottanta gradi",
+   "expected": {
+    "value": 180,
+    "unit": "deg"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-11",
+   "kind": "numeric",
+   "text": "duecentocinquanta millimetri",
+   "expected": {
+    "value": 250,
+    "unit": "mm"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-12",
+   "kind": "numeric",
+   "text": "mille millimetri",
+   "expected": {
+    "value": 1000,
+    "unit": "mm"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-13",
+   "kind": "numeric",
+   "text": "mille e cinquanta millimetri",
+   "expected": {
+    "value": 1050,
+    "unit": "mm"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-14",
+   "kind": "numeric",
+   "text": "milleduecento millimetri",
+   "expected": {
+    "value": 1200,
+    "unit": "mm"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-15",
+   "kind": "numeric",
+   "text": "duemilatrecento millimetri",
+   "expected": {
+    "value": 2300,
+    "unit": "mm"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-16",
+   "kind": "numeric",
+   "text": "dodici virgola cinque millimetri",
+   "expected": {
+    "value": 12.5,
+    "unit": "mm"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-17",
+   "kind": "numeric",
+   "text": "zero virgola cinque millimetri",
+   "expected": {
+    "value": 0.5,
+    "unit": "mm"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-18",
+   "kind": "numeric",
+   "text": "zero virgola cinque",
+   "expected": {
+    "value": 0.5,
+    "unit": null
+   },
+   "note": ""
+  },
+  {
+   "id": "num-19",
+   "kind": "numeric",
+   "text": "zero virgola zero cinque millimetri",
+   "expected": {
+    "value": 0.05,
+    "unit": "mm"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-20",
+   "kind": "numeric",
+   "text": "uno virgola due millimetri",
+   "expected": {
+    "value": 1.2,
+    "unit": "mm"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-21",
+   "kind": "numeric",
+   "text": "tre virgola cinque gradi",
+   "expected": {
+    "value": 3.5,
+    "unit": "deg"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-22",
+   "kind": "numeric",
+   "text": "quarantacinque virgola cinque gradi",
+   "expected": {
+    "value": 45.5,
+    "unit": "deg"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-23",
+   "kind": "numeric",
+   "text": "cento virgola due cinque millimetri",
+   "expected": {
+    "value": 100.25,
+    "unit": "mm"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-24",
+   "kind": "numeric",
+   "text": "dieci virgola otto millimetri",
+   "expected": {
+    "value": 10.8,
+    "unit": "mm"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-25",
+   "kind": "numeric",
+   "text": "meno cinque millimetri",
+   "expected": {
+    "value": -5,
+    "unit": "mm"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-26",
+   "kind": "numeric",
+   "text": "meno dodici virgola cinque millimetri",
+   "expected": {
+    "value": -12.5,
+    "unit": "mm"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-27",
+   "kind": "numeric",
+   "text": "meno quindici gradi",
+   "expected": {
+    "value": -15,
+    "unit": "deg"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-28",
+   "kind": "numeric",
+   "text": "meno zero virgola cinque gradi",
+   "expected": {
+    "value": -0.5,
+    "unit": "deg"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-29",
+   "kind": "numeric",
+   "text": "meno cento millimetri",
+   "expected": {
+    "value": -100,
+    "unit": "mm"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-30",
+   "kind": "numeric",
+   "text": "piu dieci millimetri",
+   "expected": {
+    "value": 10,
+    "unit": "mm"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-31",
+   "kind": "numeric",
+   "text": "diciotto millimetri",
+   "expected": {
+    "value": 18,
+    "unit": "mm"
+   },
+   "note": ""
+  },
+  {
+   "id": "num-32",
+   "kind": "numeric",
+   "text": "sessantasette virgola tre millimetri",
+   "expected": {
+    "value": 67.3,
+    "unit": "mm"
+   },
+   "note": ""
+  },
+  {
+   "id": "rej-01",
+   "kind": "reject",
+   "text": "fai una flangia e uno smusso",
+   "expected": null,
+   "note": "due comandi"
+  },
+  {
+   "id": "rej-02",
+   "kind": "reject",
+   "text": "annulla e applica",
+   "expected": null,
+   "note": "due comandi"
+  },
+  {
+   "id": "rej-03",
+   "kind": "reject",
+   "text": "crea",
+   "expected": null,
+   "note": "incompleto"
+  },
+  {
+   "id": "rej-04",
+   "kind": "reject",
+   "text": "sviluppo",
+   "expected": null,
+   "note": "incompleto, non e un alias"
+  },
+  {
+   "id": "rej-05",
+   "kind": "reject",
+   "text": "cancella tutto",
+   "expected": null,
+   "note": "distruttivo, fuori vocabolario"
+  },
+  {
+   "id": "rej-06",
+   "kind": "reject",
+   "text": "elimina il modello",
+   "expected": null,
+   "note": "distruttivo, fuori vocabolario"
+  },
+  {
+   "id": "rej-07",
+   "kind": "reject",
+   "text": "salva il documento",
+   "expected": null,
+   "note": "fuori vocabolario"
+  },
+  {
+   "id": "rej-08",
+   "kind": "reject",
+   "text": "esporta in step",
+   "expected": null,
+   "note": "fuori vocabolario"
+  },
+  {
+   "id": "rej-09",
+   "kind": "reject",
+   "text": "ruota la vista",
+   "expected": null,
+   "note": "fuori vocabolario"
+  },
+  {
+   "id": "rej-10",
+   "kind": "reject",
+   "text": "che ore sono",
+   "expected": null,
+   "note": "testo libero"
+  },
+  {
+   "id": "rej-11",
+   "kind": "reject",
+   "text": "va bene grazie",
+   "expected": null,
+   "note": "conversazione"
+  },
+  {
+   "id": "rej-12",
+   "kind": "reject",
+   "text": "scusa un attimo",
+   "expected": null,
+   "note": "conversazione"
+  },
+  {
+   "id": "rej-13",
+   "kind": "reject",
+   "text": "dodici centimetri",
+   "expected": null,
+   "note": "unita ambigua"
+  },
+  {
+   "id": "rej-14",
+   "kind": "reject",
+   "text": "dodici metri",
+   "expected": null,
+   "note": "unita ambigua"
+  },
+  {
+   "id": "rej-15",
+   "kind": "reject",
+   "text": "dodici virgola millimetri",
+   "expected": null,
+   "note": "decimale incompleto"
+  },
+  {
+   "id": "rej-16",
+   "kind": "reject",
+   "text": "virgola cinque millimetri",
+   "expected": null,
+   "note": "manca parte intera"
+  },
+  {
+   "id": "rej-17",
+   "kind": "reject",
+   "text": "cinque venti millimetri",
+   "expected": null,
+   "note": "numero malformato"
+  },
+  {
+   "id": "rej-18",
+   "kind": "reject",
+   "text": "dodici virgola cinque virgola tre",
+   "expected": null,
+   "note": "doppia virgola"
+  },
+  {
+   "id": "rej-19",
+   "kind": "reject",
+   "text": "un milione di millimetri",
+   "expected": null,
+   "note": "fuori range"
+  },
+  {
+   "id": "rej-20",
+   "kind": "reject",
+   "text": "cento cento gradi",
+   "expected": null,
+   "note": "numero malformato"
+  }
+ ]
+}

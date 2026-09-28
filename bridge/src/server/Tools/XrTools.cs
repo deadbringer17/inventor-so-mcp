@@ -89,6 +89,62 @@ public sealed class XrTools
         { return Error(InventorErrorCodes.API_ERROR, "Mesh payload rejected: " + ex.Message); }
     }
 
+    [McpServerTool(Name = "inventor_get_flat_pattern_mesh"), Description("Tessellate the existing flat pattern of a sheet-metal part and publish it as its own GLB asset (metres, no face ids: a display mesh, not a reference), distinct from the folded part's mesh. Never creates the flat pattern: a part without one is refused with INVALID_ARGUMENT / details.reason FLAT_PATTERN_MISSING (run a create_flat_pattern operation through inventor_atomic_batch first), a multi-body part with MULTI_BODY_PART, a non-sheet-metal document with WRONG_DOCUMENT_TYPE. Returns asset_id and resource_uri as inventor_get_display_mesh does, the source the geometry was read from, Inventor's own flat_pattern dimensions (length_mm, width_mm, bend_count, alignment), mesh_bbox_mm, a flat_pattern_identity (document, revision, dimensions, vertex hash) usable as a cache key, and edit_state_before/after with left_edit_mode_restored (the read never leaves Inventor in flat-pattern edit). document_id defaults to the active document; tolerance_mm (0.01-5, default 0.1); max_triangles (default 500000) refuses larger meshes with MESH_TOO_LARGE. Read-only; experimental tier.")]
+    public async Task<string> GetFlatPatternMesh(string? document_id = null, double tolerance_mm = 0.1, int max_triangles = 500_000, CancellationToken ct = default)
+    {
+        try
+        {
+            if (!(tolerance_mm >= 0.01 && tolerance_mm <= 5)) return Error(InventorErrorCodes.INVALID_ARGUMENT, "tolerance_mm must be between 0.01 and 5.");
+            if (max_triangles < 1 || max_triangles > 5_000_000) return Error(InventorErrorCodes.INVALID_ARGUMENT, "max_triangles must be between 1 and 5000000.");
+            var data = (JObject)await _client.SendAsync("get_flat_pattern_mesh", new JObject
+            {
+                ["document_id"] = document_id, ["tolerance_mm"] = tolerance_mm, ["max_triangles"] = max_triangles,
+            }, ct);
+            var bodies = (data["bodies"] as JArray ?? new JArray()).OfType<JObject>().Select(MeshPayload.FromJson).ToArray();
+            var source = new GlbBuilder.MeshSource
+            {
+                Name = (string?)data["definition_name"] ?? "flat_pattern",
+                DocumentId = (string?)data["document_id"],
+                Bodies = bodies,
+            };
+            var bytes = GlbBuilder.BuildDefinition(source);
+            var record = _assets.Put(bytes, "model/gltf-binary", _caller.Client, new JObject
+            {
+                ["kind"] = "flat_pattern_mesh",
+                ["document_id"] = data["document_id"]?.DeepClone(),
+                ["visual_revision"] = data["visual_revision"]?.DeepClone(),
+                ["flat_pattern_hash"] = data["flat_pattern_identity"]?["content_hash"]?.DeepClone(),
+            });
+            return new JObject
+            {
+                ["document_id"] = data["document_id"]?.DeepClone(),
+                ["definition_name"] = data["definition_name"]?.DeepClone(),
+                ["revision"] = data["revision"]?.DeepClone(),
+                ["visual_revision"] = data["visual_revision"]?.DeepClone(),
+                ["units"] = "m",
+                ["tolerance_mm"] = tolerance_mm,
+                ["source"] = data["source"]?.DeepClone(),
+                ["thickness_mm"] = data["thickness_mm"]?.DeepClone(),
+                ["triangle_count"] = source.Bodies.Sum(b => b.Indices.Length / 3),
+                ["mesh_bbox_mm"] = data["mesh_bbox_mm"]?.DeepClone(),
+                ["flat_pattern"] = data["flat_pattern"]?.DeepClone(),
+                ["flat_pattern_identity"] = data["flat_pattern_identity"]?.DeepClone(),
+                ["edit_state_before"] = data["edit_state_before"]?.DeepClone(),
+                ["edit_state_after"] = data["edit_state_after"]?.DeepClone(),
+                ["left_edit_mode_restored"] = data["left_edit_mode_restored"]?.DeepClone(),
+                ["bodies"] = new JArray(source.Bodies.Select(b => new JObject
+                {
+                    ["index"] = b.Index, ["name"] = b.Name, ["visible"] = b.Visible,
+                    ["vertex_count"] = b.Positions.Length / 3, ["triangle_count"] = b.Indices.Length / 3,
+                })),
+                ["asset"] = record.ToJson(_config.PublicBaseUrl),
+            }.ToString(Formatting.None);
+        }
+        catch (InventorGatewayException ex) { return ex.ToErrorJson().ToString(Formatting.None); }
+        catch (Exception ex) when (ex is FormatException or ArgumentException)
+        { return Error(InventorErrorCodes.API_ERROR, "Mesh payload rejected: " + ex.Message); }
+    }
+
     [McpServerTool(Name = "inventor_get_scene_graph"), Description("Occurrence tree of the active (or named open) assembly or part: persistent occurrence_id, name, definition_document_id and kind, visible, suppressed, grounded, bounding box in mm, and each transform three ways - matrix_rowmajor_cm as Inventor reports it, matrix_mm (row-major, mm) and matrix_gltf (column-major, metres). Transforms are in top-level assembly space, so leaves can be placed directly. include_meshes=true also tessellates each distinct visible part definition once (instancing, at most 200 definitions), adds mesh_asset_id to the definitions table and publishes one composed scene GLB (scene_asset). max_nodes (default 5000) bounds the tree. Read-only; experimental tier.")]
     public async Task<string> GetSceneGraph(string? document_id = null, bool include_meshes = false, double tolerance_mm = 0.1,
         int max_nodes = 5000, CancellationToken ct = default)

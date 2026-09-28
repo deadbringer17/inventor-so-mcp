@@ -1,0 +1,10 @@
+# Base (registrazione + benchmark + test)
+numpy
+sounddevice
+psutil
+pytest
+
+# Motori: installa solo quelli che vuoi confrontare
+# faster-whisper        # pip install faster-whisper   (CUDA: vedi README)
+# vosk                  # pip install vosk
+# pywhispercpp          # pip install pywhispercpp     (opzionale)

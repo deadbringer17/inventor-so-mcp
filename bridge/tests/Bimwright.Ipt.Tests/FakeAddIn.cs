@@ -128,7 +128,7 @@ public sealed class FakeAddIn : System.IAsyncDisposable
                 {
                     ["inventor_year"] = 2027, ["experimental_build"] = true, ["experimental_enabled"] = true,
                     ["active_document_kind"] = DesignPartMode ? "part" : "assembly",
-                    ["commands"] = new JArray("atomic_batch", "get_capabilities", "get_display_mesh", "get_scene_graph", "get_visual_revision",
+                    ["commands"] = new JArray("atomic_batch", "get_capabilities", "get_display_mesh", "get_flat_pattern_mesh", "get_scene_graph", "get_visual_revision",
                         "highlight_entity", "pick_entity", "get_events", "list_parameters", "get_document_info", "set_parameter", "save_artifact"),
                 });
             case "get_document_info":
@@ -188,6 +188,28 @@ public sealed class FakeAddIn : System.IAsyncDisposable
                 {
                     ["document_id"] = id, ["definition_name"] = id, ["revision"] = Revision, ["visual_revision"] = Visual,
                     ["face_ids_complete"] = true, ["bodies"] = new JArray(MeshPayload.ToJson(Box(size, id))),
+                });
+            }
+            case "get_flat_pattern_mesh":
+            {
+                string id = (string?)p["document_id"] ?? PlateId;
+                if (id == AssemblyId) return Fail(InventorErrorCodes.WRONG_DOCUMENT_TYPE, "assembly");
+                if (id == BoltId)
+                    return InventorCommandResult.Fail(envelope.Id, InventorErrorCodes.INVALID_ARGUMENT, "No flat pattern.",
+                        new JObject { ["reason"] = "FLAT_PATTERN_MISSING" }, meta);
+                var flat = Box(5.0, id);
+                flat.Faces.ForEach(f => f.FaceId = null);
+                return Ok(new JObject
+                {
+                    ["document_id"] = id, ["definition_name"] = id + " (flat pattern)", ["revision"] = Revision, ["visual_revision"] = Visual,
+                    ["source"] = "SurfaceBodies", ["thickness_mm"] = 2.0,
+                    ["mesh_bbox_mm"] = new JObject { ["size_mm"] = new JArray(50, 50, 50), ["thin_axis"] = "Z" },
+                    ["flat_pattern"] = new JObject { ["exists"] = true, ["length_mm"] = 50.0, ["width_mm"] = 50.0, ["bend_count"] = 1 },
+                    ["flat_pattern_identity"] = new JObject { ["content_hash"] = "fake-content", ["hash"] = "fake-" + Revision },
+                    ["edit_state_before"] = new JObject { ["flat_pattern_edit_active"] = false },
+                    ["edit_state_after"] = new JObject { ["flat_pattern_edit_active"] = false },
+                    ["left_edit_mode_restored"] = null,
+                    ["bodies"] = new JArray(MeshPayload.ToJson(flat)),
                 });
             }
             case "history_xr":

@@ -38,7 +38,7 @@ public sealed class RegistrationCountTests
     };
 
     [Fact]
-    public void All_toolsets_with_send_code_contain_114_underlying_tools()
+    public void All_toolsets_with_send_code_contain_115_underlying_tools()
     {
         var names = ToolNames(AllEnabled());
 
@@ -46,7 +46,7 @@ public sealed class RegistrationCountTests
         var distinct = names.Distinct(StringComparer.Ordinal).ToArray();
         Assert.Equal(distinct.Length, names.Length);
 
-        Assert.Equal(114, names.Length);
+        Assert.Equal(115, names.Length);
     }
 
     [Fact]
@@ -104,8 +104,8 @@ public sealed class RegistrationCountTests
             "inventor_get_assembly_bom", "inventor_list_constraints",
             // discovery (2)
             "inventor_get_capabilities", "inventor_get_tool_schema",
-            // xr (12)
-            "inventor_get_display_mesh", "inventor_get_scene_graph", "inventor_get_visual_revision",
+            // xr (13)
+            "inventor_get_display_mesh", "inventor_get_flat_pattern_mesh", "inventor_get_scene_graph", "inventor_get_visual_revision",
             "inventor_highlight_entity", "inventor_focus_entity", "inventor_get_camera", "inventor_set_camera",
             "inventor_raycast_entity", "inventor_pick_entity",
             "inventor_inspect_xr", "inventor_activate_open_document_xr",
@@ -120,7 +120,7 @@ public sealed class RegistrationCountTests
             "inventor_build_release_package",
         };
 
-        Assert.Equal(114, expected.Length);
+        Assert.Equal(115, expected.Length);
         foreach (var e in expected)
             Assert.True(names.Contains(e), $"missing expected tool: {e}");
         // and nothing extra beyond the expected surface
@@ -186,6 +186,6 @@ public sealed class RegistrationCountTests
         // Default (no --enable-send-code) drops the single `code` tool, leaving 58.
         var names = ToolNames(new InventorMcpConfig());
         Assert.False(names.Contains("inventor_send_code"), "send_code must be off by default");
-        Assert.Equal(113, names.Length);
+        Assert.Equal(114, names.Length);
     }
 }
