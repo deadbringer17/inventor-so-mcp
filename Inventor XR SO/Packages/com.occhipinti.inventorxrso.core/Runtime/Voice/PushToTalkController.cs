@@ -24,7 +24,7 @@ namespace InventorXrSo.Core.Voice
     public sealed class PushToTalkController : IDisposable
     {
         public const int SampleRate = 16000;
-        public const int MaxCaptureSamples = SampleRate * 30;
+        public const int MaxCaptureSamples = SampleRate * 10; // come il limite di /voice/transcribe
         public const int MinCaptureSamples = SampleRate / 5;
 
         private readonly object _gate = new object();
@@ -250,15 +250,20 @@ namespace InventorXrSo.Core.Voice
         private void OnRecognized(int gen, short[] audio, Task<string> task)
         {
             Array.Clear(audio, 0, audio.Length); // buffer azzerato a fine richiesta
-            string text = null; bool failed = false;
-            if (task.IsCanceled || task.IsFaulted) { failed = true; var _ = task.Exception; }
+            string text = null; bool failed = false; string failure = null;
+            if (task.IsCanceled || task.IsFaulted)
+            {
+                failed = true;
+                var inner = task.Exception?.GetBaseException() as VoiceRecognitionException; // solo messaggi italiani gia sanificati
+                failure = inner?.Message;
+            }
             else text = task.Result;
             Action post = null;
             lock (_gate)
             {
                 if (_disposed || gen != _generation || _state != PushToTalkState.Processing) return; // tardivo: scartato
                 _cts = null;
-                if (failed) { _error = "Riconoscimento non riuscito. I comandi manuali restano disponibili."; SetState(PushToTalkState.Error); }
+                if (failed) { _error = failure ?? "Riconoscimento non riuscito. I comandi manuali restano disponibili."; SetState(PushToTalkState.Error); }
                 else if (string.IsNullOrWhiteSpace(text)) { _error = "Nessuna frase riconosciuta. I comandi manuali restano disponibili."; SetState(PushToTalkState.Error); }
                 else
                 {
