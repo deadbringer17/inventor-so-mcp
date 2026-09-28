@@ -8,6 +8,8 @@ namespace InventorXrSo.Core.Backend
         public const string GetDisplayMesh = "inventor_get_display_mesh";
         public const string PickEntity = "inventor_pick_entity";
         public const string HighlightEntity = "inventor_highlight_entity";
+        public const string GetSheetMetalInfo = "inventor_get_sheet_metal_info";
+        public const string GetFlatPatternMesh = "inventor_get_flat_pattern_mesh";
         public const string ActiveDocumentUri = "inventor://active-document";
     }
 }

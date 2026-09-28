@@ -40,9 +40,11 @@ namespace InventorXrSo.Core.Backend
             DefinitionMesh.FromJson(definitionDocumentId,
                 await _mcp.CallToolAsync(ToolNames.GetDisplayMesh, new JObject { ["document_id"] = definitionDocumentId }, ct));
 
-        public async Task<byte[]> GetAssetAsync(DefinitionMesh mesh, CancellationToken ct)
+        public Task<byte[]> GetAssetAsync(DefinitionMesh mesh, CancellationToken ct) => DownloadAssetAsync(mesh, _cache, ct);
+
+        private async Task<byte[]> DownloadAssetAsync(DefinitionMesh mesh, IAssetCache cache, CancellationToken ct)
         {
-            if (_cache.TryGet(mesh.AssetId, out var cached)) return cached;
+            if (cache.TryGet(mesh.AssetId, out var cached)) return cached;
             var request = new TransportRequest("GET", Resolve(mesh.AssetUrl)) { Timeout = TimeSpan.FromMinutes(2) };
             request.Headers["Authorization"] = "Bearer " + _server.Token;
             var response = await _transport.SendAsync(request, ct);
@@ -51,7 +53,7 @@ namespace InventorXrSo.Core.Backend
                 throw new McpException("ASSET_" + response.Status, "Asset " + mesh.AssetId + " could not be downloaded (HTTP " + response.Status + ").");
             if (!AssetIds.Matches(mesh.AssetId, response.Body))
                 throw new McpException("ASSET_CORRUPT", "Asset " + mesh.AssetId + " does not match its content hash.");
-            _cache.Put(mesh.AssetId, response.Body);
+            cache.Put(mesh.AssetId, response.Body);
             return response.Body;
         }
 
