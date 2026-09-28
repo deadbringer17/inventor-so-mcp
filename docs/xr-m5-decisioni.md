@@ -40,6 +40,18 @@ più flangia) e verifica:
 - identità diversa dopo una modifica della flangia;
 - rifiuto su parte multi-body.
 
+Comandi e significato di ogni controllo: [`bridge/tests/M5LiveProbe/README.md`](../bridge/tests/M5LiveProbe/README.md).
+L'identità proposta per la cache è `flat_pattern_identity`: documento,
+revisione, lunghezza/larghezza/pieghe/allineamento Inventor, tolleranza e un
+hash dei vertici su griglia di 1 µm (`content_hash` esclude documento e
+revisione). Il probe deve confermare che resta stabile tra due letture e cambia
+dopo la modifica.
+
+Stato del codice: compilazione del server e test lato server (FakeAddIn)
+verdi. Handler e probe **non** sono mai stati compilati contro l'interop reale
+né eseguiti su Inventor. Il README del probe elenca le ipotesi API da
+confermare.
+
 **Criterio di chiusura.** Tutti i controlli D1 `PASS` sul fixture reale.
 Se l'estrazione senza edit non è possibile, si ferma solo il percorso
 `Detach` (piano M5, passo 2): nessuna mesh appiattita nel client.

@@ -187,6 +187,8 @@ controller fisici. Un caso obbligatorio non provato resta aperto.
 
 ## Decisioni tecniche da chiudere prima dell'implementazione completa
 
+Stato, strumenti di misura ed esiti: [decisioni M5](../../xr-m5-decisioni.md).
+
 1. Provare nell'API Inventor 2027 l'estrazione GLB del flat pattern senza
    entrare in edit e definire la sua identità di cache.
 2. Confrontare almeno due motori STT locali sul PC su frasi italiane del

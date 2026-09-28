@@ -79,6 +79,7 @@ public sealed class ExperimentalSourceTests
 
     [Theory]
     [InlineData("inventor_get_display_mesh", "get_display_mesh")]
+    [InlineData("inventor_get_flat_pattern_mesh", "get_flat_pattern_mesh")]
     [InlineData("inventor_history_xr", "history_xr")]
     [InlineData("inventor_get_scene_graph", "get_scene_graph")]
     [InlineData("inventor_get_visual_revision", "get_visual_revision")]

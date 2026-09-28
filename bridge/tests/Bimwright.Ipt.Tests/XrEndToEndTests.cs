@@ -166,6 +166,30 @@ public sealed class XrEndToEndTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task FlatPatternMeshIsItsOwnFaceIdFreeAssetAndRefusalsKeepTheirReason()
+    {
+        var folded = await Tool("inventor_get_display_mesh", new { document_id = FakeAddIn.PlateId });
+        var flat = await Tool("inventor_get_flat_pattern_mesh", new { document_id = FakeAddIn.PlateId });
+        Assert.Equal("m", (string?)flat["units"]);
+        Assert.Equal("SurfaceBodies", (string?)flat["source"]);
+        Assert.Equal("fake-content", (string?)flat["flat_pattern_identity"]!["content_hash"]);
+        Assert.Equal(12, (int)flat["triangle_count"]!);
+        Assert.NotEqual((string)folded["asset"]!["asset_id"]!, (string)flat["asset"]!["asset_id"]!);
+
+        var (gltf, _) = GlbReader.Read(await Asset((string)flat["asset"]!["asset_url"]!));
+        foreach (var face in (JArray)gltf["meshes"]![0]!["primitives"]![0]!["extras"]!["faces"]!)
+            Assert.Equal(JTokenType.Null, face["face_id"]!.Type);
+
+        var missing = await Tool("inventor_get_flat_pattern_mesh", new { document_id = FakeAddIn.BoltId });
+        Assert.Equal("INVALID_ARGUMENT", (string?)missing["error"]!["code"]);
+        Assert.Equal("FLAT_PATTERN_MISSING", (string?)missing["error"]!["details"]!["reason"]);
+        var wrong = await Tool("inventor_get_flat_pattern_mesh", new { document_id = FakeAddIn.AssemblyId });
+        Assert.Equal("WRONG_DOCUMENT_TYPE", (string?)wrong["error"]!["code"]);
+        var range = await Tool("inventor_get_flat_pattern_mesh", new { tolerance_mm = 9.0 });
+        Assert.Equal("INVALID_ARGUMENT", (string?)range["error"]!["code"]);
+    }
+
+    [Fact]
     public async Task DisplayMeshOfOnePartIsAValidGlbInMetres()
     {
         var mesh = await Tool("inventor_get_display_mesh", new { document_id = FakeAddIn.PlateId });

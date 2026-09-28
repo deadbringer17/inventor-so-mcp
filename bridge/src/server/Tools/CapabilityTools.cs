@@ -57,6 +57,7 @@ public sealed class CapabilityTools
             ["assembly_constraints"] = Has("create_constraint_safe"),
             ["bom"] = Has("get_assembly_bom"),
             ["xr_mesh"] = Experimental("get_display_mesh"),
+            ["flat_pattern_mesh"] = Experimental("get_flat_pattern_mesh"),
             ["scene_graph"] = Experimental("get_scene_graph"),
             ["highlight"] = Experimental("highlight_entity"),
             ["camera"] = Experimental("get_camera"),
