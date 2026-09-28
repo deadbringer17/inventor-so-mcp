@@ -33,6 +33,14 @@ public sealed class InventorMcpConfig
     public int HttpRateLimitPerMinute { get; set; } = 240;
     /// <summary>Public base URL used to build asset_url (e.g. https://pc.lan:8787). Null in stdio mode.</summary>
     public string? PublicBaseUrl { get; set; }
+    /// <summary>Serve HTTPS with the host's own self-signed certificate (created once, pinned by paired clients).</summary>
+    public bool HttpSelfSignedCertificate { get; set; }
+    public string HttpSelfSignedPath { get; set; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InventorSO", "inventor-so-mcp", "http", "server.pfx");
+    /// <summary>Open a pairing window at startup for this client name (--pair).</summary>
+    public string? PairClientName { get; set; }
+    /// <summary>Host written into the pairing QR code; default: this PC's first LAN IPv4 address.</summary>
+    public string? PairHost { get; set; }
 
     // --- Asset store ---
     public string AssetDirectory { get; set; } = Path.Combine(
@@ -126,6 +134,7 @@ public sealed class InventorMcpConfig
         var origins = Environment.GetEnvironmentVariable("INVENTOR_SO_HTTP_ORIGINS");
         if (!string.IsNullOrWhiteSpace(origins)) c.HttpAllowedOrigins = SplitCsv(origins);
         if (Bool("INVENTOR_SO_HTTP_ALLOW_INSECURE_LAN") is { } lan) c.HttpAllowInsecureLan = lan;
+        if (Bool("INVENTOR_SO_HTTP_SELF_SIGNED") is { } selfSigned) c.HttpSelfSignedCertificate = selfSigned;
         if (Int("INVENTOR_SO_HTTP_RATE_LIMIT") is { } rate) c.HttpRateLimitPerMinute = rate;
         var publicUrl = Environment.GetEnvironmentVariable("INVENTOR_SO_PUBLIC_URL");
         if (!string.IsNullOrWhiteSpace(publicUrl)) c.PublicBaseUrl = publicUrl.Trim();
@@ -149,6 +158,9 @@ public sealed class InventorMcpConfig
                 case "--enable-experimental":  c.EnableExperimental = true; break;
                 case "--http-urls":            c.HttpUrls = SplitCsv(Next(args, ref i)); break;
                 case "--http-cert":            c.HttpCertificatePath = Next(args, ref i); break;
+                case "--http-self-signed":     c.HttpSelfSignedCertificate = true; break;
+                case "--pair":                 c.PairClientName = Next(args, ref i); break;
+                case "--pair-host":            c.PairHost = Next(args, ref i); break;
                 case "--http-token-file":      c.HttpTokenFile = Next(args, ref i); break;
                 case "--http-allow-insecure-lan": c.HttpAllowInsecureLan = true; break;
                 case "--http-origins":         c.HttpAllowedOrigins = SplitCsv(Next(args, ref i)); break;

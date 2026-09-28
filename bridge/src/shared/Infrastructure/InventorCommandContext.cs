@@ -9,6 +9,8 @@ using Bimwright.Ipt.Shared.Contracts;
 /// </summary>
 public sealed class InventorCommandContext
 {
+    // Assigned only while the atomic backend invokes a step. Never supplied by JSON callers.
+    internal object? OwnedBatchTransaction { get; set; }
     public bool RequireAtomicWrites { get; init; }
     public System.Func<bool>? IsDeadlineExceeded { get; init; }
     public CadEventJournal? Events { get; init; }

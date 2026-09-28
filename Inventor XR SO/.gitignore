@@ -1,0 +1,21 @@
+# Unity (root only: the .NET projects under Tests~ keep their csproj)
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+/*.csproj
+/*.sln
+/*.slnx
+/.vs/
+/.idea/
+/.vscode/
+*.apk
+*.aab
+# .NET projects under Tests~
+Tests~/**/bin/
+Tests~/**/obj/

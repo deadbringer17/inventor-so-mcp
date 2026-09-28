@@ -2,6 +2,25 @@
 
 Target: Inventor 2027 x64. Full functional scope remains the 80-point assessment in `analisi-spec-inventor-so-mcp.md`; the work below does not replace it with a smaller goal.
 
+## Inventor XR SO — Milestone 1 — 2026-09-27
+
+Continued after C2 with the Unity CAD scene, face/occurrence highlighting,
+Android Keystore credentials, controller ray, MR/Studio VR, Italian Home and
+pairing UI, camera QR scanner, reproducible Main scene and Android APK builder.
+Session handling now stops on certificate mismatch and reconnects after an SSE
+closure; scene refresh cancels stale selection operations.
+
+The backend regression passes 891 tests with the process-local experimental
+flag disabled, as required by the default-configuration test. Baseline before
+this work: 76 Core and 5 Unity EditMode tests passed. Final regression:
+**103 Core and 24 Unity EditMode tests passed**. APK outcome and the physical
+DoD checklist are recorded in [XR M1 verification](xr-m1-verification.md).
+No Quest was attached to ADB: hardware acceptance is still pending, including
+camera/Keystore behavior, both displays highlighting the same entity, actual
+1:1 scale and Wi-Fi recovery. M1 is read-only, with the backend's 200-definition
+and mesh-size limits; QR requires camera permissions. Later product milestones
+are outside this M1 implementation.
+
 ## Architecture decision
 
 The production implementation lives in `bridge/`: an Apache-2.0 subtree imported from bimwright/ipt-mcp at d539a2ee7295747c7ef3b44a64aa870e8889deac. Its license and attribution are preserved. Root `src/` remains the MIT NeonGlay baseline/reference, not the production entry point. No hsavas code is incorporated.

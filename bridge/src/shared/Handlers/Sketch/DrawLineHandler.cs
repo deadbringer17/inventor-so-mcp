@@ -30,11 +30,27 @@ public sealed class DrawLineHandler : HandlerBase, IInventorCommand
             var sketch = SketchSupport.ResolveTargetSketch(def, (string?)p["sketch_name"]);
             var start = SketchSupport.Pt(app, p.Value<double>("x1"), p.Value<double>("y1"));
             var end = SketchSupport.Pt(app, p.Value<double>("x2"), p.Value<double>("y2"));
-            sketch.SketchLines.AddByTwoPoints(start, end);
+            bool infer = (bool?)p["infer_constraints"] ?? false;
+            object From(Point2d point)
+            {
+                if (infer)
+                    foreach (SketchPoint existing in sketch.SketchPoints)
+                        if (existing.Geometry.DistanceTo(point) < 0.000001) return existing;
+                return point;
+            }
+            var line = sketch.SketchLines.AddByTwoPoints(From(start), From(end));
+            if (infer)
+            {
+                if (Math.Abs(start.Y - end.Y) < 0.000001) sketch.GeometricConstraints.AddHorizontal((SketchEntity)line, false);
+                else if (Math.Abs(start.X - end.X) < 0.000001) sketch.GeometricConstraints.AddVertical((SketchEntity)line, false);
+            }
+            var dimensions = new JArray();
+            if ((bool?)p["add_dimensions"] == true) dimensions.Add(SketchDimensions.Length(app,sketch,line,p));
             return Ok(ctx, new JObject
             {
                 ["sketch_name"] = sketch.Name,
                 ["entity_id"] = sketch.SketchEntities.Count.ToString(),
+                ["dimensions"] = dimensions,
             });
         }
         catch (ArgumentException ex) { return Fail(ctx, InventorErrorCodes.INVALID_ARGUMENT, ex.Message); }

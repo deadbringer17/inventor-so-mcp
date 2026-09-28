@@ -401,6 +401,14 @@ public sealed class GetSketchInfoHandler : ExperimentalHandler
             X.Deadline(ctx, "while reading the sketch");
             var item = new JObject { ["entity_id"] = index.ToString() };
             try { item["construction"] = entity.Construction; } catch { }
+            var related = new JArray();
+            foreach (object relation in entity.Constraints)
+            {
+                if (related.Count >= max) break;
+                if (relation is GeometricConstraint geometric) related.Add(geometric.Type.ToString());
+                else if (relation is DimensionConstraint dimensional) related.Add(dimensional.Type.ToString());
+            }
+            item["constraints"] = related;
             switch (entity)
             {
                 case SketchLine line:
@@ -465,6 +473,7 @@ public sealed class GetSketchInfoHandler : ExperimentalHandler
             {
                 ["name"] = parameter.Name, ["expression"] = parameter.Expression, ["type"] = dimension.Type.ToString(),
                 ["driven"] = dimension.Driven, ["value"] = JToken.FromObject(parameter.Value),
+                ["text_mm"] = X.Mm2(dimension.TextPoint),
             });
         }
         string status;

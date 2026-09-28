@@ -1,0 +1,10 @@
+{
+  "name": "com.occhipinti.inventorxrso.core",
+  "version": "0.1.0",
+  "displayName": "Inventor XR SO Core",
+  "description": "Engine-independent client core of Inventor XR SO: MCP client, pairing, GLB reader, session state, selection.",
+  "unity": "6000.0",
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "3.2.1"
+  }
+}

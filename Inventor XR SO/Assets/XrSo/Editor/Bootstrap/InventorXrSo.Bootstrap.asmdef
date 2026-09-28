@@ -1,0 +1,7 @@
+{
+  "name": "InventorXrSo.Bootstrap",
+  "rootNamespace": "InventorXrSo.Bootstrap",
+  "references": [],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": false
+}

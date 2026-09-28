@@ -77,6 +77,21 @@ internal static class EntityResolver
     /// <summary>Resolve a sketch entity from a sketch by positional id.</summary>
     public static SketchEntity ResolveSketchEntity(PlanarSketch sketch, string entityId)
     {
+        if (string.IsNullOrWhiteSpace(entityId)) throw new ArgumentException("empty sketch entity id");
+        // Typed indices avoid depending on automatically created SketchPoints when
+        // a new sketch and its constraints are replayed inside one atomic plan.
+        if (entityId.StartsWith("line:", StringComparison.OrdinalIgnoreCase))
+        {
+            var index = ParseIndex(entityId,"line");
+            if (index > sketch.SketchLines.Count) throw new ArgumentException("sketch line index out of range");
+            return (SketchEntity)sketch.SketchLines[index];
+        }
+        if (entityId.StartsWith("circle:", StringComparison.OrdinalIgnoreCase))
+        {
+            var index = ParseIndex(entityId,"circle");
+            if (index > sketch.SketchCircles.Count) throw new ArgumentException("sketch circle index out of range");
+            return (SketchEntity)sketch.SketchCircles[index];
+        }
         var ents = sketch.SketchEntities;
         var idx = ParseIndex(entityId, "entity");
         if (idx > ents.Count)

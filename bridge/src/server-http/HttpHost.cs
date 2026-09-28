@@ -1,4 +1,4 @@
-using System.Security.Cryptography.X509Certificates;
+using Inventor.So.Mcp.Http.Pairing;
 using System.Threading.RateLimiting;
 using Bimwright.Ipt.Server;
 using Bimwright.Ipt.Server.Assets;
@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Net.Http.Headers;
+using HostOptions = Inventor.So.Mcp.Http.Pairing.HostOptions;
+using PairingEndpoint = Inventor.So.Mcp.Http.Pairing.PairingEndpoint;
 
 namespace Inventor.So.Mcp.Http;
 
@@ -19,13 +21,13 @@ public static class HttpHost
     public const string RatePolicy = "per-client";
     public const long MaxRequestBodyBytes = 4 * 1024 * 1024;
 
-    public static WebApplication Build(string[] args, InventorMcpConfig config, TokenRegistry tokens)
+    public static WebApplication Build(string[] args, InventorMcpConfig config, TokenRegistry tokens, HostOptions? options = null)
     {
         config.Transport = "http";
         var problems = BindingPolicy.Check(config);
         if (problems.Count > 0) throw new InvalidOperationException(string.Join(Environment.NewLine, problems));
-        if (tokens.Count == 0)
-            throw new InvalidOperationException("No client token configured. Create one with --generate-token <name> and pass the file with --http-token-file.");
+        if (tokens.Count == 0 && options?.Pairing == null)
+            throw new InvalidOperationException("No client token configured. Create one with --generate-token <name> and pass the file with --http-token-file, or pair a headset with --pair <name>.");
         // Without a configured public URL, asset URLs are relative to the MCP endpoint's origin.
         config.PublicBaseUrl ??= "";
 
@@ -37,12 +39,10 @@ public static class HttpHost
         {
             kestrel.AddServerHeader = false;
             kestrel.Limits.MaxRequestBodySize = MaxRequestBodyBytes;
-            if (!string.IsNullOrWhiteSpace(config.HttpCertificatePath))
-            {
-                var certificate = new X509Certificate2(config.HttpCertificatePath!, config.HttpCertificatePassword,
-                    X509KeyStorageFlags.EphemeralKeySet);
-                kestrel.ConfigureHttpsDefaults(https => https.ServerCertificate = certificate);
-            }
+            var certificate = options?.Certificate;
+            if (certificate == null && !string.IsNullOrWhiteSpace(config.HttpCertificatePath))
+                certificate = PairingSetup.ResolveCertificate(config);
+            if (certificate != null) kestrel.ConfigureHttpsDefaults(https => https.ServerCertificate = certificate);
         });
 
         var services = builder.Services;
@@ -104,6 +104,8 @@ public static class HttpHost
         app.UseAuthorization();
 
         app.MapGet("/healthz", () => Results.Json(new { status = "ok" }));
+        if (options?.Pairing is { } pairing)
+            app.MapPost("/pair", async (HttpContext http) => { return await pairing.HandleAsync(http); }).RequireRateLimiting(RatePolicy);
         app.MapMcp("/mcp").RequireAuthorization().RequireRateLimiting(RatePolicy);
         app.MapGet("/assets/{assetId}", (string assetId, HttpContext http, AssetStore store, ICallerIdentity caller) =>
             {

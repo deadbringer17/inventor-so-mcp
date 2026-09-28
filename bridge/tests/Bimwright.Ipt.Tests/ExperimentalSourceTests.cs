@@ -79,6 +79,7 @@ public sealed class ExperimentalSourceTests
 
     [Theory]
     [InlineData("inventor_get_display_mesh", "get_display_mesh")]
+    [InlineData("inventor_history_xr", "history_xr")]
     [InlineData("inventor_get_scene_graph", "get_scene_graph")]
     [InlineData("inventor_get_visual_revision", "get_visual_revision")]
     [InlineData("inventor_highlight_entity", "highlight_entity")]
@@ -87,6 +88,10 @@ public sealed class ExperimentalSourceTests
     [InlineData("inventor_set_camera", "set_camera")]
     [InlineData("inventor_raycast_entity", "raycast_entity")]
     [InlineData("inventor_pick_entity", "pick_entity")]
+    [InlineData("inventor_inspect_xr", "inspect_xr")]
+    [InlineData("inventor_get_design_context_xr", "get_design_context_xr")]
+    [InlineData("inventor_get_assembly_context_xr", "get_assembly_context_xr")]
+    [InlineData("inventor_activate_open_document_xr", "activate_open_document_xr")]
     [InlineData("inventor_get_sketch_info", "get_sketch_info")]
     [InlineData("inventor_get_dependencies", "get_dependencies")]
     [InlineData("inventor_trace_dependency", "get_dependencies")]

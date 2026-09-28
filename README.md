@@ -11,6 +11,13 @@ GUID, pipe namespace and discovery directory.
 Current verified progress and outstanding scope: [development status](docs/DEVELOPMENT.md).
 Detailed requirements comparison: [80-point analysis](docs/analisi-spec-inventor-so-mcp.md).
 
+## Inventor XR SO (Quest 3)
+
+The [Unity M1 client](Inventor%20XR%20SO/README.md) provides pinned HTTPS pairing,
+1:1 CAD viewing, occurrence/face selection and synchronized highlighting in MR or
+Studio VR. See the [verification record](docs/xr-m1-verification.md) for automated
+results and the outstanding physical Quest/Inventor acceptance checks.
+
 ## Installation
 
 Everything below runs on the machine where Inventor is installed. Nothing here

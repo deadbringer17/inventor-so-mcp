@@ -1,0 +1,65 @@
+using System;
+using InventorXrSo.Unity.Scene;
+using UnityEngine;
+using UnityEngine.EventSystems;
+
+namespace InventorXrSo.Xr
+{
+    /// <summary>Ray from the dominant controller (spec §9): trigger picks the CAD body under it. Only picks; never edits.</summary>
+    [DefaultExecutionOrder(100)] // EventSystem processes the current UI ray first, avoiding click-through.
+    public sealed class ControllerRay : MonoBehaviour
+    {
+        [SerializeField] private Transform origin;
+        [SerializeField] private LineRenderer line;
+        [SerializeField] private float maxDistance = 20f;
+        [SerializeField] private OVRInput.Controller controller = OVRInput.Controller.RTouch;
+
+        public OVRInput.Controller Controller { get => controller; set => controller = value; }
+        public event Action<CadBody, int> Picked;
+        public event Action PickedNothing;
+        public event Action<Vector3> PointPicked;
+        public Transform Origin => origin;
+        public Material LineMaterial => line != null ? line.sharedMaterial : null;
+        public bool CanPick { get; set; } = true;
+
+        public void Configure(Transform rayOrigin, LineRenderer rayLine)
+        {
+            origin = rayOrigin;
+            line = rayLine;
+        }
+
+        private void OnDisable() { if (line != null) line.enabled = false; }
+        private void OnEnable() { if (line != null) line.enabled = true; }
+
+        private void Update()
+        {
+            if (!CanPick || origin == null || !OVRInput.IsControllerConnected(controller) ||
+                !OVRInput.GetControllerOrientationTracked(controller) ||
+                !OVRInput.GetDown(OVRInput.Button.PrimaryIndexTrigger, controller)) return;
+            if (OVRInput.Get(OVRInput.Button.PrimaryHandTrigger, controller)) return;
+            if (EventSystem.current != null && EventSystem.current.currentInputModule is ControllerUiInputModule ui && ui.CurrentHit.isValid) return;
+            if (CadRaycaster.TryPick(new Ray(origin.position, origin.forward), maxDistance, out var body, out var triangle, out var point))
+            { Picked?.Invoke(body, triangle); PointPicked?.Invoke(point); }
+            else PickedNothing?.Invoke();
+        }
+
+        private void LateUpdate()
+        {
+            if (origin == null || line == null) return;
+            bool tracked = OVRInput.IsControllerConnected(controller) && OVRInput.GetControllerOrientationTracked(controller);
+            line.enabled = tracked;
+            if (!tracked) return;
+            var ray = new Ray(origin.position, origin.forward);
+            bool hit = CadRaycaster.TryPick(ray, maxDistance, out var body, out var triangle, out var point);
+            if (EventSystem.current != null &&
+                EventSystem.current.currentInputModule is ControllerUiInputModule input && input.CurrentHit.isValid)
+            {
+                hit = true;
+                point = input.CurrentHit.worldPosition;
+            }
+            line.positionCount = 2;
+            line.SetPosition(0, ray.origin);
+            line.SetPosition(1, hit ? point : ray.origin + ray.direction * maxDistance);
+        }
+    }
+}

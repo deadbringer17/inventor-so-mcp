@@ -23,13 +23,20 @@ public sealed class FakeAddIn : System.IAsyncDisposable
     private readonly string _token = System.Guid.NewGuid().ToString("N");
     private readonly CancellationTokenSource _stop = new();
     private readonly Task _loop;
+    private readonly Timer _heartbeat;
     private readonly object _gate = new();
     private int _sequence = 1;
     private int _visual = 1;
     private double _boltLengthCm = 1.0;
+    private readonly List<(string Owner, double Before, double After)> _history = new();
+    private int _historyPosition;
+    private string? _historyRevision, _historyTicket;
+    private readonly List<JObject> _events = new();
 
     public string DescriptorDirectory { get; }
     public List<string> Commands { get; } = new();
+    public bool DesignPartMode { get; set; }
+    public string ActiveDocumentId => DesignPartMode ? BoltId : AssemblyId;
 
     public const string AssemblyId = "doc_asm";
     public const string BoltId = "doc_bolt";
@@ -51,12 +58,32 @@ public sealed class FakeAddIn : System.IAsyncDisposable
             DocumentTitle = "Fake.iam",
             LastHeartbeatUtc = System.DateTimeOffset.UtcNow,
         };
-        File.WriteAllText(Path.Combine(descriptorDirectory, "inventor-2027-fake.json"), JsonConvert.SerializeObject(descriptor));
+        void RefreshDescriptor(object? _)
+        {
+            lock (_gate)
+            {
+                descriptor.LastHeartbeatUtc = System.DateTimeOffset.UtcNow;
+                File.WriteAllText(Path.Combine(descriptorDirectory, "inventor-2027-fake.json"), JsonConvert.SerializeObject(descriptor));
+            }
+        }
+        RefreshDescriptor(null);
+        _heartbeat = new Timer(RefreshDescriptor, null, 30_000, 30_000);
         _loop = Task.Run(() => Serve(_stop.Token));
     }
 
     public string Revision { get { lock (_gate) return "fake:" + _sequence; } }
     private string Visual { get { lock (_gate) return "fake:v" + _visual; } }
+
+    /// <summary>Simulate an edit in Inventor: advances the revision (and the visual revision for geometry) and journals it.</summary>
+    public void RaiseDocumentChanged(bool geometry)
+    {
+        lock (_gate)
+        {
+            _sequence++;
+            if (geometry) _visual++;
+            _events.Add(new JObject { ["seq"] = _events.Count + 1, ["type"] = "document_changed", ["document_id"] = AssemblyId, ["geometry"] = geometry });
+        }
+    }
 
     private async Task Serve(CancellationToken ct)
     {
@@ -100,7 +127,7 @@ public sealed class FakeAddIn : System.IAsyncDisposable
                 return Ok(new JObject
                 {
                     ["inventor_year"] = 2027, ["experimental_build"] = true, ["experimental_enabled"] = true,
-                    ["active_document_kind"] = "assembly",
+                    ["active_document_kind"] = DesignPartMode ? "part" : "assembly",
                     ["commands"] = new JArray("atomic_batch", "get_capabilities", "get_display_mesh", "get_scene_graph", "get_visual_revision",
                         "highlight_entity", "pick_entity", "get_events", "list_parameters", "get_document_info", "set_parameter", "save_artifact"),
                 });
@@ -109,15 +136,49 @@ public sealed class FakeAddIn : System.IAsyncDisposable
             case "list_parameters":
                 return Ok(new JObject { ["parameters"] = new JArray(new JObject { ["name"] = "BoltLength", ["expression"] = (_boltLengthCm * 10) + " mm" }) });
             case "get_visual_revision":
-                return Ok(new JObject { ["document_id"] = (string?)p["document_id"] ?? AssemblyId, ["revision"] = Revision, ["visual_revision"] = Visual });
+                return Ok(new JObject { ["document_id"] = (string?)p["document_id"] ?? ActiveDocumentId, ["revision"] = Revision, ["visual_revision"] = Visual });
+            case "get_design_context_xr":
+                if (!DesignPartMode) return Fail(InventorErrorCodes.WRONG_DOCUMENT_TYPE, "Part required.");
+                if ((string?)p["document_id"] != ActiveDocumentId) return Fail(InventorErrorCodes.DOCUMENT_CHANGED, "Document changed.");
+                if ((string?)p["expected_revision"] != Revision) return Fail(InventorErrorCodes.STALE_REVISION, "Revision changed.");
+                return Ok(new JObject
+                {
+                    ["document_id"] = ActiveDocumentId, ["revision"] = Revision, ["kind"] = "part",
+                    ["planes"] = new JArray(new JObject { ["reference"] = "3", ["name"] = "XY", ["origin_mm"] = new JArray(0,0,0), ["x_axis"] = new JArray(1,0,0), ["y_axis"] = new JArray(0,1,0) }),
+                    ["sketches"] = new JArray(), ["faces"] = new JArray(new JObject { ["id"] = "ent_face", ["point_mm"] = new JArray(0,0,0), ["normal"] = new JArray(0,0,1) }),
+                    ["edges"] = new JArray(new JObject { ["id"] = "ent_edge", ["kind"] = "line", ["points_mm"] = new JArray(0,0,0,10,0,0) }),
+                    ["parameters"] = new JArray(), ["truncated"] = false,
+                });
             case "get_events":
-                return Ok(new JObject { ["epoch"] = "fake", ["cursor"] = _sequence, ["resync_required"] = false, ["events"] = new JArray() });
+                lock (_gate)
+                {
+                    long after = (long?)p["after"] ?? 0;
+                    return Ok(new JObject
+                    {
+                        ["epoch"] = "fake", ["cursor"] = _events.Count, ["resync_required"] = false,
+                        ["events"] = new JArray(_events.Where(e => (long)e["seq"]! > after).Select(e => e.DeepClone())),
+                    });
+                }
             case "highlight_entity":
                 return Ok(new JObject { ["mode"] = p["mode"], ["highlighted"] = (p["entity_ids"] as JArray)?.Count ?? 0 });
             case "pick_entity":
                 return Ok(new JObject { ["entity_id"] = "ent_proxy_" + p["face_id"], ["type"] = "face_proxy" });
             case "get_scene_graph":
                 return Ok(Scene());
+            case "list_open_documents":
+                return Ok(new JObject { ["documents"] = new JArray(new JObject
+                { ["document_id"] = AssemblyId, ["title"] = "Fake.iam", ["document_type"] = "kAssemblyDocumentObject", ["is_active"] = true }) });
+            case "activate_open_document_xr":
+                return (string?)p["document_id"] == AssemblyId
+                    ? Ok(new JObject { ["document_id"] = AssemblyId, ["status"] = "activated" })
+                    : Fail(InventorErrorCodes.NO_DOCUMENT, "Document is not open.");
+            case "inspect_xr":
+                if ((string?)p["document_id"] != AssemblyId) return Fail("DOCUMENT_CHANGED", "Active document changed.");
+                if ((string?)p["expected_revision"] != Revision) return Fail(InventorErrorCodes.STALE_REVISION, "Revision changed.");
+                return Ok(new JObject { ["document_id"] = AssemblyId, ["revision"] = Revision,
+                    ["name"] = p["occurrence_id"]?.Type == JTokenType.String ? "Bolt:1" : "Fake.iam", ["material"] = "Steel",
+                    ["mass_kg"] = 1.28, ["volume_mm3"] = 160000, ["area_mm2"] = 20000,
+                    ["constraints"] = 3, ["dof_translation"] = 1, ["dof_rotation"] = 0 });
             case "get_display_mesh":
             {
                 string id = (string?)p["document_id"] ?? AssemblyId;
@@ -129,8 +190,33 @@ public sealed class FakeAddIn : System.IAsyncDisposable
                     ["face_ids_complete"] = true, ["bodies"] = new JArray(MeshPayload.ToJson(Box(size, id))),
                 });
             }
+            case "history_xr":
+            {
+                lock (_gate)
+                {
+                    if ((string?)p["document_id"] != ActiveDocumentId) return Fail("DOCUMENT_CHANGED","Document changed.");
+                    if ((string?)p["expected_revision"] != Revision) return Fail("STALE_REVISION","Revision changed.");
+                    if (_historyRevision != Revision) { _history.Clear(); _historyPosition = 0; _historyTicket = null; }
+                    string owner = (string)p["owner"]!, action = (string)p["action"]!;
+                    bool Undo() => _historyPosition > 0 && _history[_historyPosition-1].Owner == owner;
+                    bool Redo() => _historyPosition < _history.Count && _history[_historyPosition].Owner == owner;
+                    if (action != "status")
+                    {
+                        if ((string?)p["ticket"] != _historyTicket || !(action == "redo" ? Redo() : Undo()))
+                            return Fail("HISTORY_CHANGED","No matching XR history.");
+                        if (action == "redo") _boltLengthCm = _history[_historyPosition++].After;
+                        else _boltLengthCm = _history[--_historyPosition].Before;
+                        _sequence++; _visual++; _historyRevision = Revision; _historyTicket = System.Guid.NewGuid().ToString("N");
+                    }
+                    return Ok(new JObject { ["document_id"] = ActiveDocumentId, ["revision"] = Revision, ["visual_revision"] = Visual,
+                        ["status"] = action == "status" ? "history" : "committed", ["can_undo"] = Undo(), ["can_redo"] = Redo(),
+                        ["ticket"] = Undo() || Redo() ? _historyTicket : null });
+                }
+            }
             case "atomic_batch":
             {
+                if ((string?)p["document_id"] != ActiveDocumentId)
+                    return Fail(InventorErrorCodes.DOCUMENT_CHANGED, "Active document differs.");
                 if ((string?)p["expected_revision"] != Revision)
                     return Fail(InventorErrorCodes.STALE_REVISION, "STALE_REVISION: read the document again and replan.");
                 bool preview = (bool?)p["preview"] ?? false;
@@ -140,16 +226,48 @@ public sealed class FakeAddIn : System.IAsyncDisposable
                 {
                     lock (_gate)
                     {
+                        string beforeRevision = Revision; double beforeLength = _boltLengthCm;
                         _boltLengthCm = double.Parse(((string)set["arguments"]!["value"]!).Replace("mm", "").Trim(), System.Globalization.CultureInfo.InvariantCulture) / 10;
                         _sequence++;
                         _visual++;
+                        if (p["history_owner"]?.Type == JTokenType.String)
+                        {
+                            if (_historyRevision != beforeRevision) { _history.Clear(); _historyPosition = 0; }
+                            _history.RemoveRange(_historyPosition,_history.Count-_historyPosition);
+                            _history.Add(((string)p["history_owner"]!,beforeLength,_boltLengthCm)); _historyPosition = _history.Count;
+                            _historyRevision = Revision; _historyTicket = System.Guid.NewGuid().ToString("N");
+                        }
                     }
                 }
-                return Ok(new JObject
+                if (preview) { lock (_gate) _history.RemoveRange(_historyPosition,_history.Count-_historyPosition); }
+                var outcome = new JObject
                 {
-                    ["status"] = preview ? "preview_rolled_back" : "committed", ["document_id"] = AssemblyId, ["revision"] = Revision,
+                    ["status"] = preview ? "preview_rolled_back" : "committed", ["document_id"] = ActiveDocumentId, ["revision"] = Revision,
                     ["steps"] = new JArray(ops.Select(o => new JObject { ["command"] = o["command"], ["data"] = new JObject() })),
-                });
+                    ["validated"] = new JArray("rebuild", DesignPartMode ? "feature_health" : "constraint_health"),
+                };
+                if ((bool?)p["include_preview_mesh"] == true)
+                {
+                    if (!preview || !DesignPartMode) return Fail(InventorErrorCodes.INVALID_ARGUMENT, "Part preview required.");
+                    double tentative = set == null ? _boltLengthCm : double.Parse(((string)set["arguments"]!["value"]!).Replace("mm", "").Trim(), System.Globalization.CultureInfo.InvariantCulture) / 10;
+                    outcome["preview_mesh"] = new JObject
+                    {
+                        ["document_id"] = ActiveDocumentId, ["definition_name"] = "Preview", ["units"] = "cm",
+                        ["bodies"] = new JArray(MeshPayload.ToJson(Box(tentative, ActiveDocumentId))),
+                    };
+                    var created = ops.OfType<JObject>().FirstOrDefault(o => (string?)o["command"] == "create_sketch");
+                    var snapshots = new JArray();
+                    if (created != null)
+                    {
+                        var entities = new JArray();
+                        foreach (var circle in ops.OfType<JObject>().Where(o => (string?)o["command"] == "draw_circle"))
+                            entities.Add(new JObject { ["type"] = "circle", ["center_mm"] = new JArray(circle["arguments"]!["cx"],circle["arguments"]!["cy"]), ["radius_mm"] = circle["arguments"]!["radius"] });
+                        snapshots.Add(new JObject { ["sketch_name"] = created["arguments"]!["name"], ["visible"] = true,
+                            ["frame"] = new JObject { ["origin_mm"] = new JArray(0,0,0), ["x_axis"] = new JArray(1,0,0), ["y_axis"] = new JArray(0,1,0) }, ["entities"] = entities });
+                    }
+                    outcome["preview_mesh"]!["sketches"] = snapshots;
+                }
+                return Ok(outcome);
             }
             default:
                 return Fail(InventorErrorCodes.INVALID_ARGUMENT, "unknown command: " + envelope.Command);
@@ -208,6 +326,7 @@ public sealed class FakeAddIn : System.IAsyncDisposable
 
     public async System.Threading.Tasks.ValueTask DisposeAsync()
     {
+        await _heartbeat.DisposeAsync();
         _stop.Cancel();
         try { await _loop; } catch { }
     }

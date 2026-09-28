@@ -7,7 +7,7 @@ namespace Bimwright.Ipt.Tests;
 
 public sealed class AtomicCadBatchTests
 {
-    private sealed class Backend : ICadBatchBackend
+    private class Backend : ICadBatchBackend
     {
         public string DocumentId { get; set; } = "doc";
         public string Revision { get; set; } = "revision";
@@ -32,6 +32,85 @@ public sealed class AtomicCadBatchTests
     private static JArray Steps(bool fail = false) => new(
         new JObject { ["command"] = "set_parameter", ["arguments"] = new JObject() },
         new JObject { ["command"] = "extrude", ["arguments"] = new JObject { ["fail"] = fail } });
+
+    private sealed class PreviewBackend : Backend, ICadBatchPreviewBackend
+    {
+        public bool FailCapture, Captured;
+        public JObject CapturePreview()
+        {
+            Captured = true;
+            Assert.Equal(0, Rollbacks);
+            if (FailCapture) throw new InvalidOperationException("Tessellation failed");
+            return new JObject { ["tentative_value"] = Value };
+        }
+    }
+    private static CadBatchOptions MeshOptions() => new()
+    { DocumentKind = CadDocumentKinds.Part, AllowExperimental = true, IncludePreviewMesh = true };
+
+    [Fact]
+    public void MeshIsCapturedFromTentativeStateBeforeRollback()
+    {
+        var backend = new PreviewBackend { Value = 10 };
+        var result = AtomicCadBatch.Run(backend, "doc", "revision", Steps(), true, null, MeshOptions());
+        Assert.Equal(12, (int)result["preview_mesh"]!["tentative_value"]!);
+        Assert.Equal(10, backend.Value);
+        Assert.Equal("revision", backend.Revision);
+        Assert.Equal(0, backend.Commits);
+    }
+
+    [Fact]
+    public void FailedTessellationRollsBackAndNeverCommits()
+    {
+        var backend = new PreviewBackend { Value = 10, FailCapture = true };
+        Assert.Throws<CadBatchException>(() => AtomicCadBatch.Run(backend, "doc", "revision", Steps(), true, null, MeshOptions()));
+        Assert.Equal(10, backend.Value);
+        Assert.Equal("revision", backend.Revision);
+        Assert.Equal(0, backend.Commits);
+    }
+
+    [Fact]
+    public void ExpiryDuringTessellationRollsBack()
+    {
+        var backend = new PreviewBackend();
+        var error = Assert.Throws<CadBatchException>(() => AtomicCadBatch.Run(backend, "doc", "revision", Steps(), true,
+            () => backend.Captured, MeshOptions()));
+        Assert.Equal(InventorErrorCodes.TIMEOUT, error.StepCode);
+        Assert.Equal(0, backend.Value);
+        Assert.Equal(0, backend.Commits);
+    }
+
+    [Theory]
+    [InlineData(false, true, "part")]
+    [InlineData(true, false, "part")]
+    [InlineData(true, true, "drawing")]
+    public void MeshRequiresExperimentalSupportedDocumentPreview(bool preview, bool experimental, string kind)
+    {
+        var backend = new PreviewBackend();
+        var options = MeshOptions(); options.AllowExperimental = experimental; options.DocumentKind = kind;
+        Assert.Throws<CadBatchException>(() => AtomicCadBatch.Run(backend, "doc", "revision", Steps(), preview, null, options));
+        Assert.Equal(0, backend.Begins);
+    }
+
+    [Fact]
+    public void AssemblyPreviewCapturesTentativeStateAndRestoresRevision()
+    {
+        var backend = new PreviewBackend { Value = 10 };
+        var options = MeshOptions(); options.DocumentKind = CadDocumentKinds.Assembly;
+        var steps = new JArray(new JObject { ["command"] = "assembly_move", ["arguments"] = new JObject() });
+        var result = AtomicCadBatch.Run(backend, "doc", "revision", steps, true, null, options);
+        Assert.Equal(11, (int)result["preview_mesh"]!["tentative_value"]!);
+        Assert.Equal(10, backend.Value);
+        Assert.Equal("revision", backend.Revision);
+        Assert.Equal(0, backend.Commits);
+    }
+
+    [Fact]
+    public void OldBackendCannotSilentlyOmitRequestedMesh()
+    {
+        var backend = new Backend();
+        Assert.Throws<CadBatchException>(() => AtomicCadBatch.Run(backend, "doc", "revision", Steps(), true, null, MeshOptions()));
+        Assert.Equal(0, backend.Begins);
+    }
 
     [Fact]
     public void ValidBatchCommitsOnce()

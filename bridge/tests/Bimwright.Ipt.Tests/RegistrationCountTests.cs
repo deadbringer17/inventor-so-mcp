@@ -38,7 +38,7 @@ public sealed class RegistrationCountTests
     };
 
     [Fact]
-    public void All_toolsets_with_send_code_contain_109_underlying_tools()
+    public void All_toolsets_with_send_code_contain_114_underlying_tools()
     {
         var names = ToolNames(AllEnabled());
 
@@ -46,7 +46,7 @@ public sealed class RegistrationCountTests
         var distinct = names.Distinct(StringComparer.Ordinal).ToArray();
         Assert.Equal(distinct.Length, names.Length);
 
-        Assert.Equal(109, names.Length);
+        Assert.Equal(114, names.Length);
     }
 
     [Fact]
@@ -104,20 +104,23 @@ public sealed class RegistrationCountTests
             "inventor_get_assembly_bom", "inventor_list_constraints",
             // discovery (2)
             "inventor_get_capabilities", "inventor_get_tool_schema",
-            // xr (9)
+            // xr (12)
             "inventor_get_display_mesh", "inventor_get_scene_graph", "inventor_get_visual_revision",
             "inventor_highlight_entity", "inventor_focus_entity", "inventor_get_camera", "inventor_set_camera",
             "inventor_raycast_entity", "inventor_pick_entity",
+            "inventor_inspect_xr", "inventor_activate_open_document_xr",
+            "inventor_get_design_context_xr",
+            "inventor_get_assembly_context_xr",
             // insight (9)
             "inventor_validate_bom", "inventor_compare_bom", "inventor_get_sketch_info", "inventor_get_dependencies",
             "inventor_trace_dependency", "inventor_get_semantic_state", "inventor_get_representations",
             "inventor_get_assembly_health", "inventor_validate_drawing",
             // planning (4) + release (1)
-            "inventor_plan_change", "inventor_commit_plan", "inventor_list_plans", "inventor_sample_parameter_motion",
+            "inventor_plan_change", "inventor_commit_plan", "inventor_list_plans", "inventor_sample_parameter_motion", "inventor_history_xr",
             "inventor_build_release_package",
         };
 
-        Assert.Equal(109, expected.Length);
+        Assert.Equal(114, expected.Length);
         foreach (var e in expected)
             Assert.True(names.Contains(e), $"missing expected tool: {e}");
         // and nothing extra beyond the expected surface
@@ -178,11 +181,11 @@ public sealed class RegistrationCountTests
     }
 
     [Fact]
-    public void Default_config_contains_108_underlying_tools_without_send_code()
+    public void Default_config_contains_110_underlying_tools_without_send_code()
     {
         // Default (no --enable-send-code) drops the single `code` tool, leaving 58.
         var names = ToolNames(new InventorMcpConfig());
         Assert.False(names.Contains("inventor_send_code"), "send_code must be off by default");
-        Assert.Equal(108, names.Length);
+        Assert.Equal(113, names.Length);
     }
 }

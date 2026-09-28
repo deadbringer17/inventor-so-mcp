@@ -1,0 +1,27 @@
+{
+  "name": "InventorXrSo.Tests.EditMode",
+  "rootNamespace": "InventorXrSo.Tests",
+  "references": [
+    "InventorXrSo.Core",
+    "InventorXrSo.Unity",
+    "InventorXrSo.Xr",
+    "UnityEngine.UI",
+    "UnityEngine.TestRunner",
+    "UnityEditor.TestRunner",
+    "InventorXrSo.Editor",
+    "Oculus.VR"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "nunit.framework.dll",
+    "Newtonsoft.Json.dll",
+    "zxing.dll"
+  ],
+  "autoReferenced": false,
+  "defineConstraints": [
+    "UNITY_INCLUDE_TESTS"
+  ]
+}

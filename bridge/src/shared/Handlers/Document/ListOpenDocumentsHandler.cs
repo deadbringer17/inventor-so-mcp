@@ -37,6 +37,7 @@ public sealed class ListOpenDocumentsHandler : HandlerBase, IInventorCommand
 
             docs.Add(new JObject
             {
+                ["document_id"] = Bimwright.Ipt.Shared.Handlers.Core.EntityReferences.DocumentId(doc),
                 ["title"] = doc.DisplayName,
                 ["path"] = string.IsNullOrEmpty(path) ? null : path,
                 ["document_type"] = doc.DocumentType.ToString(),

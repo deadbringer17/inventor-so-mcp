@@ -96,8 +96,8 @@ public sealed class CreateJointHandler : HandlerBase, IInventorCommand
             transaction = app.TransactionManager.StartTransaction((Inventor._Document)doc, "Inventor SO create joint");
             if (transaction.HasParentTransaction) throw ConcurrencyFailure.TransactionBusy();
 
-            var intentA = def.CreateGeometryIntent(entityA);
-            var intentB = def.CreateGeometryIntent(entityB);
+            var intentA = CreateOriginIntent(def, entityA, type);
+            var intentB = CreateOriginIntent(def, entityB, type);
             AssemblyJointDefinition definition;
             AssemblyJoint joint;
             try
@@ -185,7 +185,31 @@ public sealed class CreateJointHandler : HandlerBase, IInventorCommand
     }
 
     /// <summary>A joint origin may be a face, an edge or a vertex of a component.</summary>
-    private static (object Entity, ComponentOccurrence Occurrence) Resolve(global::Inventor.Document doc, string id)
+    internal static GeometryIntent CreateOriginIntent(AssemblyComponentDefinition def, object entity,
+        AssemblyJointTypeEnum type)
+    {
+        if (type != AssemblyJointTypeEnum.kPlanarJointType || entity is not FaceProxy face ||
+            face.SurfaceType != SurfaceTypeEnum.kPlaneSurface)
+            return def.CreateGeometryIntent(entity);
+
+        // Inventor requires a location on the boundary of a planar face for a joint
+        // origin. A bare face intent is constructible but CreateAssemblyJointDefinition
+        // rejects it with E_FAIL. The circular-edge centre is stable for our cylinder
+        // fixture; a linear-edge midpoint provides the same explicit location on boxes.
+        var edges = face.Edges.Cast<EdgeProxy>().ToArray();
+        var circle = edges.FirstOrDefault(edge => edge.GeometryType == CurveTypeEnum.kCircleCurve ||
+            edge.GeometryType == CurveTypeEnum.kCircularArcCurve);
+        if (circle != null)
+            return def.CreateGeometryIntent(face,
+                def.CreateGeometryIntent(circle, PointIntentEnum.kCenterPointIntent));
+        var line = edges.FirstOrDefault(edge => edge.GeometryType == CurveTypeEnum.kLineSegmentCurve);
+        if (line != null)
+            return def.CreateGeometryIntent(face,
+                def.CreateGeometryIntent(line, PointIntentEnum.kMidPointIntent));
+        throw new ArgumentException("JOINT_ORIGIN_UNAVAILABLE: la faccia piana non ha un bordo circolare o lineare utilizzabile come origine.");
+    }
+
+    internal static (object Entity, ComponentOccurrence Occurrence) Resolve(global::Inventor.Document doc, string id)
     {
         var reference = PersistentEntityReference.Decode(id);
         switch (reference.EntityType)

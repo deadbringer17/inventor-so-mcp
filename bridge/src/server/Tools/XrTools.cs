@@ -22,6 +22,21 @@ namespace Bimwright.Ipt.Server.Tools;
 [McpServerToolType]
 public sealed class XrTools
 {
+    [McpServerTool(Name = "inventor_get_assembly_context_xr"), Description("Read revision-bound active assembly occurrences and native DOF axes. Optional occurrence_id selects a direct occurrence and includes face/edge proxy references and geometry in assembly millimetres. No CAD changes. Experimental.")]
+    public Task<string> AssemblyContext(string document_id, string expected_revision, string? occurrence_id = null, CancellationToken ct = default)
+        => Call("get_assembly_context_xr", new JObject { ["document_id"] = document_id, ["expected_revision"] = expected_revision, ["occurrence_id"] = occurrence_id }, ct);
+    [McpServerTool(Name = "inventor_get_design_context_xr"), Description("Read revision-bound Design references for the active part: work-plane frames, sketch frames, planar face IDs, model edge IDs with polylines in millimetres and parameters. Bounded; reports truncation and unavailable strokes. No CAD changes. Experimental.")]
+    public Task<string> DesignContext(string document_id, string expected_revision, CancellationToken ct = default)
+        => Call("get_design_context_xr", new JObject { ["document_id"] = document_id, ["expected_revision"] = expected_revision }, ct);
+
+    [McpServerTool(Name = "inventor_inspect_xr"), Description("Read mass (kg), material, volume (mm3), area (mm2), constraint count and remaining DOF of the active document or one occurrence/proxy. Requires document_id and expected_revision. Unavailable values are null. Does not activate documents or change CAD. Experimental.")]
+    public Task<string> Inspect(string document_id, string expected_revision, string? occurrence_id = null, CancellationToken ct = default)
+        => Call("inspect_xr", new JObject { ["document_id"] = document_id, ["expected_revision"] = expected_revision, ["occurrence_id"] = occurrence_id }, ct);
+
+    [McpServerTool(Name = "inventor_activate_open_document_xr"), Description("Activate exactly one already-open part or assembly by document_id for XR inspection. View/context only: no open-file, save, close, rebuild or CAD edit. Refuses an active transaction and duplicate ids. Experimental.")]
+    public Task<string> ActivateOpen(string document_id, CancellationToken ct = default)
+        => Call("activate_open_document_xr", new JObject { ["document_id"] = document_id }, ct);
+
     /// <summary>A composed scene fetches at most this many distinct definitions.</summary>
     public const int MaxSceneDefinitions = 200;
 

@@ -32,7 +32,19 @@ public sealed class DrawRectangleHandler : HandlerBase, IInventorCommand
             var before = sketch.SketchEntities.Count;
             var c1 = SketchSupport.Pt(app, p.Value<double>("x1"), p.Value<double>("y1"));
             var c2 = SketchSupport.Pt(app, p.Value<double>("x2"), p.Value<double>("y2"));
-            sketch.SketchLines.AddAsTwoPointRectangle(c1, c2);
+            var lines = sketch.SketchLines.AddAsTwoPointRectangle(c1, c2);
+            var dimensions = new JArray();
+            if ((bool?)p["add_dimensions"] == true)
+            {
+                bool horizontal = false, vertical = false;
+                foreach (SketchLine line in lines)
+                {
+                    bool isHorizontal = Math.Abs(line.StartSketchPoint.Geometry.Y-line.EndSketchPoint.Geometry.Y) < 0.000001;
+                    if (isHorizontal ? horizontal : vertical) continue;
+                    dimensions.Add(SketchDimensions.Length(app,sketch,line,p));
+                    if (isHorizontal) horizontal = true; else vertical = true;
+                }
+            }
             var after = sketch.SketchEntities.Count;
 
             var ids = new JArray();
@@ -41,6 +53,7 @@ public sealed class DrawRectangleHandler : HandlerBase, IInventorCommand
             {
                 ["sketch_name"] = sketch.Name,
                 ["entity_ids"] = ids,
+                ["dimensions"] = dimensions,
             });
         }
         catch (ArgumentException ex) { return Fail(ctx, InventorErrorCodes.INVALID_ARGUMENT, ex.Message); }
