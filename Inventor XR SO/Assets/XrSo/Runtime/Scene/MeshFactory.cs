@@ -25,9 +25,9 @@ namespace InventorXrSo.Unity.Scene
         }
 
         /// <summary>The CadBody material reads vertex colour, so every mesh carries one: the file's COLOR_0 (linear) or the default grey.</summary>
-        internal static readonly Color DefaultColor = new Color(0.72f, 0.74f, 0.77f, 1f);
+        public static readonly Color DefaultColor = new Color(0.72f, 0.74f, 0.77f, 1f);
 
-        internal static Color[] VertexColors(float[] rgba, int vertexCount)
+        public static Color[] VertexColors(float[] rgba, int vertexCount)
         {
             bool linear = QualitySettings.activeColorSpace == ColorSpace.Linear;
             var colors = new Color[vertexCount];
