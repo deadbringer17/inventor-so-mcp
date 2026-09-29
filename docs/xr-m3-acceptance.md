@@ -62,3 +62,7 @@ M3 completion gate passed: implementation, build/deployment, native verification
 guided controller acceptance and defect retest are recorded above. M2's separate
 acceptance is not implicitly closed. Voice, assembly editing, sheet metal and
 near-hand interaction remain later work under the original milestone plan.
+
+## Runner automatico sul Quest
+
+Dal 29 settembre 2026 la milestone ha un runner in-app e una fixture dedicata secondo lo standard M4: vedi [test automatici sul Quest](xr-quest-acceptance.md). Runner e fixture non sono ancora stati compilati né eseguiti; nessun gate di questa milestone cambia stato finché non viene registrato qui un run reale (log `quest-acceptance-*` in `artifacts/`).

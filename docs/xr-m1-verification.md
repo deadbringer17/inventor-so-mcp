@@ -112,3 +112,7 @@ verifica del modulo nella scena generata. Il tentativo di provare il raycast
 con un render manuale della camera in EditMode ha causato un crash dell'Editor;
 quel test è stato sostituito dal test degli eventi, senza modifiche al renderer
 di produzione. L'utente ha confermato sul visore che la tastiera aggiornata funziona.
+
+## Runner automatico sul Quest
+
+Dal 29 settembre 2026 la milestone ha un runner in-app e una fixture dedicata secondo lo standard M4: vedi [test automatici sul Quest](xr-quest-acceptance.md). Runner e fixture non sono ancora stati compilati né eseguiti; nessun gate di questa milestone cambia stato finché non viene registrato qui un run reale (log `quest-acceptance-*` in `artifacts/`).

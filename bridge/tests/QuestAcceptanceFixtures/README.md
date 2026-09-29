@@ -34,3 +34,13 @@ Naming exception: every document display name starts with `XR_<M>_Quest_Acceptan
 
 Not run in CI: this needs a live Inventor. Results are not acceptance evidence until recorded in the milestone
 verification file.
+
+## To confirm on a live Inventor
+
+Written without Inventor; these calls in `Fixtures.cs` are unverified:
+
+- `PrepareM5`: `FaceFeatures.CreateFaceFeatureDefinition(profile)` with the default rule thickness; thickness read late-bound (`((dynamic)def).Thickness.Value`).
+- `TopPlanarFace`: picks the +Z planar face with the highest Z; for the sheet (m5) check that `Taglio_M5` lies on the intended side.
+- `SketchOnTopFace`: `Sketches.Add(face)` and `ModelToSketchSpace` on a part and on a sheet-metal definition.
+- `PrepareAssembly` (m2): `Documents.Open(partPath, true)` on a part already referenced by the assembly.
+- `Inspect`: `Bends.Count` and `HasFlatPattern` on the sheet-metal definition.
