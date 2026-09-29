@@ -1571,3 +1571,19 @@ COMMIT
 ```
 
 Questa sequenza costituisce il nucleo dell'esperienza Inventor XR SO.
+
+---
+
+# 59. Sesta milestone Unity
+
+Specifica tecnica: [M6 — UX spaziale per la progettazione da seduto](../docs/superpowers/specs/2026-09-29-inventor-xr-so-m6-ux-spaziale-design.md).
+
+```text
+Tavolozza sul controller sinistro
++
+Schizzo sul tavolo da disegno
++
+Chip numerici, anello contestuale, barra di conferma unica
++
+Assieme in primo piano e isolamento
+```
