@@ -6,6 +6,7 @@
     "InventorXrSo.Unity",
     "InventorXrSo.Xr",
     "UnityEngine.UI",
+    "Unity.TextMeshPro",
     "UnityEngine.TestRunner",
     "UnityEditor.TestRunner",
     "InventorXrSo.Editor",
