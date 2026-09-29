@@ -159,8 +159,8 @@ namespace InventorXrSo.Tests
                     Assert.LessOrEqual(l.y, bounds.yMax + 1e-2f, b.name + " top");
                 }
             }
-            Assert.LessOrEqual(bounds.width, 120f + 1e-3f);
-            Assert.LessOrEqual(bounds.height, 90f + 1e-3f);
+            Assert.LessOrEqual(bounds.width, 160f + 1e-3f);
+            Assert.LessOrEqual(bounds.height, 110f + 1e-3f);
         }
 
         [Test]
@@ -174,6 +174,52 @@ namespace InventorXrSo.Tests
             AssertPaletteFits(shell.Palette);
             shell.Palette.ShowKeypad(new NumericEntry("h", QuantityUnit.Millimeters, 20, 0.01, 1000));
             Assert.AreEqual(15, shell.Palette.GetComponentsInChildren<Button>(false).Length);
+            AssertPaletteFits(shell.Palette);
+        }
+
+        private static void AssertLabelsNeverTruncated(PaletteView palette, int expectedButtons)
+        {
+            Canvas.ForceUpdateCanvases();
+            LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)palette.Canvas.transform);
+            var buttons = palette.GetComponentsInChildren<Button>(false);
+            Assert.AreEqual(expectedButtons, buttons.Length);
+            foreach (var b in buttons)
+            {
+                var t = b.GetComponentInChildren<TextMeshProUGUI>();
+                t.ForceMeshUpdate();
+                var br = (RectTransform)b.transform;
+                Assert.IsFalse(t.isTextTruncated, "truncated: " + t.text);
+                Assert.IsFalse(t.GetParsedText().Contains("…"), "ellipsis: " + t.text);
+                Assert.LessOrEqual(t.textInfo.lineCount, 2, "lines: " + t.text);
+                var c = new Vector3[4];
+                ((RectTransform)t.transform).GetWorldCorners(c);
+                foreach (var w in c)
+                {
+                    var l = br.InverseTransformPoint(w);
+                    Assert.GreaterOrEqual(l.x, br.rect.xMin - 1e-2f, t.text + " label left");
+                    Assert.LessOrEqual(l.x, br.rect.xMax + 1e-2f, t.text + " label right");
+                    Assert.GreaterOrEqual(l.y, br.rect.yMin - 1e-2f, t.text + " label bottom");
+                    Assert.LessOrEqual(l.y, br.rect.yMax + 1e-2f, t.text + " label top");
+                }
+                // Il testo reso deve stare nel bottone, non solo il rettangolo dell'etichetta.
+                Assert.LessOrEqual(t.textBounds.size.y, br.rect.height + 1e-2f, t.text + " text height");
+                Assert.LessOrEqual(t.textBounds.size.x, br.rect.width + 1e-2f, t.text + " text width");
+            }
+        }
+
+        [Test]
+        public void PaletteLabelsAreNeverTruncated()
+        {
+            var catalog = Catalog(out var spaces);
+            foreach (var l in new[] { "Progettazione", "Lamiera", "Assieme", "Connessione", "Crea schizzo", "Aggiorna riferimenti", "Estrusione" })
+                spaces.All.Add(A("x" + l, l, ActionCatalog.SpacesTab));
+            var shell = Shell(catalog);
+            catalog.NotifyChanged();
+            AssertLabelsNeverTruncated(shell.Palette, 8);
+            AssertPaletteFits(shell.Palette);
+            shell.Palette.ShowKeypad(new NumericEntry("h", QuantityUnit.Millimeters, 20, 0.01, 1000));
+            AssertLabelsNeverTruncated(shell.Palette, 15);
+            CollectionAssert.Contains(Labels(shell.Palette), "Annulla");
             AssertPaletteFits(shell.Palette);
         }
 

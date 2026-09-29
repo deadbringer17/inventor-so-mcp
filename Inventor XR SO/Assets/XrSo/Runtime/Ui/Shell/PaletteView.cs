@@ -7,11 +7,12 @@ using UnityEngine.UI;
 
 namespace InventorXrSo.Unity.Ui
 {
-    /// <summary>Tavolozza sul controller sinistro: scheda corrente in griglia 2×4, oppure tastierino.</summary>
+    /// <summary>Tavolozza sul controller sinistro: scheda corrente in griglia 2×4 (160×110 mm), oppure tastierino.</summary>
     public sealed class PaletteView : MonoBehaviour
     {
-        public const float TextMm = 8f;
-        private static readonly string[] Keys = { "7", "8", "9", "←", "4", "5", "6", "-", "1", "2", "3", ",", "0", "Annulla", "OK" };
+        public const float TextMm = 7f;
+        public const float LineSpacing = -35f;
+        private static readonly string[] Keys = { "7", "8", "9", "4", "5", "6", "1", "2", "3", "-", "0", ",", "←", "Annulla", "OK" };
 
         private ActionCatalog _catalog;
         private IActionProvider _lastProvider;
@@ -26,7 +27,7 @@ namespace InventorXrSo.Unity.Ui
 
         public static PaletteView Create(Transform parent)
         {
-            var canvas = UiFactory.WorldCanvas(parent, "Tavolozza", new Vector2(120, 90));
+            var canvas = UiFactory.WorldCanvas(parent, "Tavolozza", new Vector2(160, 110));
             // Sopra la faccia del controller, inclinata verso chi guarda.
             canvas.transform.localPosition = new Vector3(0, 0.05f, 0.02f);
             canvas.transform.localRotation = Quaternion.Euler(45, 0, 0);
@@ -97,16 +98,16 @@ namespace InventorXrSo.Unity.Ui
             grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
             if (KeypadVisible)
             {
-                grid.constraintCount = 4;
-                grid.cellSize = new Vector2(25, 15);
+                grid.constraintCount = 3;
+                grid.cellSize = new Vector2(49, 15);
                 _header.gameObject.SetActive(false);
                 _chip.gameObject.SetActive(true);
                 _chip.text = "Valore: " + _entry.Display;
-                foreach (var key in Keys) { var k = key; UiFactory.TextButton(_grid, k, k == "OK" ? UiFactory.Accent : UiFactory.Key, TextMm, () => Press(k)); }
+                foreach (var key in Keys) { var k = key; FitLabel(UiFactory.TextButton(_grid, k, k == "OK" ? UiFactory.Accent : UiFactory.Key, TextMm, () => Press(k))); }
                 return;
             }
             grid.constraintCount = 2;
-            grid.cellSize = new Vector2(54, 15);
+            grid.cellSize = new Vector2(75.5f, 20);
             _header.gameObject.SetActive(true);
             _chip.gameObject.SetActive(false);
             var tab = _catalog?.Tabs.FirstOrDefault(t => t.Id == CurrentTab);
@@ -116,8 +117,19 @@ namespace InventorXrSo.Unity.Ui
             {
                 var a = action;
                 var b = UiFactory.TextButton(_grid, a.Label, a.IsOn ? UiFactory.Accent : UiFactory.Key, TextMm, () => a.TryInvoke());
+                FitLabel(b);
                 b.interactable = a.Enabled;
             }
+        }
+
+        // Le etichette vanno a capo (max 2 righe) e non vengono mai troncate.
+        private static void FitLabel(Button b)
+        {
+            var t = b.GetComponentInChildren<TextMeshProUGUI>();
+            t.textWrappingMode = TextWrappingModes.Normal;
+            t.overflowMode = TextOverflowModes.Overflow;
+            t.margin = new Vector4(2, 0, 2, 0);
+            t.lineSpacing = LineSpacing;
         }
 
         private void Press(string key)
