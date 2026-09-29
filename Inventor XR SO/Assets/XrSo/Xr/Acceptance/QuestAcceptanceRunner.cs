@@ -83,6 +83,7 @@ namespace InventorXrSo.Xr
         }
 
         protected void Pass(string gate, string message) => Record("PASS [" + gate + "] " + message);
+        protected void NotCovered(string gate, string reason) => Record("NOT COVERED [" + gate + "] " + reason);
 
         protected static void Check(bool condition, string message)
         {

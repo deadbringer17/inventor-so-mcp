@@ -58,7 +58,7 @@ namespace InventorXrSo.Xr
         public event Action DesignRequested;
         public event Action AssemblyRequested;
         public event Action LamieraRequested;
-        public void SetAssemblyActive(bool active) { SetDesignActive(active); if (active) _modeText.text = "ASSEMBLY"; }
+        public void SetAssemblyActive(bool active) { SetDesignActive(active); if (active) _modeText.text = "ASSIEME"; }
         public void SetLamieraActive(bool active) { SetDesignActive(active); if (active) _modeText.text = "LAMIERA"; }
         /// <summary>Sheet-metal part: the Lamiera tab is highlighted as the primary mode.</summary>
         public void SetLamieraPrimary(bool primary)
@@ -74,7 +74,7 @@ namespace InventorXrSo.Xr
         {
             DesignActive = active;
             if (active) { _measure.Cancel(); _section.SetActive(false); _panel.gameObject.SetActive(false); _compact.gameObject.SetActive(false); }
-            _modeText.text = active ? "DESIGN" : "INSPECT";
+            _modeText.text = active ? "PROGETTAZIONE" : "ISPEZIONE";
         }
 
         public void Initialize(CadSceneView view, SelectionVisuals visuals, ControllerRay ray, Transform head,
@@ -91,15 +91,15 @@ namespace InventorXrSo.Xr
             _wrist.transform.localPosition = new Vector3(0, 0.09f, 0.03f);
             XrUi.MakeInteractive(_wrist, head.GetComponent<Camera>());
             var bg = UiFactory.Panel(_wrist.transform, "Background", UiFactory.Background); UiFactory.Stretch(bg);
-            _modeText = UiFactory.Label(bg, "INSPECT", 24, FontStyle.Bold);
+            _modeText = UiFactory.Label(bg, "ISPEZIONE", 24, FontStyle.Bold);
             Position(_modeText.rectTransform, new Vector2(0, 48), new Vector2(270, 40));
             var tools = UiFactory.Button(bg, "Ispeziona", UiFactory.Accent, 21, () => Open("tools"));
             Position((RectTransform)tools.transform, new Vector2(-256, -15), new Vector2(120, 65));
-            var browser = UiFactory.Button(bg, "Browser", UiFactory.Key, 21, () => Open("browser"));
+            var browser = UiFactory.Button(bg, "Esplora", UiFactory.Key, 21, () => Open("browser"));
             Position((RectTransform)browser.transform, new Vector2(-128, -15), new Vector2(120, 65));
-            var design = UiFactory.Button(bg, "Design", UiFactory.Key, 21, () => DesignRequested?.Invoke());
+            var design = UiFactory.Button(bg, "Progettazione", UiFactory.Key, 21, () => DesignRequested?.Invoke());
             Position((RectTransform)design.transform, new Vector2(0, -15), new Vector2(120, 65));
-            var assembly = UiFactory.Button(bg, "Assembly", UiFactory.Key, 20, () => AssemblyRequested?.Invoke());
+            var assembly = UiFactory.Button(bg, "Assieme", UiFactory.Key, 20, () => AssemblyRequested?.Invoke());
             Position((RectTransform)assembly.transform, new Vector2(128, -15), new Vector2(120, 65));
             _lamieraTab = UiFactory.Button(bg, "Lamiera", UiFactory.Key, 21, () => LamieraRequested?.Invoke());
             Position((RectTransform)_lamieraTab.transform, new Vector2(256, -15), new Vector2(120, 65));
@@ -158,7 +158,7 @@ namespace InventorXrSo.Xr
             bool changedDocument = _scene?.Graph.DocumentId != scene?.Graph.DocumentId;
             CancelRequests(); _grab = null;
             _measure.ClearAll(); _section.SetActive(false); _selected = null; _info = null;
-            _modeText.text = "INSPECT";
+            _modeText.text = "ISPEZIONE";
             if (_screen == "numeric") _screen = "tools";
             _scene = scene; _context.SetGraph(scene?.Graph); _page = 0;
             _documentState = scene?.Graph.State;
@@ -179,7 +179,7 @@ namespace InventorXrSo.Xr
             CancelRequests();
             _documentState = state;
             _info = null; _selected = null; _selection?.ResetLocal();
-            _measure.ClearAll(); _section.SetActive(false); _modeText.text = "INSPECT";
+            _measure.ClearAll(); _section.SetActive(false); _modeText.text = "ISPEZIONE";
             _notice = "Documento aggiornato. Seleziona nuovamente o aggiorna le proprietà.";
             UpdateCompact(); Render();
         }
@@ -189,7 +189,7 @@ namespace InventorXrSo.Xr
             _wrist.gameObject.SetActive(visible);
             _breadcrumb.gameObject.SetActive(visible && _scene != null);
             _compact.gameObject.SetActive(visible && _selected != null);
-            if (!visible) { _panel.gameObject.SetActive(false); _grab = null; _measure.Cancel(); _modeText.text = "INSPECT"; }
+            if (!visible) { _panel.gameObject.SetActive(false); _grab = null; _measure.Cancel(); _modeText.text = "ISPEZIONE"; }
             else if (_notice.StartsWith("Modello oltre")) Open("scale");
         }
         public void Open(string screen)
@@ -258,7 +258,7 @@ namespace InventorXrSo.Xr
             if (!Measuring) return;
             _measure.Pick(point);
             _notice = _measure.Measuring ? "Seleziona il secondo punto." : "Distanza tra punti sulla mesh (approssimata).";
-            _modeText.text = _measure.Measuring ? "MISURA • punto 2" : "INSPECT";
+            _modeText.text = _measure.Measuring ? "MISURA • punto 2" : "ISPEZIONE";
             Render();
         }
         private void Enter(SceneNode node)
@@ -378,16 +378,16 @@ namespace InventorXrSo.Xr
             else if (_screen == "tools")
             {
                 body = "Solo ispezione • presa normale = spostamento visuale\n" + _notice;
-                actions.Add(("Browser", () => Open("browser")));
+                actions.Add(("Esplora", () => Open("browser")));
                 actions.Add(("Proprietà", () => { Open("details"); LoadInfo(); }));
                 actions.Add(("Misura", BeginMeasure)); actions.Add(("Sezione", () => Open("section")));
                 actions.Add(("Scala", () => Open("scale")));
-                actions.Add((_environment.Mode == EnvironmentMode.MixedReality ? "Studio VR" : "Mixed Reality", () =>
+                actions.Add((_environment.Mode == EnvironmentMode.MixedReality ? "Studio virtuale" : "Realtà mista", () =>
                 { _environment.Set(_environment.Mode == EnvironmentMode.MixedReality ? EnvironmentMode.StudioVr : EnvironmentMode.MixedReality); Render(); }));
             }
             else if (_screen == "browser")
             {
-                title = "Browser";
+                title = "Esplora";
                 body = (_context.Current?.Name ?? "Nessun documento") + "\nSeleziona il nome; Apri entra nel contesto.\n" + _notice;
                 var children = _context.Current?.Children ?? new SceneNode[0];
                 _page = Mathf.Clamp(_page, 0, Mathf.Max(0, (children.Count - 1) / 3));
@@ -409,7 +409,7 @@ namespace InventorXrSo.Xr
                 foreach (var doc in _documents.Skip(_page * 6).Take(6)) { var d = doc; actions.Add((doc.Name, () => Activate(d))); }
                 actions.Add(("‹ Pagina", () => { _page = Mathf.Max(0, _page - 1); Render(); }));
                 actions.Add(("Pagina ›", () => { _page++; Render(); }));
-                actions.Add(("Aggiorna", LoadDocuments)); actions.Add(("Browser", () => Open("browser")));
+                actions.Add(("Aggiorna", LoadDocuments)); actions.Add(("Esplora", () => Open("browser")));
             }
             else if (_screen == "details")
             {
@@ -424,18 +424,18 @@ namespace InventorXrSo.Xr
                     + (_measure.DistanceMm.HasValue ? "≈ " + Format(_measure.DistanceMm, "mm") : _measure.HasFirstPoint ? "Seleziona il secondo punto." : "Seleziona il primo punto.")
                     + "\nMisure pinnate: " + _measure.PinnedCount + "/20\n" + _notice;
                 actions.Add(("Nuova misura", BeginMeasure));
-                actions.Add(("Pin misura", () => { _notice = _measure.Pin() ? "Misura mantenuta sul modello." : "Completa una misura (massimo 20 pin)."; Render(); }));
-                actions.Add(("Annulla misura", () => { _measure.Cancel(); _modeText.text = "INSPECT"; Render(); }));
-                actions.Add(("Rimuovi tutte", () => { _measure.ClearAll(); _modeText.text = "INSPECT"; Render(); }));
+                actions.Add(("Fissa misura", () => { _notice = _measure.Pin() ? "Misura mantenuta sul modello." : "Completa una misura (massimo 20 pin)."; Render(); }));
+                actions.Add(("Annulla misura", () => { _measure.Cancel(); _modeText.text = "ISPEZIONE"; Render(); }));
+                actions.Add(("Rimuovi tutte", () => { _measure.ClearAll(); _modeText.text = "ISPEZIONE"; Render(); }));
             }
             else if (_screen == "scale")
             {
                 title = "Scala visuale";
-                body = "Scala: " + _view.transform.localScale.x.ToString("0.###", _culture) + "×\nFit to room: spazio disponibile "
+                body = "Scala: " + _view.transform.localScale.x.ToString("0.###", _culture) + "×\nAdatta alla stanza: spazio disponibile "
                     + _roomExtent.ToString("0.##", _culture) + " m (impostato)\n" + _notice;
                 actions.Add(("Mantieni 1:1", () => SetScale(ModelScaleMode.OneToOne)));
-                actions.Add(("Fit to room", () => SetScale(ModelScaleMode.FitToRoom)));
-                actions.Add(("Table scale · 60 cm", () => SetScale(ModelScaleMode.Table)));
+                actions.Add(("Adatta alla stanza", () => SetScale(ModelScaleMode.FitToRoom)));
+                actions.Add(("Scala da tavolo · 60 cm", () => SetScale(ModelScaleMode.Table)));
                 actions.Add(("Spazio disponibile", () => Number("Spazio disponibile (m)", _roomExtent, 0.2f, 20f, v => _roomExtent = v, "scale")));
                 actions.Add(("Porta davanti a me", Recenter));
             }
@@ -445,12 +445,12 @@ namespace InventorXrSo.Xr
                 body = "Punta il piano e tieni Grip per spostarlo/ruotarlo.\nOffset: " + Format(_section.OffsetMm, "mm")
                     + "   Angolo Y: " + Format(_section.AngleDegrees, "°") + "\nSezione senza chiusura delle superfici tagliate.\n" + _notice;
                 actions.Add((_section.Active ? "Disattiva sezione" : "Attiva sezione", () => { _section.SetActive(!_section.Active); Render(); }));
-                actions.Add(("Offset numerico", () => Number("Offset (mm)", _section.OffsetMm, -1000000, 1000000, _section.SetOffset, "section")));
+                actions.Add(("Scostamento numerico", () => Number("Scostamento (mm)", _section.OffsetMm, -1000000, 1000000, _section.SetOffset, "section")));
                 actions.Add(("Angolo numerico", () => Number("Angolo Y (gradi)", _section.AngleDegrees, -360, 360, _section.SetAngle, "section")));
-                actions.Add(("Reset piano", () => { _section.ResetPlane(ScenePlacement.LocalBounds(_view.transform)); _section.SetActive(true); Render(); }));
+                actions.Add(("Ripristina piano", () => { _section.ResetPlane(ScenePlacement.LocalBounds(_view.transform)); _section.SetActive(true); Render(); }));
             }
             if (!string.IsNullOrEmpty(_errorDetails) && _screen != "error") actions.Add(("Dettagli errore", () => Open("error")));
-            actions.Add((_pinned ? "Sblocca pannello" : "Pin pannello", () => { _pinned = !_pinned; Render(); }));
+            actions.Add((_pinned ? "Sblocca pannello" : "Blocca pannello", () => { _pinned = !_pinned; Render(); }));
             actions.Add(("Chiudi", () => _panel.gameObject.SetActive(false)));
             _panel.ShowMessage(title, body);
             _panel.SetActions(actions.ToArray());
@@ -468,6 +468,19 @@ namespace InventorXrSo.Xr
         /// button or backend path yet, so it stays disabled.
         /// </summary>
         public bool VoiceActive => _visible && !DesignActive && _panel != null && _measure != null;
+        public HomePanel VoicePanel => _panel;
+        public bool VoiceWristEnabled(string label) => _wrist != null && _wrist.gameObject.activeInHierarchy
+            && _wrist.GetComponentsInChildren<Button>(false).Any(button => button.interactable
+                && button.GetComponentInChildren<Text>()?.text == label);
+        public bool InvokeVoiceWrist(string label)
+        {
+            if (_wrist == null || !_wrist.gameObject.activeInHierarchy) return false;
+            var button = _wrist.GetComponentsInChildren<Button>(false).FirstOrDefault(item => item.interactable
+                && item.GetComponentInChildren<Text>()?.text == label);
+            if (button == null) return false;
+            button.onClick.Invoke();
+            return true;
+        }
 
         public bool IsEnabled(string commandId) => commandId == CommandIds.Measure && VoiceActive && _screen != "numeric";
 
@@ -491,7 +504,8 @@ namespace InventorXrSo.Xr
                     && !float.IsNaN(result) && !float.IsInfinity(result) && result >= min && result <= max) { apply(result); _notice = ""; }
                 else _notice = "Valore non valido.";
                 _screen = returnScreen; Render();
-            }, () => { _screen = returnScreen; Render(); });
+            }, () => { _screen = returnScreen; Render(); },
+                title.Contains("(m)") ? "m" : title.Contains("gradi") ? "deg" : "mm", min, max);
         }
         private void SetScale(ModelScaleMode mode)
         {

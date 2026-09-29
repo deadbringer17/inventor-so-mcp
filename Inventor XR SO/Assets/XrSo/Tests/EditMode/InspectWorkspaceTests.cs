@@ -62,7 +62,7 @@ namespace InventorXrSo.Tests
         [Test]
         public void PinnedPanelKeepsItsPoseAcrossClosingAndReopening()
         {
-            _workspace.Open("browser"); Button("Pin pannello").onClick.Invoke();
+            _workspace.Open("browser"); Button("Blocca pannello").onClick.Invoke();
             Panel.transform.position = new Vector3(4, 2, 3);
             Button("Chiudi").onClick.Invoke(); _workspace.Open("browser");
             Assert.AreEqual(new Vector3(4, 2, 3), Panel.transform.position);
@@ -126,7 +126,7 @@ namespace InventorXrSo.Tests
             _workspace.SetLamieraActive(true);
             Assert.True(_workspace.DesignActive); Assert.True(_root.GetComponentsInChildren<Text>(true).Any(t => t.text == "LAMIERA"));
             _workspace.SetLamieraActive(false);
-            Assert.False(_workspace.DesignActive); Assert.True(_root.GetComponentsInChildren<Text>(true).Any(t => t.text == "INSPECT"));
+            Assert.False(_workspace.DesignActive); Assert.True(_root.GetComponentsInChildren<Text>(true).Any(t => t.text == "ISPEZIONE"));
         }
     }
 }

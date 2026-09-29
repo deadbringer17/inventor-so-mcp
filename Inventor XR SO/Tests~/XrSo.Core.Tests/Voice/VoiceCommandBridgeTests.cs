@@ -8,7 +8,7 @@ namespace XrSo.Core.Tests.Voice
 {
     public class VoiceCommandBridgeTests
     {
-        private sealed class Target : IVoiceCommandTarget
+        private sealed class Target : IVoiceCommandTarget, IContextVoiceActions
         {
             public HashSet<string> Enabled = new HashSet<string>();
             public List<string> Invoked = new List<string>();
@@ -18,6 +18,9 @@ namespace XrSo.Core.Tests.Voice
             public int ApplyShown;
             public DictationField Field;
             public Dictionary<string, double> Fields = new Dictionary<string, double>();
+            public ContextVoiceAction ContextAction;
+            public bool TryResolveAction(string transcript, out ContextVoiceAction action)
+            { action = transcript == "browser" || transcript == "annulla modifica xr" ? ContextAction : null; return action != null; }
             public bool IsEnabled(string id) => Enabled.Contains(id);
             public string DisabledReason(string id) => "Seleziona prima uno spigolo.";
             public bool Invoke(string id) { Invoked.Add(id); return InvokeResult; }
@@ -41,11 +44,33 @@ namespace XrSo.Core.Tests.Voice
         private void Speak(VoiceCommandBridge b, string text)
         {
             _rec.Text = text;
+            b.Pump(); // il frame principale pubblica la snapshot di abilitazione prima dell'STT
             b.Controller.Press(); _now += TimeSpan.FromMilliseconds(200); b.Controller.Tick();
             b.Controller.AppendAudio(new short[16000], 16000);
             b.Controller.Release();
             for (int i = 0; i < 200 && b.Controller.State == PushToTalkState.Processing; i++) Thread.Sleep(10);
             Assert.Equal(PushToTalkState.Result, b.Controller.State);
+        }
+
+        [Fact]
+        public void Visible_workspace_action_runs_on_Pump_and_history_requires_confirmation()
+        {
+            using var b = Make();
+            _target.ContextAction = new ContextVoiceAction("ui:Browser", "Browser", true, false);
+            _target.Enabled.Add("ui:Browser");
+            Speak(b, "browser");
+            Assert.Empty(_target.Invoked);
+            b.Pump();
+            Assert.Equal(new[] { "ui:Browser" }, _target.Invoked);
+
+            _target.ContextAction = new ContextVoiceAction("ui:Annulla modifica XR", "Annulla modifica XR", true, true);
+            _target.Enabled.Add("ui:Annulla modifica XR");
+            Speak(b, "annulla modifica xr");
+            b.Pump();
+            Assert.Equal(VoiceOutcomeKind.AwaitingConfirmation, b.Outcome);
+            Assert.Single(_target.Invoked);
+            Assert.True(b.ConfirmPendingAny());
+            Assert.Equal("ui:Annulla modifica XR", _target.Invoked[1]);
         }
 
         [Fact]
@@ -244,6 +269,7 @@ namespace XrSo.Core.Tests.Voice
             using var b = Make();
             Assert.False(VoiceViewModel.Build(b).Visible);
             _target.Enabled.Add(CommandIds.Undo);
+            b.Pump();
             b.Controller.Press(); _now += TimeSpan.FromMilliseconds(200); b.Controller.Tick();
             var listening = VoiceViewModel.Build(b);
             Assert.True(listening.Visible); Assert.True(listening.Listening); Assert.Equal("Ascolto…", listening.Title);

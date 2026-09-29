@@ -53,22 +53,21 @@ Quest. Le evidenze sotto sono solo quelle eseguite davvero in quell'ambiente.
 - `AppController` crea il rig vocale all'avvio della sessione, con lo stesso
   trasporto pinnato del backend, e lo distrugge alla chiusura. Chiude la
   cattura a ogni cambio di workspace e alla perdita di connessione.
-- `WorkspaceVoiceTarget` collega la voce solo a Lamiera. In Design, Assembly e
-  Ispeziona ogni comando vocale risponde "Comando non disponibile in questa
-  modalità".
+- `WorkspaceVoiceTarget` instrada la voce ai pulsanti visibili dei quattro
+  workspace CAD e alle schede del menu sul polso. L'azione usa lo stesso
+  `onClick` del pulsante, con abilitazione verificata prima dell'esecuzione.
 
 ## Lacune note rispetto alla spec
 
-- Il mirror vocale copre ora Lamiera, Design (`Crea schizzo`, `Raccordo`, `Smusso`,
-  Annulla/Ripeti, `Annulla comando`, `Applica` solo come avviso), Assembly
-  (Annulla/Ripeti, `Annulla comando`, `Applica` solo come avviso) e Ispeziona
-  (`Misura`). Resta aperto `Isola`: in Ispeziona non esiste alcun pulsante né
-  percorso backend, quindi il comando è disabilitato. Il codice è verificato
-  solo per lettura (Unity non disponibile): compilazione e collaudo su Quest
-  restano aperti.
-- La dettatura numerica in Design vale solo per il campo "Dimensione" della
-  pagina Estrusione/Raccordo/Smusso/Foro cieco; Assembly e Ispeziona usano
-  solo il tastierino modale.
+- Il mirror vocale copre i pulsanti visibili di Lamiera, Progettazione, Assieme
+  e Ispeziona, con sinonimi italiani controllati (per esempio «estrudi» e
+  «estrusione»). Le etichette delle azioni CAD sono in italiano; gli ID wire
+  del backend restano invariati. `Applica` richiede il pulsante fisico;
+  Annulla/Ripeti modifica e le azioni di revisione richiedono conferma fisica.
+  `Isola` resta indisponibile perché non ha ancora un pulsante e un percorso
+  backend. La selezione di geometria nello spazio richiede ancora il controller.
+- La dettatura numerica usa il campo armato in Lamiera e Progettazione e il
+  tastierino modale in Assieme e Ispeziona, mantenendo unità e limiti del campo.
 - La direzione del manipolatore flangia viene calibrata sulla preview
   calcolata da Inventor (`FlangeDirection`). Se la preview è ambigua (flange
   sotto circa 30°, forme a L con bracci simili all'altezza) resta la stima con
@@ -88,7 +87,7 @@ Quest. Le evidenze sotto sono solo quelle eseguite davvero in quell'ambiente.
 | `Inventor XR SO/Tests~/XrSo.Core.Tests` | 373 passati, 0 falliti | include il corpus di `stt-bench` e i test HTTPS reali con FakeAddIn |
 | `Tools~/stt-bench` | 70 passati | smoke end-to-end solo con motore finto |
 
-## Non eseguito
+## Non eseguito alla stesura iniziale
 
 - Compilazione dell'add-in sperimentale con l'interop reale di Inventor 2027.
 - `M5LiveProbe` su Inventor.
@@ -97,10 +96,11 @@ Quest. Le evidenze sotto sono solo quelle eseguite davvero in quell'ambiente.
 - Build dell'APK e runner sul Quest.
 - Motori STT reali, microfono e permesso sul Quest, prova del pulsante B.
 
-## Matrice dei gate
+## Matrice dei gate alla stesura iniziale
 
-Nessun gate è `PASS`: la colonna *Software* dice solo quale parte automatizzabile
-è coperta da test eseguiti.
+Questa matrice precede il run Windows/Quest documentato in fondo al file.
+La colonna *Software* indica la parte automatizzabile; i gate fisici restano
+aperti dove non verificati.
 
 | ID | Software | Stato |
 |---|---|---|
@@ -130,4 +130,33 @@ Nessun gate è `PASS`: la colonna *Software* dice solo quale parte automatizzabi
 
 ## Runner automatico sul Quest
 
-Dal 29 settembre 2026 la milestone ha un runner in-app e una fixture dedicata secondo lo standard M4: vedi [test automatici sul Quest](xr-quest-acceptance.md). Runner e fixture non sono ancora stati compilati né eseguiti; nessun gate di questa milestone cambia stato finché non viene registrato qui un run reale (log `quest-acceptance-*` in `artifacts/`).
+Dal 29 settembre 2026 la milestone ha un runner in-app e una fixture dedicata secondo lo standard M4: vedi [test automatici sul Quest](xr-quest-acceptance.md). Il 29 settembre, dopo aggiornamento di add-in sperimentale e host HTTPS, `artifacts/m5-verification/quest-acceptance-run-20260929-104230.json` è **PASS COMPLETE** su Quest 3 con Inventor 2027 reale. Copre modalità Lamiera, regola/spessore nativi, preview/Cancel di flangia e Cut, testo vocale iniettato, Apply e Undo/Redo della flangia, stale dopo Undo, sviluppo piano 100 × 79,131 mm e Detach senza chiamata backend. Fixture chiusa senza salvare, APK ordinario reinstallato. Non prova gesto fisico, microfono/audio, rete o percorso completo M5-12; i `NOT COVERED` sono nel log.
+
+Il probe nativo `artifacts/m5-live-probe/m5-live-probe-report.json` ha 19 PASS, 0 FAIL e 1 NOT_RUN (rifiuto multi-body: la fixture non ha prodotto due corpi). Il primo run Quest M5 con l'host precedente (`quest-acceptance-run-20260929-103553.json`) era fallito perché mancava `inventor_get_flat_pattern_mesh`; il run aggiornato supera quel punto.
+
+Il test EditMode `MeshesAndMaterialsAreReleasedWithTheDisplay` è stato corretto:
+in EditMode Unity non richiama `OnDestroy` del componente runtime dopo
+`DestroyImmediate`, quindi il test ora esercita direttamente quella routine e
+controlla root, mesh e materiale. Il test isolato e l'intera suite Unity EditMode
+passano: 177/177 (`%TEMP%/xrso-editmode-m5-final.xml`). Nessuna modifica al
+comportamento runtime del display.
+
+## Estensione push-to-talk ai workspace CAD — 29 settembre 2026
+
+Il pulsante B destro instrada ora il parlato a tutti i pulsanti disponibili
+nel workspace CAD visibile e alle schede del menu sul polso. Il riconoscimento
+usa l'etichetta italiana corrente oppure un sinonimo controllato; quando due
+azioni hanno lo stesso nome, il comando viene rifiutato. La frase «estrudi»
+apre «Estrusione» nella pagina strumenti oppure «Estrudi schizzo» nella pagina
+schizzo. «Mostra sviluppo» resta distinguibile da «Crea sviluppo».
+
+La prova fisica precedente sul Quest ha confermato microfono, Vosk italiano,
+push-to-talk e apertura di «Flangia». L'estensione agli altri comandi è
+verificata da 375 test core e 182 test Unity EditMode; **la pronuncia e
+l'usabilità fisica di ogni comando sul Quest restano da collaudare**. I comandi
+che richiedono una scelta spaziale attendono la selezione con il controller.
+
+L'APK ordinario finale è stato compilato con esito `Build Successful`, installato
+su Quest 3 (`2G0YC1ZFB407P1`) e avviato; il processo dell'app è presente.
+SHA-256 dell'APK installato: `4B0249CF7E508322780E9696BCDA70A3C1F6DB3DEF07532F02A01211843D02C5`.
+La suite EditMode finale è `182/182` (`%TEMP%/xrso-voice-italian-final2.xml`).

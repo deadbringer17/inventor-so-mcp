@@ -336,13 +336,13 @@ namespace InventorXrSo.Xr
         {
             if (!Active || _screen == "numeric" || _panel == null) return;
             var actions = new List<(string, Action)>();
-            string title = "DESIGN", body = "Seleziona una faccia con il raggio. Grip sposta solo la vista.\n";
+            string title = "PROGETTAZIONE", body = "Seleziona una faccia con il raggio. Grip sposta solo la vista.\n";
             bool editable = _session?.CanEdit == true && _context != null && !_busy;
-            if (_kind != "part") body = "Design richiede una parte attiva in Inventor.\nApri il Browser e attiva una parte già aperta sul PC.";
+            if (_kind != "part") body = "Progettazione richiede una parte attiva in Inventor.\nApri Esplora e attiva una parte già aperta sul PC.";
             else if (!_online) body = "Offline: anteprima e modifiche CAD disabilitate.";
             else if (_busy) body = "Lettura del contesto CAD…";
             else if (_context == null && _session?.Status != DesignStatus.RefreshRequired)
-            { body = "Riferimenti Design non disponibili."; actions.Add(("Riprova", LoadContext)); }
+            { body = "Riferimenti di progettazione non disponibili."; actions.Add(("Riprova", LoadContext)); }
             else if (_session?.Status == DesignStatus.RefreshRequired)
             {
                 body = _pendingMutations>0 ? "Attendo la conclusione della richiesta CAD precedente. Nessun nuovo comando verrà inviato."
@@ -476,7 +476,7 @@ namespace InventorXrSo.Xr
                     }
                     if (_feature == "extrude")
                     {
-                        actions.Add(("Operazione: " + _operation, () => { var options = new[] { "join","cut","intersect","new_body" }; _operation = options[(Array.IndexOf(options,_operation)+1)%4]; UpdateDraft(); Render(); }));
+                        actions.Add(("Operazione: " + OperationLabel(_operation), () => { var options = new[] { "join","cut","intersect","new_body" }; _operation = options[(Array.IndexOf(options,_operation)+1)%4]; UpdateDraft(); Render(); }));
                         actions.Add((_symmetric ? "Simmetrica" : _negative ? "Negativa" : "Positiva", () => { if (_symmetric) { _symmetric=false; _negative=false; } else if (_negative) _symmetric=true; else _negative=true; UpdateDraft(); Render(); }));
                     }
                 }
@@ -499,23 +499,28 @@ namespace InventorXrSo.Xr
                 if (_geometry.HasErrorContext) body += "\nIn arancione: geometria del comando da controllare.";
                 actions.Add(("Dettagli errore", () => { _panel.ShowMessage("Dettagli", _session.Error); _panel.SetActions(("Indietro", Render)); }));
             }
-            actions.Add((_pinned ? "Sblocca pannello" : "Pin pannello", () => { _pinned = !_pinned; Render(); }));
-            actions.Add(("Torna a Inspect", Close));
+            actions.Add((_pinned ? "Sblocca pannello" : "Blocca pannello", () => { _pinned = !_pinned; Render(); }));
+            actions.Add(("Torna a Ispeziona", Close));
             _panel.ShowMessage(title, body); _panel.SetActions(actions.ToArray());
             foreach (var button in _panel.GetComponentsInChildren<Button>())
             {
                 string label = button.GetComponentInChildren<Text>()?.text;
                 if (label == "Applica") button.interactable = _session?.CanApply == true;
                 else if (_session?.Status == DesignStatus.Committing || _session?.Status == DesignStatus.Previewing)
-                    button.interactable = label == "Torna a Inspect" || label == "Annulla comando";
+                    button.interactable = label == "Torna a Ispeziona" || label == "Annulla comando";
             }
         }
+        private static string OperationLabel(string operation) => operation switch
+        {
+            "join" => "Unisci", "cut" => "Taglia", "intersect" => "Interseca", "new_body" => "Nuovo corpo", _ => operation
+        };
         // ---------------------------------------------------------------- voice surface
 
         public const string FieldDimension = "design.dimension";
         private const double MinDimensionMm = 0.001, MaxDimensionMm = 10000;
 
         private bool InDraftScreen => _screen == "sketch" || _screen == "feature" || _screen == "parameter";
+        public HomePanel VoicePanel => _panel;
 
         /// <summary>Same gate as the tool buttons: part, online, context read, no request in flight, on the tools page.</summary>
         private bool ToolsEditable => Active && _panel != null && _kind == "part" && _online && !_busy && _context != null

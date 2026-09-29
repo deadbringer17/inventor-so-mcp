@@ -134,8 +134,9 @@ namespace XrSo.Core.Tests.Voice
                     {
                         var r = _router.Route(text, All);
                         Assert.NotEqual(VoiceRouteKind.Rejected, r.Kind);
-                        if (r.Kind == VoiceRouteKind.Recognized || r.Kind == VoiceRouteKind.ShowApplyConfirmation) Assert.Equal(id, r.CommandId);
-                        else Assert.Equal(CommandIds.Undo, r.CommandId);
+                        if (r.Kind == VoiceRouteKind.NeedsConfirmation && id == CommandIds.CancelDraft)
+                            Assert.Equal(CommandIds.Undo, r.CommandId);
+                        else Assert.Equal(id, r.CommandId);
                     }
                 }
         }
@@ -190,7 +191,7 @@ namespace XrSo.Core.Tests.Voice
             Assert.Equal(CommandIds.Undo, r.CommandId);
             Assert.False(r.CanInvoke);
             Assert.True(r.RequiresPhysicalConfirmation);
-            Assert.Contains("Undo", r.Reason);
+            Assert.Contains("Annullare l'ultima modifica", r.Reason);
         }
 
         [Fact]

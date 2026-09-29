@@ -140,10 +140,25 @@ namespace InventorXrSo.Tests
             _workspace.ChooseReference(_backend.Context(_backend.State, "ent_a").References[0]);
             _workspace.ChooseReference(_backend.Context(_backend.State, "ent_b").References[0]);
             Assert.AreEqual(0, _backend.Previews);
-            Assert.True(HasButton("mate")); Assert.True(HasButton("flush")); Assert.True(HasButton("angle"));
-            Assert.False(HasButton("insert")); Assert.False(HasButton("Applica"));
+            Assert.True(HasButton("Accoppia")); Assert.True(HasButton("Allinea")); Assert.True(HasButton("Angolo"));
+            Assert.False(HasButton("Inserisci")); Assert.False(HasButton("Applica"));
             _workspace.ChooseConstraint("flush");
             Assert.AreEqual(1, _backend.Previews); Assert.True(HasButton("Applica"));
+        }
+        [Test] public async Task SelectingReferencesAfterCadMoveDoesNotPreviewStaleMove()
+        {
+            await _workspace.SelectOccurrenceAsync("ent_a"); _workspace.BeginMove();
+            await _workspace.PreviewAsync(); Assert.True(HasButton("Applica"));
+            int previewsBefore = _backend.Previews;
+
+            _workspace.ChooseReference(_backend.Context(_backend.State, "ent_a").References[0]);
+            _workspace.ChooseReference(_backend.Context(_backend.State, "ent_b").References[0]);
+
+            Assert.AreEqual(previewsBefore, _backend.Previews);
+            Assert.False(HasButton("Applica"));
+            Assert.True(HasButton("Accoppia"));
+            Assert.True(HasButton("Allinea"));
+            Assert.True(HasButton("Angolo"));
         }
         [Test] public async Task DisconnectInvalidatesPreviewAndLateResults()
         {

@@ -56,7 +56,7 @@ namespace InventorXrSo.Xr
             var fixture = await WaitForFixture(ct);
             Record("Dedicated fixture loaded: " + fixture.Graph.Root.Name);
 
-            // ---- enter Design exactly like the wrist menu ("Design" button raises DesignRequested)
+            // ---- enter Design exactly like the wrist menu ("Progettazione" button raises DesignRequested)
             Call(App, "EnterSession", EnvironmentMode.StudioVr);
             _inspect = Read<InspectWorkspace>(App, "_inspect");
             _design = Read<DesignWorkspace>(App, "_design");
@@ -201,14 +201,19 @@ namespace InventorXrSo.Xr
             await VerifyCancelledAsync(state3, ct);
             Pass("M3-C10", "fillet preview cancelled; revision unchanged");
 
-            // ---- C11: valid, invalid (100 mm), valid again
+            // ---- C11: a 100 mm radius on one edge can be valid in Inventor.
+            // Use the block's straight-edge group so the oversized radius creates a real CAD error.
+            var blockEdges = DesignCtx.Edges.Where(e => e.Kind == "kLineSegmentCurve" || e.Kind == "kLineCurve")
+                .Select(e => e.Id).Distinct().ToArray();
+            Check(blockEdges.Length >= 8, "context exposes the block edge group for the invalid fillet case");
             Click("Raccordo");
-            Read<HashSet<string>>(_design, "_edges").Add(edge.Id);
+            Read<HashSet<string>>(_design, "_edges").UnionWith(blockEdges);
             Click("Dimensione numerica");
             TypeValues(1);
             await PreviewAndVerifyAsync(state3, ct);
             Click("Dimensione numerica");
             TypeValues(100);
+            Check(Math.Abs(ReadValue<double>(_design, "_dimension") - 100) < 1e-9, "fillet radius is 100 mm");
             Check(!DesignSess.CanApply && !ButtonInteractable("Applica"), "editing the radius disables Apply until a new preview");
             Click("Anteprima");
             await WaitUntil(() => DesignSess.Status != DesignStatus.Previewing, ct);
@@ -238,7 +243,7 @@ namespace InventorXrSo.Xr
             TypeValues(1);
             await PreviewAndVerifyAsync(state3, ct);
             var contextBeforeClose = DesignCtx;
-            Click("Torna a Inspect");
+            Click("Torna a Ispeziona");
             Check(!_design.Active && !_inspect.DesignActive, "Design closed and Inspect is active again");
             Check(!PreviewView.IsShowing && Read<IList>(PreviewView, "_originals").Count == 0
                 && DesignSess.Preview == null && DesignSess.Status == DesignStatus.Empty, "no ghost after leaving Design");
@@ -262,11 +267,12 @@ namespace InventorXrSo.Xr
                 "reopened Design reloaded its context");
             Pass("M3-C15", "Design reopened: context reloaded (" + DesignCtx.Edges.Count + " edges)");
 
-            Click("Torna a Inspect");
+            Click("Torna a Ispeziona");
             var finalState = await _backend.GetDocumentStateAsync(ct);
             Check(!_design.Active, "Design closed at the end of the run");
             Record("Fixture left with the join extrusion of Base_M3 COMMITTED (Undo then Redo): revision " + finalState.Revision
                 + "; Design workspace closed, no open command. Restore the fixture before rerunning.");
+            NotCovered("M3-Physical", "controller sketch, edge pick, manipulator drag, tracking and readability require physical Quest input");
         }
 
         private async Task OpenDesignFromWristAsync(CancellationToken ct, DesignContext previousContext = null)
@@ -359,8 +365,9 @@ namespace InventorXrSo.Xr
 
         private static DesignEdge PickBottomLineEdge(DesignContext context)
         {
-            var edge = context.Edges.FirstOrDefault(e => e.Kind == "line" && e.PointsMm.All(p => Math.Abs(p.Z) < 0.01))
-                ?? context.Edges.FirstOrDefault(e => e.Kind == "line");
+            bool IsLine(DesignEdge e) => e.Kind == "kLineSegmentCurve" || e.Kind == "kLineCurve";
+            var edge = context.Edges.FirstOrDefault(e => IsLine(e) && e.PointsMm.All(p => Math.Abs(p.Z) < 0.01))
+                ?? context.Edges.FirstOrDefault(IsLine);
             Check(edge != null, "context exposes a straight block edge for the fillet");
             return edge;
         }

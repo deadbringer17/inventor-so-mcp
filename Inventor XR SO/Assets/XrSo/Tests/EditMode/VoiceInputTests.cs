@@ -49,6 +49,7 @@ namespace InventorXrSo.Tests
         [SetUp]
         public void SetUp()
         {
+            _starts = _stops = 0;
             _go = new GameObject("voice-input");
             _source = new Source();
             _permission = new Permission();

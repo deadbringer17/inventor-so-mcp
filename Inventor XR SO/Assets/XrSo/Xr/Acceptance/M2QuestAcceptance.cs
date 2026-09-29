@@ -42,6 +42,7 @@ namespace InventorXrSo.Xr
             "InspectWorkspace._info",
             "InspectWorkspace._busy",
             "InspectWorkspace._screen",
+            "InspectWorkspace._page",
             "InspectWorkspace._scaleMode",
             "InspectWorkspace._roomExtent",
             "InspectWorkspace.OnPointPicked",
@@ -92,16 +93,16 @@ namespace InventorXrSo.Xr
             var assemblyDocumentId = fixture.Graph.DocumentId;
 
             // M2-Inspect: the wrist menu opens the Inspect tools.
-            Check(AllText(wrist).Contains("INSPECT"), "wrist menu shows the INSPECT mode");
+            Check(AllText(wrist).Contains("ISPEZIONE"), "wrist menu shows the INSPECT mode");
             Click(wrist, "Ispeziona");
             Check(panel.gameObject.activeSelf && Read<string>(inspect, "_screen") == "tools", "wrist 'Ispeziona' opened the tools page");
             var tools = AllText(panel);
-            Check(tools.Contains("Solo ispezione") && HasButton(panel, "Browser") && HasButton(panel, "Misura")
+            Check(tools.Contains("Solo ispezione") && HasButton(panel, "Esplora") && HasButton(panel, "Misura")
                 && HasButton(panel, "Sezione") && HasButton(panel, "Scala"), "tools page lists Browser, Misura, Sezione and Scala");
             Pass("M2-Inspect", "Inspect opened from the wrist menu; tools page shows Browser, Proprieta, Misura, Sezione, Scala and the environment switch");
 
             // M2-Browser: fixture hierarchy.
-            Click(wrist, "Browser");
+            Click(wrist, "Esplora");
             Check(Read<string>(inspect, "_screen") == "browser", "wrist 'Browser' opened the browser page");
             Check(context.Current != null && context.Current.Name.StartsWith(FixturePrefix, StringComparison.Ordinal) && context.Path.Count == 1,
                 "browser starts at the fixture assembly root");
@@ -174,7 +175,7 @@ namespace InventorXrSo.Xr
             var geometric = InspectionGeometry.DistanceMm(view.transform, pointA, pointB);
             Check(Math.Abs(distance - 150.0) <= 0.5, "distance between the occurrence centers is 150 mm +/- 0.5, measured " + F(distance) + " mm");
             Check(Math.Abs(distance - geometric) <= 0.01, "measurement equals InspectionGeometry.DistanceMm, " + F(geometric) + " mm");
-            Click(panel, "Pin misura");
+            Click(panel, "Fissa misura");
             Check(measure.PinnedCount == 1 && !measure.DistanceMm.HasValue, "measurement pinned on the model");
             Pass("M2-Measure", "point-to-point between occurrence centers " + F(distance) + " mm (expected 150), pinned (" + measure.PinnedCount + "/20)");
 
@@ -184,7 +185,7 @@ namespace InventorXrSo.Xr
             Check(Read<string>(inspect, "_screen") == "section", "'Sezione' opened the section page");
             Click(panel, "Attiva sezione");
             Check(section.Active, "section plane activated");
-            Click(panel, "Offset numerico");
+            Click(panel, "Scostamento numerico");
             Check(Read<string>(inspect, "_screen") == "numeric", "'Offset numerico' opened the numeric keypad");
             SubmitNumber(panel, "25");
             Check(Read<string>(inspect, "_screen") == "section", "keypad returned to the section page");
@@ -203,14 +204,14 @@ namespace InventorXrSo.Xr
             Click(panel, "Scala");
             var localExtent = Mathf.Max(ScenePlacement.LocalBounds(view.transform).size.x, ScenePlacement.LocalBounds(view.transform).size.y,
                 ScenePlacement.LocalBounds(view.transform).size.z);
-            ClickStartingWith(panel, "Table scale");
+            ClickStartingWith(panel, "Scala da tavolo");
             var tableExtent = localExtent * view.transform.lossyScale.x;
             Check(Read<string>(inspect, "_screen") == "scale" && tableExtent <= 0.6f + 1e-3f, "Table scale keeps the model within 0.60 m, extent " + F(tableExtent) + " m");
             var tableScale = view.transform.lossyScale.x;
             Click(panel, "Spazio disponibile");
             SubmitNumber(panel, "0.2");
             Check(Mathf.Abs(ReadValue<float>(inspect, "_roomExtent") - 0.2f) < 1e-4f, "available space set to 0.2 m through the keypad");
-            Click(panel, "Fit to room");
+            Click(panel, "Adatta alla stanza");
             var expected = Mathf.Min(1f, 0.2f / localExtent);
             var fitExtent = localExtent * view.transform.lossyScale.x;
             Check(Mathf.Abs(view.transform.lossyScale.x - expected) < 0.005f && fitExtent <= 0.2f + 1e-3f,
@@ -227,9 +228,9 @@ namespace InventorXrSo.Xr
             var eye = Read<Camera>(environment, "eye");
             Check(environment.Mode == EnvironmentMode.MixedReality && eye != null && eye.backgroundColor.a < 0.01f, "environment is Mixed Reality");
             inspect.Open("tools");
-            Click(panel, "Studio VR");
+            Click(panel, "Studio virtuale");
             Check(environment.Mode == EnvironmentMode.StudioVr && eye.backgroundColor.a > 0.99f, "switched to Studio VR");
-            Click(panel, "Mixed Reality");
+            Click(panel, "Realtà mista");
             Check(environment.Mode == EnvironmentMode.MixedReality && eye.backgroundColor.a < 0.01f, "switched back to Mixed Reality");
             Pass("M2-MR", "Mixed Reality -> Studio VR -> Mixed Reality from the Inspect tools page");
 
@@ -356,7 +357,9 @@ namespace InventorXrSo.Xr
         {
             Check(name.StartsWith(FixturePrefix, StringComparison.Ordinal), "refusing to activate a document outside the fixture: " + name);
             await WaitUntil(() => !ReadBoolean(inspect, "_busy"), ct);
-            for (int page = 0; page < 4; page++)
+            var documentCount = Read<IReadOnlyList<OpenDocument>>(inspect, "_documents").Count;
+            var pageCount = Math.Max(1, (documentCount + 5) / 6);
+            for (int page = 0; page < pageCount; page++)
             {
                 var button = FindButton(panel, t => t == name);
                 if (button != null)
@@ -367,7 +370,8 @@ namespace InventorXrSo.Xr
                 }
                 Click(panel, "Pagina ›");
             }
-            Check(false, "document '" + name + "' is not on any page of the documents list");
+            Check(false, "document '" + name + "' is not on any page of the documents list (" + documentCount
+                + " documents, page " + ReadValue<int>(inspect, "_page") + "; visible: " + AllText(panel) + ")");
         }
 
         private static Bounds InstanceBounds(Transform root, CadInstance instance)

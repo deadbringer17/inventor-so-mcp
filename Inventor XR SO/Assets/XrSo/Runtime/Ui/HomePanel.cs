@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -15,8 +17,53 @@ namespace InventorXrSo.Unity.Ui
         private string _entry = "";
         private Action<string> _submit;
         private Action _cancel;
+        private string _voiceNumericUnit;
+        private double _voiceNumericMin, _voiceNumericMax;
 
         public Canvas Canvas { get; private set; }
+        public bool HasVoiceNumericPrompt => _submit != null && _voiceNumericUnit != null && gameObject.activeInHierarchy;
+        public string VoiceNumericId => HasVoiceNumericPrompt ? _title.text : null;
+        public string VoiceNumericUnit => _voiceNumericUnit;
+        public double VoiceNumericMin => _voiceNumericMin;
+        public double VoiceNumericMax => _voiceNumericMax;
+
+        public bool SubmitVoiceNumber(double value)
+        {
+            if (!HasVoiceNumericPrompt || double.IsNaN(value) || double.IsInfinity(value)
+                || value < _voiceNumericMin || value > _voiceNumericMax) return false;
+            _entry = value.ToString("R", CultureInfo.InvariantCulture);
+            _entryText.text = _entry;
+            Press(UiText.KeyOk);
+            return true;
+        }
+
+        /// <summary>Azioni visibili del pannello, lette sul thread UI dal mirror vocale.</summary>
+        public IEnumerable<(string label, bool enabled)> VoiceActions
+        {
+            get
+            {
+                if (_actions == null || !gameObject.activeInHierarchy) yield break;
+                foreach (Transform child in _actions)
+                {
+                    var button = child.GetComponent<Button>();
+                    if (button == null || !button.gameObject.activeInHierarchy) continue;
+                    var label = button.GetComponentInChildren<Text>()?.text;
+                    if (!string.IsNullOrWhiteSpace(label)) yield return (label, button.interactable);
+                }
+            }
+        }
+
+        public bool InvokeVoiceAction(string label)
+        {
+            foreach (Transform child in _actions)
+            {
+                var button = child.GetComponent<Button>();
+                if (button != null && button.gameObject.activeInHierarchy && button.interactable
+                    && button.GetComponentInChildren<Text>()?.text == label)
+                { button.onClick.Invoke(); return true; }
+            }
+            return false;
+        }
 
         public static HomePanel Create(Transform parent)
         {
@@ -82,7 +129,8 @@ namespace InventorXrSo.Unity.Ui
             foreach (var (label, action) in actions) UiFactory.Button(_actions, label, UiFactory.Accent, 28, action);
         }
 
-        public void PromptText(string title, string hint, string initial, Action<string> onSubmit, Action onCancel)
+        public void PromptText(string title, string hint, string initial, Action<string> onSubmit, Action onCancel,
+            string voiceNumericUnit = null, double voiceNumericMin = -1000000, double voiceNumericMax = 1000000)
         {
             _title.text = title;
             _body.text = hint;
@@ -90,6 +138,9 @@ namespace InventorXrSo.Unity.Ui
             _entryText.text = _entry;
             _submit = onSubmit;
             _cancel = onCancel;
+            _voiceNumericUnit = voiceNumericUnit;
+            _voiceNumericMin = voiceNumericMin;
+            _voiceNumericMax = voiceNumericMax;
             SetActions();
             _entryText.gameObject.SetActive(true);
             _keypad.gameObject.SetActive(true);
@@ -123,6 +174,7 @@ namespace InventorXrSo.Unity.Ui
         private void HideEntry()
         {
             _submit = null;
+            _voiceNumericUnit = null;
             _cancel = null;
             _entryText.gameObject.SetActive(false);
             _keypad.gameObject.SetActive(false);

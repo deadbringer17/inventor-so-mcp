@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace InventorXrSo.Core.Voice
 {
@@ -38,6 +39,9 @@ namespace InventorXrSo.Core.Voice
         private VoiceRouteResult _handledRoute;
         private DictationProposal _handledDictation;
         private DictationField _armed;
+        private string _lastContextId;
+        private string _lastContextLabel;
+        private Dictionary<string, CommandAvailability> _availabilitySnapshot = new Dictionary<string, CommandAvailability>();
 
         /// <summary>Una conferma fisica non presa in tempo scade: nessuna azione resta armata a lungo.</summary>
         public TimeSpan PendingTimeout { get; set; } = TimeSpan.FromSeconds(15);
@@ -51,6 +55,7 @@ namespace InventorXrSo.Core.Voice
         /// <summary>Comando in attesa di conferma fisica (Undo), o null.</summary>
         public string PendingConfirmationCommandId { get; private set; }
         public string PendingConfirmationText { get; private set; } = "";
+        public string LastContextCommandLabel => _lastContextLabel;
         public event Action OutcomeChanged;
 
         public VoiceCommandBridge(IVoiceCommandTarget target, ISpeechRecognizer recognizer,
@@ -61,18 +66,29 @@ namespace InventorXrSo.Core.Voice
             _clock = clock ?? (() => DateTimeOffset.UtcNow);
             _dictation = new DictationTarget((id, v) => _target.SetField(id, v));
             Controller = new PushToTalkController(recognizer, _router, this, _dictation, clock, armingThreshold, resultDisplayTime, () => _target.AcceptsVoice);
+            RefreshAvailabilitySnapshot();
         }
 
         public CommandAvailability GetAvailability(string commandId)
         {
-            if (_target.IsEnabled(commandId)) return CommandAvailability.Available;
-            var reason = _target.DisabledReason(commandId);
-            return CommandAvailability.Disabled(reason);
+            var snapshot = _availabilitySnapshot;
+            return snapshot.TryGetValue(commandId, out var availability)
+                ? availability : CommandAvailability.Disabled("Comando non disponibile ora.");
+        }
+
+        private void RefreshAvailabilitySnapshot()
+        {
+            var snapshot = new Dictionary<string, CommandAvailability>();
+            foreach (var id in CommandIds.All)
+                snapshot[id] = _target.IsEnabled(id) ? CommandAvailability.Available
+                    : CommandAvailability.Disabled(_target.DisabledReason(id));
+            _availabilitySnapshot = snapshot;
         }
 
         /// <summary>Dal thread principale, a ogni frame: sincronizza il campo armato ed esegue il risultato nuovo.</summary>
         public void Pump()
         {
+            RefreshAvailabilitySnapshot();
             SyncDictation();
             var state = Controller.State;
             if (HasPending && _pendingSince != default(DateTimeOffset) && _clock() - _pendingSince >= PendingTimeout) CancelPending();
@@ -86,7 +102,14 @@ namespace InventorXrSo.Core.Voice
                 return;
             }
             var route = Controller.ProposedCommand;
-            if (route != null && !ReferenceEquals(route, _handledRoute)) { _handledRoute = route; Handle(route); return; }
+            if (route != null && !ReferenceEquals(route, _handledRoute))
+            {
+                _handledRoute = route;
+                if (route.Kind == VoiceRouteKind.Rejected && _target is IContextVoiceActions contextual
+                    && contextual.TryResolveAction(Controller.Transcript, out var action)) HandleContextAction(action);
+                else Handle(route);
+                return;
+            }
             var dictation = Controller.ProposedDictation;
             if (dictation != null && !ReferenceEquals(dictation, _handledDictation)) { _handledDictation = dictation; HandleDictation(dictation); }
         }
@@ -107,6 +130,7 @@ namespace InventorXrSo.Core.Voice
 
         private void Handle(VoiceRouteResult route)
         {
+            _lastContextId = null; _lastContextLabel = null;
             ClearPending();
             switch (route.Kind)
             {
@@ -135,12 +159,31 @@ namespace InventorXrSo.Core.Voice
             }
         }
 
+        private void HandleContextAction(ContextVoiceAction action)
+        {
+            ClearPending();
+            _lastContextId = action.Id; _lastContextLabel = action.Label;
+            if (!action.Enabled || !_target.IsEnabled(action.Id))
+            { Set(VoiceOutcomeKind.NotExecuted, "Comando non disponibile ora."); return; }
+            if (action.RequiresConfirmation)
+            {
+                PendingConfirmationCommandId = action.Id;
+                PendingConfirmationText = "Confermare " + action.Label + "?";
+                _pendingSince = _clock();
+                Set(VoiceOutcomeKind.AwaitingConfirmation, PendingConfirmationText);
+                return;
+            }
+            bool ok = _target.Invoke(action.Id);
+            Set(ok ? VoiceOutcomeKind.Executed : VoiceOutcomeKind.NotExecuted, ok ? "Eseguito: " + action.Label + "." : "Comando non eseguito.");
+        }
+
         /// <summary>Vero se serve una conferma fisica (comando in attesa o valore dettato proposto).</summary>
         public bool HasPending => PendingConfirmationCommandId != null || _dictation.Pending != null;
 
         /// <summary>Etichetta italiana del comando (il nome del pulsante), o l'ID se sconosciuto.</summary>
         public string CommandLabel(string commandId)
         {
+            if (commandId == _lastContextId) return _lastContextLabel;
             var aliases = _router.AliasesOf(commandId);
             return aliases.Count > 0 ? aliases[0] : commandId ?? "";
         }

@@ -159,6 +159,38 @@ namespace InventorXrSo.Xr
             await AssertUnchanged(initial, "Cut Cancel", ct);
             Pass("M5-04", "Cut from " + SketchName + " previewed and cancelled; revision " + initial.Revision + " unchanged");
 
+            // A valid Cut preview also has to commit and return to the original
+            // fixture through XR Undo before the later flange and flat-pattern cases.
+            Call(_ws, "OpenSketchPick", SheetMetalCommand.Cut);
+            Call(_ws, "ChooseSketch", SketchName);
+            await WaitUntil(() => _design.Status == DesignStatus.PreviewReady || _design.Status == DesignStatus.Error, ct);
+            Check(_design.Status == DesignStatus.PreviewReady && _design.CanApply && _previewView.IsShowing,
+                "second Cut preview is rendered and applicable: " + _design.Error);
+            await AssertUnchanged(initial, "second Cut preview", ct);
+            RequireFixture();
+            Call(_ws, "ApplyPressed");
+            var cutCommitted = await WaitFor(async () =>
+            {
+                var state = await _backend.GetDocumentStateAsync(ct);
+                return state.DocumentId == initial.DocumentId && state.Revision != initial.Revision ? state : null;
+            }, ct);
+            await WaitUntil(() => _design.Status == DesignStatus.Empty && _ws.IsEnabled(CommandIds.Undo), ct);
+            Pass("M5-04", "Cut Apply changed native revision " + initial.Revision + " -> " + cutCommitted.Revision);
+            RequireFixture();
+            Call(_ws, "ApplyHistory", false);
+            var cutUndone = await WaitFor(async () =>
+            {
+                var state = await _backend.GetDocumentStateAsync(ct);
+                return state.DocumentId == initial.DocumentId && state.Revision != cutCommitted.Revision ? state : null;
+            }, ct);
+            await WaitUntil(() => _design.Status == DesignStatus.Empty && _ws.IsEnabled(CommandIds.Redo), ct);
+            var restoredSheet = await _sheet.GetSheetMetalContextAsync(cutUndone, ct);
+            Check(restoredSheet.IsSingleBody && restoredSheet.BendCount == bends0
+                && !restoredSheet.FlatPattern.Exists,
+                "XR Undo of Cut restores the single-body blank, bend count and no flat pattern");
+            initial = cutUndone;
+            Pass("M5-04", "XR Undo restored the blank at revision " + initial.Revision);
+
             // ---- voice without microphone (M5-09, M5-10, M5-11)
             var voiceTarget = Read<WorkspaceVoiceTarget>(App, "_voiceTarget");
             Check(voiceTarget != null && voiceTarget.InSession && voiceTarget.AcceptsVoice,
@@ -315,7 +347,7 @@ namespace InventorXrSo.Xr
                 + " unchanged and scene root " + rootBefore + " unchanged");
 
             Record("NOT COVERED [M5-03] Grip+Trigger manipulator gesture and trigger edge pick: the edge was toggled on FlangeDraft and the height set through the numeric field path");
-            Record("NOT COVERED [M5-04] Face and rule/thickness commands and Apply/Undo of Cut: only the Cut preview and Cancel run here");
+            Record("NOT COVERED [M5-04] Face and rule/thickness commands: Cut preview, Cancel, Apply and Undo run here");
             Record("NOT COVERED [M5-05] flat pattern outcomes on multi-body or non-unfoldable parts: only AlreadyExists is asserted");
             Record("NOT COVERED [M5-06] Grip repositioning gesture and visual comparison of the detached pattern with the folded part");
             Record("NOT COVERED [M5-07] network loss, late preview and uncertain commit: only the stale commit after Undo is asserted");

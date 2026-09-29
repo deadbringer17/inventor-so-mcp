@@ -33,8 +33,8 @@ namespace InventorXrSo.Unity.Ui
         public const string BadAddress = "Indirizzo non valido.";
         public const string CertificateChanged = "Il PC presenta un certificato diverso da quello associato. Associa di nuovo il PC.";
         public const string TokenRevoked = "Il PC non riconosce più questo visore. Associa di nuovo il PC.";
-        public const string EnterMixedReality = "Entra · Mixed Reality";
-        public const string EnterStudio = "Entra · Studio VR";
+        public const string EnterMixedReality = "Entra · Realtà mista";
+        public const string EnterStudio = "Entra · Studio virtuale";
         public const string ForgetPc = "Dimentica PC";
         public const string Home = "Home";
         public const string Offline = "Offline · sola lettura";

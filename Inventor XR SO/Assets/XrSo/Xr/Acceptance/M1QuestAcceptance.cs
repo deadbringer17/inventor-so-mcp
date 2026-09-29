@@ -178,9 +178,9 @@ namespace InventorXrSo.Xr
             var eye = Read<Camera>(environment, "eye");
             Check(eye != null && eye.backgroundColor.a < 0.01f, "Mixed Reality clears the camera to a transparent background");
             inspect.Open("tools");
-            Click(panel, "Studio VR");
+            Click(panel, "Studio virtuale");
             Check(environment.Mode == EnvironmentMode.StudioVr && eye.backgroundColor.a > 0.99f, "menu switched to Studio VR with an opaque studio background");
-            Click(panel, "Mixed Reality");
+            Click(panel, "Realtà mista");
             Check(environment.Mode == EnvironmentMode.MixedReality && eye.backgroundColor.a < 0.01f, "menu switched back to Mixed Reality");
             Pass("M1-MR", "Mixed Reality -> Studio VR -> Mixed Reality via the Inspect menu; camera background followed each mode");
 
@@ -192,6 +192,7 @@ namespace InventorXrSo.Xr
             Record("NOT COVERED [M1-DoD8] a document change made on the desktop is not induced by this runner");
             Record("NOT COVERED [M1-DoD9] network loss and reconnection are not induced by this runner");
             Record("NOT COVERED [M1-Pairing] QR and code pairing are not exercised; the stored pairing is reused");
+            NotCovered("M1-Physical", "controller ray, trigger, headset fit and visual readability require a person wearing the Quest");
         }
 
         private static Bounds InstanceBounds(Transform root, CadInstance instance)

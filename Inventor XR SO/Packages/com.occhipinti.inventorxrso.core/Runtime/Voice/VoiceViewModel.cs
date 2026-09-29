@@ -35,6 +35,8 @@ namespace InventorXrSo.Core.Voice
                 var route = c.ProposedCommand;
                 if (route != null && !string.IsNullOrEmpty(route.CommandId) && route.Kind != VoiceRouteKind.Rejected)
                     m.Command = "Comando: " + bridge.CommandLabel(route.CommandId);
+                else if (!string.IsNullOrEmpty(bridge.LastContextCommandLabel))
+                    m.Command = "Comando: " + bridge.LastContextCommandLabel;
                 m.Title = TitleOf(bridge.Outcome, c.ProposedDictation != null);
                 m.Detail = bridge.OutcomeText;
                 if (bridge.PendingConfirmationCommandId != null) m.ConfirmLabel = "Conferma " + bridge.CommandLabel(bridge.PendingConfirmationCommandId);

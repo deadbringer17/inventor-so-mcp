@@ -28,7 +28,7 @@ namespace InventorXrSo.Core.Voice
             get
             {
                 if (!Accepted) return Reason;
-                string u = Unit == QuantityUnit.Millimeters ? " mm" : Unit == QuantityUnit.Degrees ? " °" : "";
+                string u = Unit == QuantityUnit.Millimeters ? " mm" : Unit == QuantityUnit.Degrees ? " °" : Unit == QuantityUnit.Meters ? " m" : "";
                 return Value.ToString("0.######", System.Globalization.CultureInfo.GetCultureInfo("it-IT")) + u + " (da: " + OriginalText + ")";
             }
         }
@@ -78,7 +78,14 @@ namespace InventorXrSo.Core.Voice
                 return new DictationProposal(false, null, 0, QuantityUnit.None, transcript, "Nessun campo selezionato per la dettatura.",
                     NumberParseError.None, false, _armVersion);
             }
-            var q = ItalianNumberParser.Parse(transcript, _min, _max);
+            // "metri" e valido soltanto nel campo visuale espresso in metri;
+            // nel parser CAD generale resta ambiguo e non viene convertito in mm.
+            bool metersSpoken = _unit == QuantityUnit.Meters
+                && System.Text.RegularExpressions.Regex.IsMatch(transcript ?? "", @"\s+(metro|metri|m)\s*$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            string numberText = metersSpoken
+                ? System.Text.RegularExpressions.Regex.Replace(transcript, @"\s+(metro|metri|m)\s*$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+                : transcript;
+            var q = ItalianNumberParser.Parse(numberText, _min, _max);
             DictationProposal p;
             if (!q.Ok)
                 p = new DictationProposal(false, FieldId, 0, _unit, transcript, q.Reason, q.Error, false, _armVersion);
@@ -86,7 +93,8 @@ namespace InventorXrSo.Core.Voice
                 p = new DictationProposal(false, FieldId, 0, _unit, transcript,
                     "Unita non compatibile con il campo (" + UnitName(_unit) + ").", NumberParseError.UnitMismatch, false, _armVersion);
             else
-                p = new DictationProposal(true, FieldId, q.Value, _unit, transcript, "", NumberParseError.None, q.Unit == QuantityUnit.None, _armVersion);
+                p = new DictationProposal(true, FieldId, q.Value, _unit, transcript, "", NumberParseError.None,
+                    q.Unit == QuantityUnit.None && !metersSpoken, _armVersion);
             Pending = p.Accepted ? p : null;
             Changed?.Invoke();
             return p;
@@ -117,6 +125,6 @@ namespace InventorXrSo.Core.Voice
             Changed?.Invoke();
         }
 
-        private static string UnitName(QuantityUnit u) => u == QuantityUnit.Millimeters ? "mm" : u == QuantityUnit.Degrees ? "gradi" : "senza unita";
+        private static string UnitName(QuantityUnit u) => u == QuantityUnit.Millimeters ? "mm" : u == QuantityUnit.Degrees ? "gradi" : u == QuantityUnit.Meters ? "metri" : "senza unita";
     }
 }

@@ -90,6 +90,23 @@ namespace InventorXrSo.Xr
             Check(afterPlanar.DocumentId == initialState.DocumentId && afterPlanar.Revision == initialState.Revision,
                 "Planar preview leaves Inventor revision unchanged");
 
+            // A07 regression: CAD Move used immediately before choosing A/B must not
+            // leave a move preview or an Apply action behind the compatible list.
+            workspace.BeginMove();
+            Set(workspace, "_translation", new CadPoint(10, 0, 0));
+            await workspace.PreviewAsync();
+            Check(designSession.CanApply, "CAD Move preview is ready before switching to A/B");
+            workspace.ChooseReference(referenceA);
+            workspace.ChooseReference(referenceB);
+            Check(Read<string>(workspace, "_screen") == "compatible"
+                && Read<string>(workspace, "_command") == null
+                && !designSession.CanApply && !previewView.IsShowing,
+                "choosing A/B after CAD Move discards the stale move preview and Apply");
+            var afterReferences = await backend.GetDocumentStateAsync(ct);
+            Check(afterReferences.DocumentId == initialState.DocumentId && afterReferences.Revision == initialState.Revision,
+                "A/B selection after CAD Move leaves Inventor revision unchanged");
+            Pass("A07-programmatic", "A/B after CAD Move offers compatible commands without preview, Apply or CAD revision change");
+
             workspace.BeginMove();
             Set(workspace, "_translation", new CadPoint(10, 0, 0));
             await workspace.PreviewAsync();
@@ -175,7 +192,126 @@ namespace InventorXrSo.Xr
             var reopened = await WaitFor(() => Read<AssemblyContext>(workspace, "_context"), ct);
             Check(reopened.Occurrences.Any(item => item.CanMove), "reopened Assembly context exposes movable DOF");
             Record("PASS; reopened Assembly context and DOF");
+
+            await CheckSyntheticControllerPaths(workspace, backend, view, designSession, previewView,
+                reopened.Occurrences.First(item => item.CanMove).Id, ct);
+            NotCovered("A01-physical", "plain Grip with a real controller requires a person wearing the Quest");
+            NotCovered("A02-physical", "final pose equivalence for real gestures at reduced scale requires a person wearing the Quest");
+            NotCovered("A07-physical", "real face picking and unintended UI activation require controller observation");
+            NotCovered("A14-physical", "tracking loss, click-through and error readability require observation in the headset");
         }
+
+        private async Task CheckSyntheticControllerPaths(AssemblyWorkspace workspace, IAssemblyWorkspaceBackend backend,
+            CadSceneView view, DesignSession designSession, DesignPreviewView previewView,
+            string occurrenceId, CancellationToken ct)
+        {
+            var ray = Read<ControllerRay>(workspace, "_ray");
+            var hand = ray.Origin;
+            var savedScale = view.transform.localScale;
+            var savedPosition = hand.position;
+            var savedRotation = hand.rotation;
+            const float scale = 0.25f;
+            try
+            {
+                view.transform.localScale = Vector3.one * scale;
+                await workspace.SelectOccurrenceAsync(occurrenceId);
+                var occurrence = Read<AssemblyOccurrence>(workspace, "_occurrence");
+                Check(occurrence != null && occurrence.TranslationAxes.Count > 0 && occurrence.RotationAxes.Count > 0,
+                    "fixture has translation and rotation axes for reduced-scale gestures");
+                var before = await backend.GetDocumentStateAsync(ct);
+
+                workspace.BeginMove();
+                var axis = occurrence.TranslationAxes[0];
+                var worldAxis = view.transform.TransformDirection(CadCoordinates.ToLocal(axis)).normalized;
+                var target = view.transform.TransformPoint(CadCoordinates.ToLocal(occurrence.Center.Value + axis * 50));
+                var side = Vector3.Cross(worldAxis, Vector3.up).normalized;
+                if (side.sqrMagnitude < 0.1f) side = Vector3.Cross(worldAxis, Vector3.right).normalized;
+                hand.SetPositionAndRotation(target + side * 0.15f, Quaternion.LookRotation(-side));
+                Check(Read<AssemblyVisuals>(workspace, "_visuals").HitHandle(new Ray(hand.position, hand.forward)),
+                    "reduced-scale translation handle can be hit");
+                ControllerFrame(workspace, true, true, true, false, true, false);
+                Check(ReadBoolean(workspace, "_dragging"), "synthetic Grip+Trigger arms reduced-scale translation");
+                hand.position += worldAxis * (0.010f * scale);
+                ControllerFrame(workspace, true, true, true, false, false, false);
+                Check(Math.Abs(ReadValue<CadPoint>(workspace, "_translation").Dot(axis) - 10) < 0.05,
+                    "reduced-scale controller displacement converts to 10 mm in CAD");
+                ControllerFrame(workspace, true, false, false, false, false, false);
+                await WaitUntil(() => designSession.CanApply && previewView.IsShowing, ct);
+                Check((await backend.GetDocumentStateAsync(ct)).Revision == before.Revision,
+                    "reduced-scale translation preview leaves native revision unchanged");
+                Pass("A02-programmatic", "synthetic 10 mm translation at 0.25× creates a rendered native preview");
+
+                Call(workspace, "Cancel");
+                await WaitFor(() => !ReadBoolean(workspace, "_busy")
+                    ? Read<AssemblyContext>(workspace, "_context") : null, ct);
+                await workspace.SelectOccurrenceAsync(occurrenceId);
+                occurrence = Read<AssemblyOccurrence>(workspace, "_occurrence");
+                workspace.BeginMove();
+                Set(workspace, "_rotating", true);
+                Call(workspace, "Draw");
+                var rotationAxis = occurrence.RotationAxes[0];
+                var worldRotationAxis = view.transform.TransformDirection(CadCoordinates.ToLocal(rotationAxis)).normalized;
+                var ring = view.GetComponentsInChildren<LineRenderer>()
+                    .First(item => item.name == "DOF rotazione 1");
+                target = ring.transform.TransformPoint(ring.GetPosition(0));
+                hand.SetPositionAndRotation(target + worldRotationAxis * 0.1f,
+                    Quaternion.LookRotation(-worldRotationAxis));
+                Check(Read<AssemblyVisuals>(workspace, "_visuals").HitHandle(new Ray(hand.position, hand.forward)),
+                    "reduced-scale rotation handle can be hit");
+                ControllerFrame(workspace, true, true, true, false, true, false);
+                Check(ReadBoolean(workspace, "_dragging"), "synthetic Grip+Trigger arms reduced-scale rotation");
+                hand.rotation = Quaternion.AngleAxis(-12, worldRotationAxis) * hand.rotation;
+                ControllerFrame(workspace, true, true, true, false, false, false);
+                Check(Math.Abs(ReadValue<double>(workspace, "_angle") - 12) < 0.1,
+                    "reduced-scale wrist twist converts to 12 CAD degrees");
+                ControllerFrame(workspace, true, false, false, false, false, false);
+                await WaitUntil(() => designSession.CanApply && previewView.IsShowing, ct);
+                Check((await backend.GetDocumentStateAsync(ct)).Revision == before.Revision,
+                    "reduced-scale rotation preview leaves native revision unchanged");
+                Pass("A02-programmatic", "synthetic 12 degree rotation at 0.25× creates a rendered native preview");
+
+                Call(workspace, "Cancel");
+                await WaitFor(() => !ReadBoolean(workspace, "_busy")
+                    ? Read<AssemblyContext>(workspace, "_context") : null, ct);
+                await workspace.SelectOccurrenceAsync(occurrenceId);
+                occurrence = Read<AssemblyOccurrence>(workspace, "_occurrence");
+                workspace.BeginMove();
+                axis = occurrence.TranslationAxes[0];
+                worldAxis = view.transform.TransformDirection(CadCoordinates.ToLocal(axis)).normalized;
+                target = view.transform.TransformPoint(CadCoordinates.ToLocal(occurrence.Center.Value + axis * 50));
+                side = Vector3.Cross(worldAxis, Vector3.up).normalized;
+                if (side.sqrMagnitude < 0.1f) side = Vector3.Cross(worldAxis, Vector3.right).normalized;
+                hand.SetPositionAndRotation(target + side * 0.15f, Quaternion.LookRotation(-side));
+                ControllerFrame(workspace, true, true, true, false, true, true);
+                Check(!ReadBoolean(workspace, "_dragging") && !designSession.CanApply,
+                    "UI hit blocks a synthetic Grip+Trigger gesture");
+                ControllerFrame(workspace, true, true, true, false, true, false);
+                Check(ReadBoolean(workspace, "_dragging"), "gesture arms before synthetic tracking loss");
+                ControllerFrame(workspace, false, false, false, false, false, false);
+                Check(!ReadBoolean(workspace, "_dragging") && !designSession.CanApply
+                    && !previewView.IsShowing && Read<string>(workspace, "_notice").Contains("Tracking perso"),
+                    "tracking loss cancels armed gesture with readable error and no Apply");
+                Check((await backend.GetDocumentStateAsync(ct)).Revision == before.Revision,
+                    "UI hit and tracking loss leave native revision unchanged");
+                Pass("A14-programmatic", "UI hit prevents gesture; tracking loss cancels armed gesture without CAD mutation");
+                Call(workspace, "Cancel");
+                workspace.Close();
+                workspace.Open();
+                await WaitFor(() => Read<AssemblyContext>(workspace, "_context"), ct);
+                Check(workspace.Active && !ReadBoolean(workspace, "_dragging") && !designSession.CanApply,
+                    "Assembly reopens clean after tracking loss");
+                Pass("A14-programmatic", "workspace reopens with no armed gesture or Apply");
+            }
+            finally
+            {
+                view.transform.localScale = savedScale;
+                hand.SetPositionAndRotation(savedPosition, savedRotation);
+            }
+        }
+
+        private static void ControllerFrame(AssemblyWorkspace workspace, bool tracked, bool grip,
+            bool trigger, bool gripDown, bool triggerDown, bool ui)
+            => Call(workspace, "ProcessControllerFrame", tracked, grip, trigger, gripDown, triggerDown, ui);
     }
 }
 #endif

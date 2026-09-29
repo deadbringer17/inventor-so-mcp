@@ -26,8 +26,7 @@ function Fail-Setup([string]$Message) {
 
 $adbArgs = @()
 function Invoke-Adb {
-    param([Parameter(ValueFromRemainingArguments)][string[]]$Rest)
-    $output = & adb @script:adbArgs @Rest 2>&1
+    $output = & adb @script:adbArgs @args 2>&1
     return [pscustomobject]@{ Code = $LASTEXITCODE; Text = (($output | ForEach-Object { "$_" }) -join "`n") }
 }
 
@@ -66,7 +65,11 @@ if ($Serial) {
     $adbArgs = @('-s', $Serial)
 }
 $state = Invoke-Adb get-state
-if ($state.Code -ne 0 -or $state.Text.Trim() -ne 'device') { Fail-Setup "Device $Serial is not ready: $($state.Text)" }
+if ($state.Code -ne 0 -or (($state.Text -split "`r?`n" | Select-Object -Last 1).Trim() -ne 'device')) {
+    Fail-Setup "Device $Serial is not ready: $($state.Text)"
+}
+$power = Invoke-Adb shell dumpsys power
+$wakefulnessAtLaunch = if ($power.Code -eq 0 -and $power.Text -match 'mWakefulness=(\w+)') { $Matches[1] } else { 'Unknown' }
 
 New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 $apkPath = (Resolve-Path -LiteralPath $Apk).Path
@@ -89,18 +92,32 @@ if ($start.Code -ne 0 -or $start.Text -match 'Error') { Fail-Setup "am start fai
 
 $outcome = 'TIMEOUT'
 $seen = 0
+$runnerStarted = $false
+$finalLines = @()
 $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
 while ([DateTime]::UtcNow -lt $deadline) {
     Start-Sleep -Seconds 2
     $cat = Invoke-Adb shell cat $remoteLog
     if ($cat.Code -ne 0) { continue }
+    $runnerStarted = $true
     $lines = @($cat.Text -split "`r?`n" | Where-Object { $_ -ne '' })
+    $finalLines = $lines
     for ($i = $seen; $i -lt $lines.Count; $i++) { Write-Host $lines[$i] }
     $seen = $lines.Count
     if ($lines | Where-Object { $_ -match 'PASS COMPLETE' }) { $outcome = 'PASS'; break }
     if ($lines | Where-Object { $_ -match '\] FAIL;| FAIL;' }) { $outcome = 'FAIL'; break }
 }
 $endUtc = [DateTime]::UtcNow
+$timeoutPhase = if ($outcome -eq 'TIMEOUT') {
+    if ($runnerStarted) { 'runner' } else { 'before_runner_start' }
+} else { $null }
+$checks = @(
+    foreach ($line in $finalLines) {
+        if ($line -match '\b(PASS|NOT COVERED) \[([^\]]+)\]\s*(.*)$') {
+            [ordered]@{ status = $Matches[1]; gate = $Matches[2]; detail = $Matches[3] }
+        }
+    }
+)
 
 $pulled = New-Object System.Collections.Generic.List[string]
 $logTarget = Join-Path $OutDir "$prefix$Milestone-acceptance.txt"
@@ -130,13 +147,17 @@ $manifest = [ordered]@{
     startUtc = $startUtc.ToString('o')
     endUtc = $endUtc.ToString('o')
     outcome = $outcome
+    timeoutPhase = $timeoutPhase
+    runnerStarted = $runnerStarted
+    deviceWakefulnessAtLaunch = $wakefulnessAtLaunch
+    checks = $checks
     pulledFiles = @($pulled)
     ordinaryApk = if ($ordinary) { $OrdinaryApk } else { $null }
     ordinarySha256 = if ($ordinary) { $ordinary.Local } else { $null }
 }
 $manifestPath = Join-Path $OutDir "quest-acceptance-run-$stamp.json"
 $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $manifestPath -Encoding utf8
-Write-Host "Outcome: $outcome; manifest: $manifestPath"
+Write-Host "Outcome: $outcome$(if ($timeoutPhase) { " ($timeoutPhase)" }); manifest: $manifestPath"
 Write-Warning 'Programmatic execution only: physical controller/hand input, audio and tracking remain open gates.'
 
 switch ($outcome) { 'PASS' { exit 0 } 'FAIL' { exit 1 } default { exit 2 } }

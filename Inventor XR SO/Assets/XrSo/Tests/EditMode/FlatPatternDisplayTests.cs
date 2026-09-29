@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using InventorXrSo.Core.Backend;
@@ -134,8 +135,14 @@ namespace InventorXrSo.Tests
         [Test] public void MeshesAndMaterialsAreReleasedWithTheDisplay()
         {
             Show(); var root = _display.MeshRoot.gameObject;
+            var mesh = root.GetComponentInChildren<MeshFilter>().sharedMesh;
+            var material = root.GetComponentInChildren<MeshRenderer>().sharedMaterial;
+            // EditMode does not dispatch this runtime MonoBehaviour callback; exercise its cleanup directly.
+            typeof(FlatPatternDisplay).GetMethod("OnDestroy", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(_display, null);
             Object.DestroyImmediate(_display.gameObject);
             Assert.True(root == null, "The mesh root lives under the view and must be released by the display.");
+            Assert.True(mesh == null, "The display-created mesh must be released.");
+            Assert.True(material == null, "The display-created material must be released.");
         }
     }
 }

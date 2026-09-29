@@ -1,5 +1,22 @@
 namespace InventorXrSo.Core.Voice
 {
+    /// <summary>Un'azione del pannello corrente, risolta sul thread principale.</summary>
+    public sealed class ContextVoiceAction
+    {
+        public ContextVoiceAction(string id, string label, bool enabled, bool confirm)
+        { Id = id; Label = label; Enabled = enabled; RequiresConfirmation = confirm; }
+        public string Id { get; }
+        public string Label { get; }
+        public bool Enabled { get; }
+        public bool RequiresConfirmation { get; }
+    }
+
+    /// <summary>Azioni contestuali dei workspace, oltre al vocabolario fisso.</summary>
+    public interface IContextVoiceActions
+    {
+        bool TryResolveAction(string transcript, out ContextVoiceAction action);
+    }
+
     /// <summary>Campo numerico armato per la dettatura: id, unita e intervallo ammesso.</summary>
     public sealed class DictationField
     {
