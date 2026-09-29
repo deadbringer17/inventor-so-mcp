@@ -91,8 +91,8 @@ Build, test e primo collegamento: `Inventor XR SO/README.md`.
 | esito di verifica / collaudo | `docs/xr-mN-verification.md`, `docs/xr-mN-collaudo.md`, `docs/xr-m3-acceptance.md` |
 
 Milestone XR: M1 visualizzazione e selezione · M2 ispezione · M3 schizzo/design
-· M4 assembly · **M5 lamiera, sviluppo piano e voce** (spec e piano del
-2026-09-28, non ancora implementata). Non tutte le milestone hanno una spec
+· M4 assembly · **M5 lamiera, sviluppo piano e voce** (implementazione
+software presente, collaudo aperto: `docs/xr-m5-verification.md`). Non tutte le milestone hanno una spec
 separata (M2 e M3 sono solo nei piani e nella spec di prodotto). Le spec
 `impaginazione-disegni` e `template-idw-cartiglio` riguardano le tavole IDW.
 

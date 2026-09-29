@@ -12,6 +12,7 @@ using InventorXrSo.Unity.Net;
 using InventorXrSo.Unity.Pairing;
 using InventorXrSo.Unity.Scene;
 using InventorXrSo.Unity.Ui;
+using InventorXrSo.Xr.Voice;
 using UnityEngine;
 
 namespace InventorXrSo.Xr
@@ -45,6 +46,9 @@ namespace InventorXrSo.Xr
         private InspectWorkspace _inspect;
         private DesignWorkspace _design;
         private AssemblyWorkspace _assembly;
+        private LamieraWorkspace _lamiera;
+        private VoiceRig _voice;
+        private WorkspaceVoiceTarget _voiceTarget;
 
         public void Configure(CadSceneView view, SelectionVisuals visuals, ControllerRay controllerRay, EnvironmentModeController env, Transform centerEye, QrScanner scanner)
         {
@@ -69,14 +73,28 @@ namespace InventorXrSo.Xr
             _design.Initialize(sceneView, selectionVisuals, ray, head);
             _assembly = gameObject.AddComponent<AssemblyWorkspace>();
             _assembly.Initialize(sceneView, ray, head);
-            _design.CanEnter = () => !_assembly.RequiresCadReview;
-            _assembly.CanEnter = () => !_design.RequiresCadReview;
-            _inspect.DesignRequested += () => { if (!_assembly.RequiresCadReview) { _assembly.Close(); _design.Open(); } };
-            _inspect.AssemblyRequested += () => { if (!_design.RequiresCadReview) { _design.Close(); _assembly.Open(); } };
+            _lamiera = gameObject.AddComponent<LamieraWorkspace>();
+            _lamiera.Initialize(sceneView, selectionVisuals, ray, head);
+            // One shared CAD guard: an uncertain commit in any authoring workspace blocks entering the others.
+            _design.CanEnter = () => !_assembly.RequiresCadReview && !_lamiera.RequiresCadReview;
+            _assembly.CanEnter = () => !_design.RequiresCadReview && !_lamiera.RequiresCadReview;
+            _lamiera.CanEnter = () => !_design.RequiresCadReview && !_assembly.RequiresCadReview;
+            _inspect.DesignRequested += () => { if (!_assembly.RequiresCadReview && !_lamiera.RequiresCadReview) { _assembly.Close(); _lamiera.Close(); _design.Open(); } };
+            _inspect.AssemblyRequested += () => { if (!_design.RequiresCadReview && !_lamiera.RequiresCadReview) { _design.Close(); _lamiera.Close(); _assembly.Open(); } };
+            _inspect.LamieraRequested += OpenLamiera;
+            _lamiera.DesignRequested += () => { if (!_assembly.RequiresCadReview && !_lamiera.RequiresCadReview) { _lamiera.Close(); _design.Open(); } };
+            _lamiera.PrimaryChanged += OnLamieraPrimaryChanged;
             _inspect.InspectionRequested += _design.Close;
             _inspect.InspectionRequested += _assembly.Close;
+            _inspect.InspectionRequested += _lamiera.Close;
             _design.ActiveChanged += _inspect.SetDesignActive;
             _assembly.ActiveChanged += _inspect.SetAssemblyActive;
+            _lamiera.ActiveChanged += _inspect.SetLamieraActive;
+            // Voice enablement follows the active workspace: re-evaluate whenever the mode changes.
+            _design.ActiveChanged += _ => NotifyVoiceModeChanged();
+            _assembly.ActiveChanged += _ => NotifyVoiceModeChanged();
+            _lamiera.ActiveChanged += _ => NotifyVoiceModeChanged();
+            _inspect.InspectionRequested += NotifyVoiceModeChanged;
             ray.Picked += OnPicked;
             ray.PickedNothing += OnPickedNothing;
             ray.CanPick = false;
@@ -106,15 +124,18 @@ namespace InventorXrSo.Xr
 
         private void StopSession()
         {
+            if (_voice != null) { Destroy(_voice.gameObject); _voice = null; }
             _inspect?.Bind(null, null);
             _design?.Bind(null);
             _assembly?.Bind(null);
+            _lamiera?.Bind(null, null);
             if (_session != null)
             {
                 _session.StatusChanged -= OnStatusChanged; _session.SceneLoaded -= OnSceneLoaded;
                 _session.DocumentStateChanged -= _inspect.SetDocumentState;
                 _session.DocumentStateChanged -= _design.SetDocumentState;
                 _session.DocumentStateChanged -= _assembly.SetDocumentState;
+                _session.DocumentStateChanged -= _lamiera.SetDocumentState;
             }
             if (_selection != null) _selection.Changed -= selectionVisuals.Show;
             _session = null;
@@ -135,6 +156,8 @@ namespace InventorXrSo.Xr
             _inspect.SetOnline(status == SessionStatus.Online);
             _design.SetOnline(status == SessionStatus.Online);
             _assembly.SetOnline(status == SessionStatus.Online);
+            _lamiera.SetOnline(status == SessionStatus.Online);
+            if (status != SessionStatus.Online) _voice?.NotifyDisconnected();
             RefreshHome();
         }
 
@@ -222,19 +245,27 @@ namespace InventorXrSo.Xr
         {
             StopSession();
             _run = new CancellationTokenSource();
-            var backend = new InventorBackend(new UnityHttpTransport(ServerTrust.Pinned(_server.CertSha256)), _server,
+            var transport = new UnityHttpTransport(ServerTrust.Pinned(_server.CertSha256));
+            var backend = new InventorBackend(transport, _server,
                 new FileAssetCache(Path.Combine(Application.persistentDataPath, "assets")));
             _session = new SessionController(backend, new TaskDelay());
             _selection = new SelectionService(backend);
             _inspect.Bind(backend, _selection);
             _design.Bind(backend);
             _assembly.Bind(backend);
+            _lamiera.Bind(backend, backend);
+            // Voice reuses the backend's transport and the paired server; every workspace exposes its command surface.
+            _voiceTarget = WorkspaceVoiceTarget.ForWorkspaces(_lamiera, _design, _assembly, _inspect);
+            _voiceTarget.InSession = _inSession;
+            _voice = VoiceRig.Create(head.parent, head, head.GetComponent<Camera>(), transport, _server,
+                _voiceTarget, ray.Controller);
             _selection.Changed += selectionVisuals.Show;
             _session.StatusChanged += OnStatusChanged;
             _session.SceneLoaded += OnSceneLoaded;
             _session.DocumentStateChanged += _inspect.SetDocumentState;
             _session.DocumentStateChanged += _design.SetDocumentState;
             _session.DocumentStateChanged += _assembly.SetDocumentState;
+            _session.DocumentStateChanged += _lamiera.SetDocumentState;
             RefreshHome();
             RunSession(_session, _run.Token);
         }
@@ -263,6 +294,7 @@ namespace InventorXrSo.Xr
             _inspect.SetScene(scene);
             _design.SetScene(scene);
             _assembly.SetScene(scene);
+            _lamiera.SetScene(scene);
             if (scene != null && _inSession && !_placed) Place();
             if (scene != null && scene.Omitted.Count > 0) _badge.Flash(scene.Omitted.Count + UiText.Omitted);
             RefreshHome();
@@ -293,9 +325,12 @@ namespace InventorXrSo.Xr
         private void ShowHome()
         {
             _inSession = false;
+            if (_voiceTarget != null) _voiceTarget.InSession = false;
             _inspect?.SetVisible(false);
             _design?.SetVisible(false);
             _assembly?.SetVisible(false);
+            _lamiera?.SetVisible(false);
+            _voice?.NotifyModeChanged();
             ray.CanPick = false;
             sceneView.gameObject.SetActive(false);
             _home.gameObject.SetActive(true);
@@ -310,17 +345,36 @@ namespace InventorXrSo.Xr
         {
             environment.Set(mode);
             _inSession = true;
+            if (_voiceTarget != null) _voiceTarget.InSession = true;
             _home.gameObject.SetActive(false);
             _badge.gameObject.SetActive(true);
             sceneView.gameObject.SetActive(true);
             _inspect.SetVisible(true);
             _design.SetVisible(true);
             _assembly.SetVisible(true);
+            _lamiera.SetVisible(true);
             selectionVisuals.Show(_selection?.Current);
             ray.CanPick = true;
             if (!_placed) Place();
             RefreshHome();
+            // A sheet-metal part opens Lamiera as the primary mode; an ordinary part never does.
+            if (_lamiera.IsPrimary) OpenLamiera();
         }
+
+        private void OpenLamiera()
+        {
+            if (_design.RequiresCadReview || _assembly.RequiresCadReview) return;
+            _design.Close(); _assembly.Close(); _lamiera.Open();
+        }
+
+        private void OnLamieraPrimaryChanged(bool primary)
+        {
+            _inspect.SetLamieraPrimary(primary);
+            // Auto-open only on the transition to primary and only from plain inspection: never over an authoring workspace.
+            if (primary && _inSession && !_design.Active && !_assembly.Active && !_lamiera.Active) OpenLamiera();
+        }
+
+        private void NotifyVoiceModeChanged() { _voice?.NotifyModeChanged(); }
 
         private void LeaveSession()
         {
@@ -342,7 +396,7 @@ namespace InventorXrSo.Xr
 
         private async void OnPicked(CadBody body, int triangle)
         {
-            if (_design.Active || _assembly.Active) return;
+            if (_design.Active || _assembly.Active || _lamiera.Active) return;
             if (_inspect.Measuring) return;
             if (_selecting || body == null) return;
             if (_session == null || _session.Status != SessionStatus.Online || _session.Scene == null)
@@ -359,7 +413,7 @@ namespace InventorXrSo.Xr
 
         private async void OnPickedNothing()
         {
-            if (_design.Active || _assembly.Active) return;
+            if (_design.Active || _assembly.Active || _lamiera.Active) return;
             if (_inspect.Measuring) return;
             _inspect.ClearSelection();
             if (_selection == null || _selecting || _session.Status != SessionStatus.Online) return;

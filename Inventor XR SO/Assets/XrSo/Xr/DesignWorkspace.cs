@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using InventorXrSo.Core.Backend;
 using InventorXrSo.Core.Selection;
 using InventorXrSo.Core.Session;
+using InventorXrSo.Core.Voice;
 using InventorXrSo.Unity.Scene;
 using InventorXrSo.Unity.Ui;
 using Newtonsoft.Json.Linq;
@@ -509,6 +510,76 @@ namespace InventorXrSo.Xr
                     button.interactable = label == "Torna a Inspect" || label == "Annulla comando";
             }
         }
+        // ---------------------------------------------------------------- voice surface
+
+        public const string FieldDimension = "design.dimension";
+        private const double MinDimensionMm = 0.001, MaxDimensionMm = 10000;
+
+        private bool InDraftScreen => _screen == "sketch" || _screen == "feature" || _screen == "parameter";
+
+        /// <summary>Same gate as the tool buttons: part, online, context read, no request in flight, on the tools page.</summary>
+        private bool ToolsEditable => Active && _panel != null && _kind == "part" && _online && !_busy && _context != null
+            && _pendingMutations == 0 && _session != null && _session.CanEdit && _screen == "tools"
+            && _session.Status != DesignStatus.Committing && _session.Status != DesignStatus.Previewing;
+
+        /// <summary>Same enablement as the buttons "Crea schizzo", "Raccordo", "Smusso", "Annulla modifica XR", "Ripeti modifica XR", "Annulla comando" and "Applica".</summary>
+        public bool IsEnabled(string commandId)
+        {
+            switch (commandId)
+            {
+                case CommandIds.CreateSketch:
+                case CommandIds.Fillet:
+                case CommandIds.Chamfer: return ToolsEditable;
+                case CommandIds.Undo: return ToolsEditable && _session.Status == DesignStatus.Empty && _history?.CanUndo == true;
+                case CommandIds.Redo: return ToolsEditable && _session.Status == DesignStatus.Empty && _history?.CanRedo == true;
+                case CommandIds.CancelDraft:
+                    return Active && _panel != null && _session != null && InDraftScreen
+                        && _session.Status != DesignStatus.RefreshRequired && _session.Status != DesignStatus.Committing;
+                case CommandIds.Apply:
+                    return Active && _panel != null && _session != null && InDraftScreen && _pendingMutations == 0
+                        && _session.Status != DesignStatus.RefreshRequired && _session.Status != DesignStatus.Committing
+                        && _session.CanApply;
+                default: return false;   // sheet-metal, inspect commands belong to other workspaces
+            }
+        }
+
+        /// <summary>Runs the command exactly as its button would. Apply only shows a notice: the physical Applica is the single commit path.</summary>
+        public bool Invoke(string commandId)
+        {
+            if (!IsEnabled(commandId)) return false;
+            switch (commandId)
+            {
+                case CommandIds.CreateSketch: CreateSketch(); return true;
+                case CommandIds.Fillet: Feature("fillet"); return true;
+                case CommandIds.Chamfer: Feature("chamfer"); return true;
+                case CommandIds.Undo: ApplyHistory(false); return true;
+                case CommandIds.Redo: ApplyHistory(true); return true;
+                case CommandIds.CancelDraft: _session.Cancel(); ResetDraft(); Render(); return true;
+                case CommandIds.Apply:
+                    _notice = "Anteprima verificata. Conferma premendo Applica sul pannello.";
+                    Render(); return true;
+                default: return false;
+            }
+        }
+
+        private bool DimensionFieldAvailable => Active && _screen == "feature" && _session?.CanEdit == true && _context != null && !_busy
+            && _pendingMutations == 0 && _session.Status != DesignStatus.Committing && _session.Status != DesignStatus.Previewing
+            && (_feature == "extrude" || _feature == "fillet" || _feature == "chamfer" || (_feature == "hole" && !_through));
+
+        /// <summary>The single numeric field of the feature page ("Dimensione numerica"), or null when none is on screen.</summary>
+        public DictationField ArmedField => DimensionFieldAvailable
+            ? new DictationField(FieldDimension, QuantityUnit.Millimeters, MinDimensionMm, MaxDimensionMm) : null;
+
+        /// <summary>Sets the dimension through the keypad path (draft updated, preview invalidated, Apply blocked until a new preview).</summary>
+        public bool SetArmedField(string fieldId, double value)
+        {
+            if (fieldId != FieldDimension || !DimensionFieldAvailable) return false;
+            if (double.IsNaN(value) || double.IsInfinity(value) || value < MinDimensionMm || value > MaxDimensionMm) return false;
+            try { _notice = ""; _dimension = value; UpdateDraft(); } catch (Exception ex) { _notice = ex.Message; }
+            Render();
+            return true;
+        }
+
         private async void PreviewParameter() { try { await _session.PreviewAsync(); } catch (Exception ex) { _notice = ex.Message; Render(); } }
         private void Page(string page) { _screen = page; _page = 0; Render(); }
         private void Pagination(List<(string,Action)> actions, int count)

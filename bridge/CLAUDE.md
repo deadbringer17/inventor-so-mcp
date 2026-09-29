@@ -65,7 +65,7 @@ src/
 ├── plugin-inv22/ inv23/ inv24/     # net48, TCP transport
 ├── plugin-inv25/ inv26/            # net8.0-windows7.0, Named Pipe
 ├── plugin-inv27/                   # net10.0-windows7.0, Named Pipe
-├── server-http/                    # Inventor.So.Mcp.Http: Streamable HTTP host (same composition), /assets, /viewer (WebXR)
+├── server-http/                    # Inventor.So.Mcp.Http: Streamable HTTP host (same composition), /assets, /voice/transcribe, /viewer (WebXR)
 └── plugin-so27/                    # Inventor SO 2027 add-in (the production target); -p:SoExperimental=true adds the experimental tier
 tests/Bimwright.Ipt.Tests/     # net8.0, xUnit. Server-only — no Inventor needed. FakeAddIn = L2 pipe stand-in.
 ```
@@ -112,6 +112,12 @@ On Linux the 10 path-semantics tests of `WorkspaceDocumentPolicyTests`, `Drawing
 else, including the HTTP host and the fake-add-in end-to-end tests, runs anywhere.
 
 Inventor must be CLOSED before deploying add-in DLLs it would otherwise lock. The Inventor-API handlers have been smoke-tested against a live Inventor session; hold new handler bodies to the same verification bar before calling them done.
+
+### Voice transcription (`server-http/Voice/`)
+`POST /voice/transcribe` (M5 voice, spec `docs/superpowers/specs/2026-09-28-inventor-xr-so-m5-design.md`): same bearer auth and rate limit as `/mcp`, body = raw PCM16 mono 16 kHz (`Content-Type: audio/L16;rate=16000`, or `application/octet-stream` + `X-Audio-Sample-Rate: 16000`), at most 10 s (320000 bytes; 413 `VOICE_TOO_LARGE` decided from `Content-Length` before reading, or while streaming a chunked body), empty/odd length 400, one transcription at a time (429 `VOICE_BUSY`). Answers `{transcript, engine, elapsed_ms}`; errors are `{ok:false, code, error:{code,message}}` with `VOICE_DISABLED` (503, the default), `VOICE_ENGINE_UNAVAILABLE` (503), `VOICE_ENGINE_TIMEOUT` (504), `VOICE_ENGINE_FAILED` (502), `VOICE_UNSUPPORTED_FORMAT` (415). The host only transcribes; command routing stays in the client.
+- `ISpeechEngine` (DI, `TryAdd`) is the replaceable seam. Default `DisabledSpeechEngine`; with `--voice-command` / `INVENTOR_SO_VOICE_COMMAND` / JSON `voiceCommand` the `ExternalProcessSpeechEngine` runs that local command per request (quotes group arguments, no shell): the WAV temp file path is the last argument or replaces `{wav}`, stdout is the transcript, exit 0 = ok (3 = engine unavailable). The temp file is zeroed and deleted in `finally`; the command is killed at `--voice-timeout-ms` / `INVENTOR_SO_VOICE_TIMEOUT_MS` (default 15000). Reference command: `Inventor XR SO/Tools~/stt-bench/serve_once.py`. No network engine exists here; nothing cloud is enabled implicitly.
+- Privacy: audio and transcripts are never logged, audited or echoed in errors (stderr of the command is discarded); the request buffer is zeroed when the request ends. `--voice-diagnostics` / `INVENTOR_SO_VOICE_DIAGNOSTICS` (opt-in) logs only client, byte count, duration and outcome.
+- Not verified live: a real engine on a PC, the Quest over the pinned TLS channel, latency/accuracy (open gate D2 in `docs/xr-m5-decisioni.md`).
 
 ## Multi-Version Matrix
 
