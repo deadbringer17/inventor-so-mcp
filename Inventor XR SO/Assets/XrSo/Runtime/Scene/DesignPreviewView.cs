@@ -30,6 +30,7 @@ namespace InventorXrSo.Unity.Scene
             _sketch.SetColor("_Color", new Color(0.15f, 0.95f, 0.75f, 1));
             _solid = new Material(view.BodyMaterial) { name = "Design result" };
             _solid.SetColor("_BaseColor", new Color(0.2f, 0.76f, 0.9f, 1));
+            _solid.SetFloat("_UseVertexColor", 0f);   // preview result keeps its own colour
             _view.Rebuilt += Clear;
         }
 

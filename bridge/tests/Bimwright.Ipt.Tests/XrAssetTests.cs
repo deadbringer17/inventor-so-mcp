@@ -129,6 +129,83 @@ public sealed class GlbBuilderTests
     }
 }
 
+public sealed class GlbColorTests
+{
+    private static MeshPayload.Body Coloured(string? c0, string? c1)
+    {
+        var body = GlbBuilderTests.Body();
+        body.Faces[0].Color = c0;
+        body.Faces[1].Color = c1;
+        return body;
+    }
+
+    private static float Lin(double c) => (float)(c <= 0.04045 ? c / 12.92 : System.Math.Pow((c + 0.055) / 1.055, 2.4));
+
+    private static byte[] Glb(MeshPayload.Body body) =>
+        GlbBuilder.BuildDefinition(new GlbBuilder.MeshSource { Name = "P", DocumentId = "doc", Bodies = new[] { body } });
+
+    [Fact]
+    public void ColourRoundTripsAndMalformedIsIgnored()
+    {
+        var json = MeshPayload.ToJson(Coloured("#FF8000", null));
+        Assert.Equal("#FF8000", (string?)json["faces"]![0]!["color"]);
+        Assert.Null(json["faces"]![1]!["color"]);
+        var back = MeshPayload.FromJson(json);
+        Assert.Equal("#FF8000", back.Faces[0].Color);
+        Assert.Null(back.Faces[1].Color);
+        json["faces"]![1]!["color"] = "red";
+        json["faces"]![0]!["color"] = "#12345";
+        var bad = MeshPayload.FromJson(json);
+        Assert.Null(bad.Faces[0].Color);
+        Assert.Null(bad.Faces[1].Color);
+    }
+
+    [Fact]
+    public void ColouredFaceEmitsLinearColor0WithDefaultElsewhere()
+    {
+        var (gltf, bin) = GlbReader.Read(Glb(Coloured("#FF8000", null)));
+        var primitive = gltf["meshes"]![0]!["primitives"]![0]!;
+        int accessor = (int)primitive["attributes"]!["COLOR_0"]!;
+        Assert.Equal("VEC4", (string?)gltf["accessors"]![accessor]!["type"]);
+        Assert.Equal(8, (int)gltf["accessors"]![accessor]!["count"]!);
+        var view = gltf["bufferViews"]![(int)gltf["accessors"]![accessor]!["bufferView"]!]!;
+        var values = new float[32];
+        System.Buffer.BlockCopy(bin, (int)view["byteOffset"]!, values, 0, 128);
+        for (int v = 0; v < 4; v++)   // face 0 owns vertices 0..3
+        {
+            Assert.Equal(Lin(1.0), values[v * 4], 5);
+            Assert.Equal(Lin(128 / 255.0), values[v * 4 + 1], 5);
+            Assert.Equal(0f, values[v * 4 + 2], 5);
+            Assert.Equal(1f, values[v * 4 + 3], 5);
+        }
+        for (int v = 4; v < 8; v++)   // uncoloured face: default grey
+        {
+            Assert.Equal(Lin(0.72), values[v * 4], 5);
+            Assert.Equal(Lin(0.74), values[v * 4 + 1], 5);
+            Assert.Equal(Lin(0.77), values[v * 4 + 2], 5);
+        }
+        var material = gltf["materials"]![(int)primitive["material"]!]!;
+        Assert.Equal("cad_vertex_color", (string?)material["name"]);
+        Assert.Equal(1.0, (double)material["pbrMetallicRoughness"]!["baseColorFactor"]![0]!, 6);
+    }
+
+    [Fact]
+    public void NoColourEmitsNoColor0AndKeepsDefaultMaterial()
+    {
+        var (gltf, _) = GlbReader.Read(Glb(Coloured(null, null)));
+        var primitive = gltf["meshes"]![0]!["primitives"]![0]!;
+        Assert.Null(primitive["attributes"]!["COLOR_0"]);
+        Assert.Equal("cad_default", (string?)gltf["materials"]![(int)primitive["material"]!]!["name"]);
+    }
+
+    [Fact]
+    public void ColouredOutputIsDeterministic()
+    {
+        Assert.Equal(Glb(Coloured("#336699", "#ABCDEF")), Glb(Coloured("#336699", "#ABCDEF")));
+        Assert.NotEqual(Glb(Coloured("#336699", null)), Glb(Coloured(null, null)));
+    }
+}
+
 public sealed class MeshPayloadTests
 {
     [Fact]

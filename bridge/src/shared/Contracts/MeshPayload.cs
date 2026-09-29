@@ -21,6 +21,17 @@ public static class MeshPayload
         public int FirstIndex { get; set; }
         public int IndexCount { get; set; }
         public string? Surface { get; set; }
+        /// <summary>Effective appearance colour, sRGB hex "#RRGGBB", or null when unknown.</summary>
+        public string? Color { get; set; }
+    }
+
+    /// <summary>Normalises "#RRGGBB" (case-insensitive) to upper case; anything else gives null.</summary>
+    public static string? NormalizeColor(string? value)
+    {
+        if (value == null || value.Length != 7 || value[0] != '#') return null;
+        for (int i = 1; i < 7; i++)
+            if (!Uri.IsHexDigit(value[i])) return null;
+        return value.ToUpperInvariant();
     }
 
     public sealed class Body
@@ -93,13 +104,18 @@ public static class MeshPayload
         ["positions"] = EncodeFloats(body.Positions),
         ["normals"] = EncodeFloats(body.Normals),
         ["indices"] = EncodeIndices(body.Indices),
-        ["faces"] = new JArray(body.Faces.Select(f => new JObject
+        ["faces"] = new JArray(body.Faces.Select(f =>
         {
-            ["face_id"] = f.FaceId,
-            ["ordinal"] = f.Ordinal,
-            ["first_index"] = f.FirstIndex,
-            ["index_count"] = f.IndexCount,
-            ["surface"] = f.Surface,
+            var face = new JObject
+            {
+                ["face_id"] = f.FaceId,
+                ["ordinal"] = f.Ordinal,
+                ["first_index"] = f.FirstIndex,
+                ["index_count"] = f.IndexCount,
+                ["surface"] = f.Surface,
+            };
+            if (f.Color != null) face["color"] = f.Color;
+            return face;
         })),
     };
 
@@ -131,6 +147,7 @@ public static class MeshPayload
                 FirstIndex = (int?)f["first_index"] ?? 0,
                 IndexCount = (int?)f["index_count"] ?? 0,
                 Surface = (string?)f["surface"],
+                Color = NormalizeColor(f["color"]?.Type == JTokenType.String ? (string?)f["color"] : null),
             };
             if (range.FirstIndex < 0 || range.IndexCount < 0 || range.IndexCount % 3 != 0 ||
                 range.FirstIndex + range.IndexCount > body.Indices.Length)

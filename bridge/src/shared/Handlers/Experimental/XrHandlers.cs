@@ -40,6 +40,7 @@ public sealed class GetDisplayMeshHandler : ExperimentalHandler
         bool withIds = faceIds && totalFaces <= MaxFaceIds;
 
         var bodies = new JArray();
+        var colorCache = new Dictionary<string, string?>();
         int triangles = 0;
         int bodyIndex = 0;
         foreach (SurfaceBody body in def.SurfaceBodies)
@@ -50,6 +51,7 @@ public sealed class GetDisplayMeshHandler : ExperimentalHandler
             var indices = new List<uint>();
             var mesh = new MeshPayload.Body { Index = bodyIndex, Name = body.Name, Visible = body.Visible };
             int ordinal = 0;
+            string? bodyColor = AppearanceColor(body, colorCache);
             foreach (Face face in body.Faces)
             {
                 ordinal++;
@@ -82,6 +84,7 @@ public sealed class GetDisplayMeshHandler : ExperimentalHandler
                     FirstIndex = first,
                     IndexCount = facetCount * 3,
                     Surface = face.SurfaceType.ToString(),
+                    Color = AppearanceColor(face, colorCache) ?? bodyColor,
                 });
             }
             mesh.Positions = positions.ToArray();
@@ -105,6 +108,39 @@ public sealed class GetDisplayMeshHandler : ExperimentalHandler
             ["bodies"] = bodies,
         };
     }
+
+    /// <summary>
+    /// Effective appearance colour ("#RRGGBB", sRGB) of a face or body, or null. Cosmetic only, so it
+    /// never throws. NOT YET VERIFIED LIVE: the Appearance / Asset / "generic_diffuse" ColorAssetValue
+    /// path is late bound (dynamic) because the interop signatures are unconfirmed; a wrong guess
+    /// just yields null (grey) instead of failing the mesh. Cached per asset name.
+    /// </summary>
+    private static string? AppearanceColor(object entity, Dictionary<string, string?> cache)
+    {
+        try
+        {
+            dynamic appearance = ((dynamic)entity).Appearance;
+            if (appearance == null) return null;
+            string key;
+            try { key = (string)appearance.InternalName; }
+            catch { try { key = (string)appearance.DisplayName; } catch { key = ""; } }
+            if (key.Length > 0 && cache.TryGetValue(key, out var cached)) return cached;
+            string? hex = null;
+            try
+            {
+                dynamic value = appearance.Item("generic_diffuse");
+                dynamic color = value.Value;
+                int r = (int)color.Red, g = (int)color.Green, b = (int)color.Blue;
+                hex = "#" + Clamp(r).ToString("X2") + Clamp(g).ToString("X2") + Clamp(b).ToString("X2");
+            }
+            catch { hex = null; }
+            if (key.Length > 0) cache[key] = hex;
+            return hex;
+        }
+        catch { return null; }
+    }
+
+    private static int Clamp(int v) => v < 0 ? 0 : v > 255 ? 255 : v;
 }
 
 /// <summary>

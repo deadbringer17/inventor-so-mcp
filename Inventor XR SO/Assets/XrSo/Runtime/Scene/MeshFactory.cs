@@ -20,7 +20,31 @@ namespace InventorXrSo.Unity.Scene
             for (int i = 0; i < ints.Length; i++) ints[i] = (int)indices[i];
             mesh.SetIndices(ints, MeshTopology.Triangles, 0, true);
             if (normals.Length != positions.Length) mesh.RecalculateNormals();
+            mesh.SetColors(VertexColors(primitive.Colors, mesh.vertexCount));
             return mesh;
+        }
+
+        /// <summary>The CadBody material reads vertex colour, so every mesh carries one: the file's COLOR_0 (linear) or the default grey.</summary>
+        internal static readonly Color DefaultColor = new Color(0.72f, 0.74f, 0.77f, 1f);
+
+        internal static Color[] VertexColors(float[] rgba, int vertexCount)
+        {
+            bool linear = QualitySettings.activeColorSpace == ColorSpace.Linear;
+            var colors = new Color[vertexCount];
+            if (rgba != null && rgba.Length == vertexCount * 4)
+            {
+                for (int i = 0; i < colors.Length; i++)
+                {
+                    // glTF COLOR_0 is linear; in Gamma colour space the shader output is not converted, so go to gamma.
+                    var c = new Color(rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2], rgba[i * 4 + 3]);
+                    colors[i] = linear ? c : c.gamma;
+                }
+                return colors;
+            }
+            // Same look the CadBody material had: _BaseColor is authored in gamma and uploaded as linear.
+            var fallback = linear ? DefaultColor.linear : DefaultColor;
+            for (int i = 0; i < colors.Length; i++) colors[i] = fallback;
+            return colors;
         }
 
         /// <summary>The triangles of one face over the same vertices, for the highlight overlay.</summary>

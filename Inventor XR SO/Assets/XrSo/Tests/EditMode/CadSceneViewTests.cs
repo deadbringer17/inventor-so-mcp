@@ -51,6 +51,32 @@ namespace InventorXrSo.Tests
         }
 
         [Test]
+        public void MeshWithoutColor0GetsTheDefaultGreyNeverWhite()
+        {
+            var mesh = MeshFactory.Build(GlbModel.Parse(File.ReadAllBytes(CoreInUnityTests.BoltFixture)).Primitives[0]);
+            var colors = mesh.colors;
+            Assert.AreEqual(mesh.vertexCount, colors.Length);
+            var expected = QualitySettings.activeColorSpace == ColorSpace.Linear ? MeshFactory.DefaultColor.linear : MeshFactory.DefaultColor;
+            Assert.AreEqual(expected.r, colors[0].r, 1e-3f);
+            Assert.AreEqual(expected.b, colors[0].b, 1e-3f);
+            Assert.Less(colors[0].r, 0.99f);
+        }
+
+        [Test]
+        public void Color0IsCopiedToMeshVertexColorsAsIs()
+        {
+            var bolt = GlbModel.Parse(File.ReadAllBytes(CoreInUnityTests.BoltFixture)).Primitives[0];
+            var rgba = new float[bolt.Positions.Length / 3 * 4];
+            for (int i = 0; i < rgba.Length; i += 4) { rgba[i] = 1f; rgba[i + 1] = 0.2f; rgba[i + 2] = 0.1f; rgba[i + 3] = 1f; }
+            var primitive = new GlbPrimitive(bolt.BodyIndex, bolt.BodyName, true, bolt.Positions, bolt.Normals, bolt.Indices, bolt.Faces, rgba);
+            var colors = MeshFactory.Build(primitive).colors;
+            var expected = new Color(1f, 0.2f, 0.1f, 1f);
+            if (QualitySettings.activeColorSpace != ColorSpace.Linear) expected = expected.gamma;
+            Assert.AreEqual(expected.g, colors[5].g, 1e-3f);
+            Assert.AreEqual(expected.b, colors[5].b, 1e-3f);
+        }
+
+        [Test]
         public void EveryOccurrenceIsPlacedAndInstancesShareTheMesh()
         {
             var view = View();
