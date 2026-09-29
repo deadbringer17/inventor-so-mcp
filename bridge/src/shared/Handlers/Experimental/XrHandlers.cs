@@ -111,9 +111,10 @@ public sealed class GetDisplayMeshHandler : ExperimentalHandler
 
     /// <summary>
     /// Effective appearance colour ("#RRGGBB", sRGB) of a face or body, or null. Cosmetic only, so it
-    /// never throws. NOT YET VERIFIED LIVE: the Appearance / Asset / "generic_diffuse" ColorAssetValue
-    /// path is late bound (dynamic) because the interop signatures are unconfirmed; a wrong guess
-    /// just yields null (grey) instead of failing the mesh. Cached per asset name.
+    /// never throws. Appearance assets are schema specific (verified live on 2027: wallpaint_color,
+    /// plasticvinyl_color, ...; there is no generic_diffuse), so the asset's colour values are scanned
+    /// and the diffuse-like one is picked by <see cref="ColorPriority"/>. Late bound (dynamic); a wrong
+    /// guess yields null (grey) instead of failing the mesh. Cached per asset display name.
     /// </summary>
     private static string? AppearanceColor(object entity, Dictionary<string, string?> cache)
     {
@@ -121,23 +122,48 @@ public sealed class GetDisplayMeshHandler : ExperimentalHandler
         {
             dynamic appearance = ((dynamic)entity).Appearance;
             if (appearance == null) return null;
-            string key;
-            try { key = (string)appearance.InternalName; }
-            catch { try { key = (string)appearance.DisplayName; } catch { key = ""; } }
+            string key = "";
+            try { key = (string)appearance.DisplayName + "|" + (string)appearance.Name; } catch { }
             if (key.Length > 0 && cache.TryGetValue(key, out var cached)) return cached;
             string? hex = null;
             try
             {
-                dynamic value = appearance.Item("generic_diffuse");
-                dynamic color = value.Value;
-                int r = (int)color.Red, g = (int)color.Green, b = (int)color.Blue;
-                hex = "#" + Clamp(r).ToString("X2") + Clamp(g).ToString("X2") + Clamp(b).ToString("X2");
+                const int colourType = 99335;   // colour asset value type (verified live on 2027)
+                int best = int.MaxValue, count = (int)appearance.Count;
+                for (int i = 1; i <= count; i++)
+                {
+                    try
+                    {
+                        dynamic value = appearance.Item(i);
+                        if ((int)value.ValueType != colourType) continue;
+                        int priority = ColorPriority((string)value.Name);
+                        if (priority >= best) continue;
+                        dynamic color = value.Value;
+                        int r = (int)color.Red, g = (int)color.Green, b = (int)color.Blue;
+                        hex = "#" + Clamp(r).ToString("X2") + Clamp(g).ToString("X2") + Clamp(b).ToString("X2");
+                        best = priority;
+                    }
+                    catch { /* one unreadable value must not hide the others */ }
+                }
             }
             catch { hex = null; }
             if (key.Length > 0) cache[key] = hex;
             return hex;
         }
         catch { return null; }
+    }
+
+    /// <summary>Lower is better; int.MaxValue = not a diffuse colour (tint, colour space, by-object flag).</summary>
+    internal static int ColorPriority(string? name)
+    {
+        if (string.IsNullOrEmpty(name)) return int.MaxValue;
+        var n = name!.ToLowerInvariant();
+        if (n.StartsWith("common_") || n.Contains("colorspace") || n.Contains("by_object")) return int.MaxValue;
+        if (n == "generic_diffuse") return 0;
+        if (n.EndsWith("_color")) return 1;
+        if (n.EndsWith("_f0")) return 2;
+        if (n.Contains("diffuse") || n.Contains("color")) return 3;
+        return int.MaxValue;
     }
 
     private static int Clamp(int v) => v < 0 ? 0 : v > 255 ? 255 : v;
