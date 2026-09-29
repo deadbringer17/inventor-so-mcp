@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text;
 using Bimwright.Ipt.Server.Assets;
 using Bimwright.Ipt.Tests;
@@ -112,6 +113,79 @@ public class GlbModelTests
             ((JObject)json["accessors"][indicesAccessor])["type"] = "VEC3";
         });
         Assert.Throws<FormatException>(() => GlbModel.Parse(glb));
+    }
+
+    /// <summary>One triangle with POSITION and, optionally, a COLOR_0 accessor of the given glTF type (float32).</summary>
+    private static byte[] TriangleGlb(string colorType, float[] colors, int colorComponentType = 5126)
+    {
+        var positions = new float[] { 0, 0, 0, 1, 0, 0, 0, 1, 0 };
+        var bin = new List<byte>();
+        foreach (var f in positions) bin.AddRange(BitConverter.GetBytes(f));
+        int colorOffset = bin.Count;
+        if (colors != null) foreach (var f in colors) bin.AddRange(BitConverter.GetBytes(f));
+        while (bin.Count % 4 != 0) bin.Add(0);
+        var attributes = new JObject { ["POSITION"] = 0 };
+        var accessors = new JArray { new JObject { ["bufferView"] = 0, ["componentType"] = 5126, ["count"] = 3, ["type"] = "VEC3" } };
+        var views = new JArray { new JObject { ["buffer"] = 0, ["byteOffset"] = 0, ["byteLength"] = 36 } };
+        if (colors != null)
+        {
+            attributes["COLOR_0"] = 1;
+            accessors.Add(new JObject { ["bufferView"] = 1, ["componentType"] = colorComponentType, ["count"] = 3, ["type"] = colorType });
+            views.Add(new JObject { ["buffer"] = 0, ["byteOffset"] = colorOffset, ["byteLength"] = colors.Length * 4 });
+        }
+        var json = new JObject
+        {
+            ["asset"] = new JObject { ["version"] = "2.0" },
+            ["buffers"] = new JArray { new JObject { ["byteLength"] = bin.Count } },
+            ["bufferViews"] = views,
+            ["accessors"] = accessors,
+            ["meshes"] = new JArray { new JObject { ["name"] = "tri", ["primitives"] = new JArray { new JObject { ["attributes"] = attributes } } } },
+        };
+        var jsonBytes = new List<byte>(Encoding.UTF8.GetBytes(json.ToString(Formatting.None)));
+        while (jsonBytes.Count % 4 != 0) jsonBytes.Add(0x20);
+        var glb = new List<byte>();
+        glb.AddRange(BitConverter.GetBytes(0x46546C67u));
+        glb.AddRange(BitConverter.GetBytes(2u));
+        glb.AddRange(BitConverter.GetBytes((uint)(12 + 8 + jsonBytes.Count + 8 + bin.Count)));
+        glb.AddRange(BitConverter.GetBytes((uint)jsonBytes.Count));
+        glb.AddRange(BitConverter.GetBytes(0x4E4F534Au));
+        glb.AddRange(jsonBytes);
+        glb.AddRange(BitConverter.GetBytes((uint)bin.Count));
+        glb.AddRange(BitConverter.GetBytes(0x004E4942u));
+        glb.AddRange(bin);
+        return glb.ToArray();
+    }
+
+    [Fact]
+    public void ReadsColor0Vec4ExactlyAsLinearRgba()
+    {
+        var rgba = new float[] { 1, 0, 0, 1, 0.25f, 0.5f, 0.75f, 0.5f, 0, 0, 1, 1 };
+        var primitive = Assert.Single(GlbModel.Parse(TriangleGlb("VEC4", rgba)).Primitives);
+        Assert.Equal(rgba, primitive.Colors);
+    }
+
+    [Fact]
+    public void Color0Vec3GetsOpaqueAlpha()
+    {
+        var primitive = Assert.Single(GlbModel.Parse(TriangleGlb("VEC3", new float[] { 1, 0, 0, 0, 1, 0, 0, 0, 1 })).Primitives);
+        Assert.Equal(new float[] { 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1 }, primitive.Colors);
+    }
+
+    [Fact]
+    public void MissingColor0GivesEmptyColors()
+    {
+        Assert.Empty(GlbModel.Parse(BoltGlb()).Primitives[0].Colors);
+        Assert.Empty(Assert.Single(GlbModel.Parse(TriangleGlb(null, null)).Primitives).Colors);
+    }
+
+    [Fact]
+    public void UnsupportedColor0IsIgnoredNotFatal()
+    {
+        // wrong accessor type, and a non-float component type: geometry still loads, colours are dropped
+        Assert.Empty(Assert.Single(GlbModel.Parse(TriangleGlb("SCALAR", new float[] { 1, 2, 3 })).Primitives).Colors);
+        var normalised = Assert.Single(GlbModel.Parse(TriangleGlb("VEC4", new float[12], 5121)).Primitives);
+        Assert.Empty(normalised.Colors);
+        Assert.Equal(9, normalised.Positions.Length);
     }
 
     /// <summary>

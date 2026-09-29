@@ -141,6 +141,11 @@ namespace InventorXrSo.Editor
             foreach (var name in new[] { "CadBody", "OccurrenceHighlight" })
             {
                 var material = AssetDatabase.LoadAssetAtPath<Material>(MaterialsFolder + "/" + name + ".mat");
+                if (material != null && name == "CadBody" && material.HasProperty("_UseVertexColor"))
+                {
+                    material.SetFloat("_UseVertexColor", 1f);   // body colour comes from the GLB COLOR_0 (default grey when absent)
+                    EditorUtility.SetDirty(material);
+                }
                 if (material == null || material.shader == shader) continue;
                 var color = material.GetColor("_BaseColor");
                 material.shader = shader;

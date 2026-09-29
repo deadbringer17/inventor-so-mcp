@@ -51,6 +51,7 @@ namespace InventorXrSo.Unity.Scene
             _view = view; _head = head;
             _material = new Material(view.BodyMaterial) { name = "Flat pattern (view only)" };
             _material.SetColor("_BaseColor", new Color(0.95f, 0.7f, 0.25f, 1f));
+            _material.SetFloat("_UseVertexColor", 0f);   // flat pattern keeps its own colour
             _label = UiFactory.WorldCanvas(transform, "Etichetta sviluppo", new Vector2(560, 210));
             _label.transform.localScale = Vector3.one * LabelScale;
             _labelBackground = UiFactory.Panel(_label.transform, "Background", Normal).GetComponent<Image>();

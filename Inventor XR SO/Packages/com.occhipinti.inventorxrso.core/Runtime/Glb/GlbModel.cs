@@ -9,8 +9,9 @@ namespace InventorXrSo.Core.Glb
 {
     public sealed class GlbPrimitive
     {
-        public GlbPrimitive(int bodyIndex, string bodyName, bool visible, float[] positions, float[] normals, uint[] indices, IReadOnlyList<FaceRange> faces)
+        public GlbPrimitive(int bodyIndex, string bodyName, bool visible, float[] positions, float[] normals, uint[] indices, IReadOnlyList<FaceRange> faces, float[] colors = null)
         {
+            Colors = colors ?? new float[0];
             BodyIndex = bodyIndex;
             BodyName = bodyName;
             Visible = visible;
@@ -27,6 +28,8 @@ namespace InventorXrSo.Core.Glb
         /// <summary>xyz triples, metres, glTF (right-handed, Y up).</summary>
         public float[] Positions { get; }
         public float[] Normals { get; }
+        /// <summary>Optional per-vertex glTF COLOR_0 as rgba float quadruples, linear colour space. Empty when absent.</summary>
+        public float[] Colors { get; }
         public uint[] Indices { get; }
         public IReadOnlyList<FaceRange> Faces { get; }
         public FaceMap FaceMap { get; }
@@ -78,6 +81,7 @@ namespace InventorXrSo.Core.Glb
                 var attributes = p["attributes"] as JObject ?? throw new FormatException("Primitive without attributes.");
                 var positions = ReadFloats(gltf, bin, (int?)attributes["POSITION"] ?? throw new FormatException("Primitive without POSITION."), "VEC3");
                 var normals = attributes["NORMAL"] == null ? new float[0] : ReadFloats(gltf, bin, (int)attributes["NORMAL"], "VEC3");
+                var colors = ReadColors(gltf, bin, attributes["COLOR_0"], positions.Length / 3);
                 var indices = p["indices"] == null
                     ? Enumerable.Range(0, positions.Length / 3).Select(i => (uint)i).ToArray()
                     : ReadIndices(gltf, bin, (int)p["indices"]);
@@ -87,7 +91,7 @@ namespace InventorXrSo.Core.Glb
                     .ToList();
                 primitives.Add(new GlbPrimitive((int?)extras["body_index"] ?? primitives.Count + 1,
                     (string)extras["body_name"] ?? (string)mesh["name"] ?? "body", (bool?)extras["visible"] ?? true,
-                    positions, normals, indices, faces));
+                    positions, normals, indices, faces, colors));
             }
             return new GlbModel((string)gltf["asset"]?["extras"]?["document_id"], primitives);
         }
@@ -127,6 +131,35 @@ namespace InventorXrSo.Core.Glb
             int start = ((int?)view["byteOffset"] ?? 0) + ((int?)accessor["byteOffset"] ?? 0);
             if (start < 0 || start + count * size > bin.Length) throw new FormatException("Accessor " + accessorIndex + " runs past the BIN chunk.");
             return (bin.Offset + start, count, componentType);
+        }
+
+        /// <summary>COLOR_0 is optional and cosmetic: anything but float VEC4/VEC3 of the right count is ignored, never fatal.</summary>
+        private static float[] ReadColors(JObject gltf, Bin bin, JToken attribute, int vertexCount)
+        {
+            if (attribute == null) return new float[0];
+            try
+            {
+                int index = (int)attribute;
+                var accessor = ResolveAccessor(gltf, index);
+                string type = (string)accessor["type"];
+                if ((int?)accessor["componentType"] != 5126 || (type != "VEC4" && type != "VEC3")) return new float[0];
+                if ((int?)accessor["count"] != vertexCount) return new float[0];
+                int components = type == "VEC4" ? 4 : 3;
+                var (start, count, _) = Locate(gltf, bin, index, components);
+                var raw = new float[count];
+                Buffer.BlockCopy(bin.Bytes, start, raw, 0, count * 4);
+                if (components == 4) return raw;
+                var rgba = new float[vertexCount * 4];
+                for (int i = 0; i < vertexCount; i++)
+                {
+                    rgba[i * 4] = raw[i * 3]; rgba[i * 4 + 1] = raw[i * 3 + 1]; rgba[i * 4 + 2] = raw[i * 3 + 2]; rgba[i * 4 + 3] = 1f;
+                }
+                return rgba;
+            }
+            catch (Exception ex) when (ex is FormatException || ex is NotSupportedException || ex is InvalidCastException || ex is ArgumentException)
+            {
+                return new float[0];
+            }
         }
 
         private static float[] ReadFloats(JObject gltf, Bin bin, int accessorIndex, string type)

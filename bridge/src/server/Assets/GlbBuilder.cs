@@ -99,6 +99,16 @@ public static class GlbBuilder
                         ["count"] = body.Normals.Length / 3, ["type"] = "VEC3",
                     });
                 }
+                bool coloured = body.Faces.Any(f => MeshPayload.NormalizeColor(f.Color) != null);
+                if (coloured)
+                {
+                    attributes["COLOR_0"] = accessors.Count;
+                    accessors.Add(new JObject
+                    {
+                        ["bufferView"] = AddView(Bytes(VertexColors(body)), 34962), ["componentType"] = 5126,
+                        ["count"] = body.Positions.Length / 3, ["type"] = "VEC4",
+                    });
+                }
                 int indexAccessor = accessors.Count;
                 accessors.Add(new JObject
                 {
@@ -107,7 +117,7 @@ public static class GlbBuilder
                 });
                 primitives.Add(new JObject
                 {
-                    ["attributes"] = attributes, ["indices"] = indexAccessor, ["mode"] = 4, ["material"] = 0,
+                    ["attributes"] = attributes, ["indices"] = indexAccessor, ["mode"] = 4, ["material"] = coloured ? 1 : 0,
                     ["extras"] = new JObject
                     {
                         ["body_index"] = body.Index, ["body_name"] = body.Name, ["visible"] = body.Visible,
@@ -150,14 +160,25 @@ public static class GlbBuilder
             ["scene"] = 0,
             ["scenes"] = new JArray(new JObject { ["nodes"] = new JArray(roots.Cast<object>().ToArray()) }),
             ["nodes"] = gltfNodes,
-            ["materials"] = new JArray(new JObject
-            {
-                ["name"] = "cad_default",
-                ["pbrMetallicRoughness"] = new JObject
+            // Material 1 serves primitives with COLOR_0: glTF multiplies the vertex colour into
+            // baseColorFactor, and the default grey is already baked into the vertex colours.
+            ["materials"] = new JArray(
+                new JObject
                 {
-                    ["baseColorFactor"] = new JArray(0.72, 0.74, 0.77, 1.0), ["metallicFactor"] = 0.1, ["roughnessFactor"] = 0.6,
+                    ["name"] = "cad_default",
+                    ["pbrMetallicRoughness"] = new JObject
+                    {
+                        ["baseColorFactor"] = new JArray(0.72, 0.74, 0.77, 1.0), ["metallicFactor"] = 0.1, ["roughnessFactor"] = 0.6,
+                    },
                 },
-            }),
+                new JObject
+                {
+                    ["name"] = "cad_vertex_color",
+                    ["pbrMetallicRoughness"] = new JObject
+                    {
+                        ["baseColorFactor"] = new JArray(1.0, 1.0, 1.0, 1.0), ["metallicFactor"] = 0.1, ["roughnessFactor"] = 0.6,
+                    },
+                }),
         };
         if (keptMeshes.Count > 0)
         {
@@ -215,6 +236,44 @@ public static class GlbBuilder
         var bytes = new byte[values.Length * 4];
         Buffer.BlockCopy(values, 0, bytes, 0, bytes.Length);
         return bytes;
+    }
+
+    private static float SrgbToLinear(double c) =>
+        (float)(c <= 0.04045 ? c / 12.92 : Math.Pow((c + 0.055) / 1.055, 2.4));
+
+    /// <summary>
+    /// Per-vertex linear RGBA. Faces are tessellated separately, so each vertex belongs to the
+    /// face range whose indices reference it; uncoloured or unreferenced vertices get the default grey.
+    /// </summary>
+    private static float[] VertexColors(MeshPayload.Body body)
+    {
+        int vertexCount = body.Positions.Length / 3;
+        var result = new float[vertexCount * 4];
+        var defaultLinear = new[]
+        {
+            SrgbToLinear(0.72), SrgbToLinear(0.74), SrgbToLinear(0.77),
+        };
+        for (int v = 0; v < vertexCount; v++)
+        {
+            result[v * 4] = defaultLinear[0]; result[v * 4 + 1] = defaultLinear[1];
+            result[v * 4 + 2] = defaultLinear[2]; result[v * 4 + 3] = 1f;
+        }
+        foreach (var face in body.Faces)
+        {
+            var hex = MeshPayload.NormalizeColor(face.Color);
+            if (hex == null) continue;
+            float r = SrgbToLinear(Convert.ToInt32(hex.Substring(1, 2), 16) / 255.0);
+            float g = SrgbToLinear(Convert.ToInt32(hex.Substring(3, 2), 16) / 255.0);
+            float b = SrgbToLinear(Convert.ToInt32(hex.Substring(5, 2), 16) / 255.0);
+            int end = Math.Min(face.FirstIndex + face.IndexCount, body.Indices.Length);
+            for (int i = Math.Max(0, face.FirstIndex); i < end; i++)
+            {
+                int v = (int)body.Indices[i];
+                if (v >= vertexCount) continue;
+                result[v * 4] = r; result[v * 4 + 1] = g; result[v * 4 + 2] = b;
+            }
+        }
+        return result;
     }
 
     /// <summary>glTF requires unit-length normals; CAD facet normals are usually unit but not guaranteed.</summary>
