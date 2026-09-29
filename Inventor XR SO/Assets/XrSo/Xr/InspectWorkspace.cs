@@ -8,6 +8,7 @@ using InventorXrSo.Core.Backend;
 using InventorXrSo.Core.Mcp;
 using InventorXrSo.Core.Selection;
 using InventorXrSo.Core.Session;
+using InventorXrSo.Core.Voice;
 using InventorXrSo.Unity.Scene;
 using InventorXrSo.Unity.Ui;
 using UnityEngine;
@@ -462,6 +463,21 @@ namespace InventorXrSo.Xr
                     button.interactable = _online && !_busy;
             }
         }
+        /// <summary>
+        /// Voice surface: Misura mirrors the "Misura" button (always available while Inspect is shown). "Isola" has no
+        /// button or backend path yet, so it stays disabled.
+        /// </summary>
+        public bool VoiceActive => _visible && !DesignActive && _panel != null && _measure != null;
+
+        public bool IsEnabled(string commandId) => commandId == CommandIds.Measure && VoiceActive && _screen != "numeric";
+
+        public bool Invoke(string commandId)
+        {
+            if (!IsEnabled(commandId)) return false;
+            BeginMeasure();
+            return true;
+        }
+
         private void BeginMeasure()
         {
             _measure.Begin(); _notice = ""; _modeText.text = "MISURA • punto 1"; Open("measure");

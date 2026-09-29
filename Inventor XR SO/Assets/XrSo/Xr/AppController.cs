@@ -48,6 +48,7 @@ namespace InventorXrSo.Xr
         private AssemblyWorkspace _assembly;
         private LamieraWorkspace _lamiera;
         private VoiceRig _voice;
+        private WorkspaceVoiceTarget _voiceTarget;
 
         public void Configure(CadSceneView view, SelectionVisuals visuals, ControllerRay controllerRay, EnvironmentModeController env, Transform centerEye, QrScanner scanner)
         {
@@ -253,9 +254,11 @@ namespace InventorXrSo.Xr
             _design.Bind(backend);
             _assembly.Bind(backend);
             _lamiera.Bind(backend, backend);
-            // Voice reuses the backend's transport and the paired server; M5 exposes only the Lamiera surface.
+            // Voice reuses the backend's transport and the paired server; every workspace exposes its command surface.
+            _voiceTarget = WorkspaceVoiceTarget.ForWorkspaces(_lamiera, _design, _assembly, _inspect);
+            _voiceTarget.InSession = _inSession;
             _voice = VoiceRig.Create(head.parent, head, head.GetComponent<Camera>(), transport, _server,
-                WorkspaceVoiceTarget.ForLamiera(_lamiera), ray.Controller);
+                _voiceTarget, ray.Controller);
             _selection.Changed += selectionVisuals.Show;
             _session.StatusChanged += OnStatusChanged;
             _session.SceneLoaded += OnSceneLoaded;
@@ -322,6 +325,7 @@ namespace InventorXrSo.Xr
         private void ShowHome()
         {
             _inSession = false;
+            if (_voiceTarget != null) _voiceTarget.InSession = false;
             _inspect?.SetVisible(false);
             _design?.SetVisible(false);
             _assembly?.SetVisible(false);
@@ -341,6 +345,7 @@ namespace InventorXrSo.Xr
         {
             environment.Set(mode);
             _inSession = true;
+            if (_voiceTarget != null) _voiceTarget.InSession = true;
             _home.gameObject.SetActive(false);
             _badge.gameObject.SetActive(true);
             sceneView.gameObject.SetActive(true);

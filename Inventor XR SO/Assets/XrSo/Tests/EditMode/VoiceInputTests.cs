@@ -91,6 +91,30 @@ namespace InventorXrSo.Tests
         }
 
         [Test]
+        public void HoldingBWhenVoiceIsNotAcceptedNeverAsksPermissionNorOpensTheMicrophone()
+        {
+            bool accepts = false; int refused = 0;
+            _controller.Dispose();
+            _controller = new PushToTalkController(new Recognizer(), new VoiceCommandRouter(), new Availability(), clock: () => _now, canCapture: () => accepts);
+            _controller.StartCapture += () => _starts++;
+            _controller.CaptureRefused += () => refused++;
+            _input.Bind(_controller, _source, _permission);
+            _permission.IsGranted = false;
+            Frame(down: true, held: true);
+            Frame(held: true, advanceMs: 300);
+            Assert.AreEqual(0, _permission.Requests);
+            Assert.AreEqual(0, _starts);
+            Assert.AreEqual(1, refused);
+            Assert.AreEqual(PushToTalkState.Idle, _controller.State);
+            // Releasing and pressing again once voice is accepted works normally.
+            Frame(held: false);
+            accepts = true; _permission.IsGranted = true;
+            Frame(down: true, held: true);
+            Frame(held: true, advanceMs: 200);
+            Assert.AreEqual(1, _starts);
+        }
+
+        [Test]
         public void AQuickTapNeverOpensTheMicrophone()
         {
             Frame(down: true, held: true);

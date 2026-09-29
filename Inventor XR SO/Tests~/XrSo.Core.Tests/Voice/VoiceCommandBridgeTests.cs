@@ -13,6 +13,8 @@ namespace XrSo.Core.Tests.Voice
             public HashSet<string> Enabled = new HashSet<string>();
             public List<string> Invoked = new List<string>();
             public bool InvokeResult = true;
+            public bool Accepts = true;
+            public bool AcceptsVoice => Accepts;
             public int ApplyShown;
             public DictationField Field;
             public Dictionary<string, double> Fields = new Dictionary<string, double>();
@@ -282,6 +284,37 @@ namespace XrSo.Core.Tests.Voice
             Speak(b, "annulla"); b.Pump();
             Assert.True(b.ConfirmPendingAny());
             Assert.Equal(new[] { CommandIds.Undo }, _target.Invoked);
+        }
+
+        [Fact]
+        public void Press_is_refused_without_opening_the_microphone_when_voice_is_not_accepted()
+        {
+            using var b = Make();
+            _target.Accepts = false;
+            int starts = 0, refused = 0;
+            b.Controller.StartCapture += () => starts++;
+            b.Controller.CaptureRefused += () => refused++;
+            Assert.False(b.Controller.CanCapture);
+            b.Controller.Press(); _now += TimeSpan.FromMilliseconds(500); b.Controller.Tick();
+            Assert.Equal(PushToTalkState.Idle, b.Controller.State);
+            Assert.False(b.Controller.MicrophoneOpen);
+            Assert.Equal(0, starts);
+            Assert.Equal(1, refused);
+            Assert.Equal("Voce disponibile solo in sessione", VoiceCommandBridge.NotInSessionText);
+        }
+
+        [Fact]
+        public void Press_works_again_once_the_target_accepts_voice()
+        {
+            using var b = Make();
+            _target.Accepts = false;
+            b.Controller.Press();
+            Assert.Equal(PushToTalkState.Idle, b.Controller.State);
+            _target.Accepts = true;
+            Assert.True(b.Controller.CanCapture);
+            b.Controller.Press(); _now += TimeSpan.FromMilliseconds(200); b.Controller.Tick();
+            Assert.Equal(PushToTalkState.Listening, b.Controller.State);
+            Assert.True(b.Controller.MicrophoneOpen);
         }
     }
 }

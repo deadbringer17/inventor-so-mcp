@@ -37,6 +37,7 @@ namespace InventorXrSo.Xr.Voice
             rig.Capture.Sink = controller.AppendAudio;
             controller.StartCapture += rig.OpenMicrophone;
             controller.StopCapture += rig.Capture.Close;
+            controller.CaptureRefused += () => rig.Panel.ShowNotice(VoiceCommandBridge.NotInSessionText + ".");
             rig.Capture.OpenFailed += () =>
             {
                 controller.Interrupt(VoiceInterruption.Disconnected);   // chiude tutto senza messaggi fuorvianti

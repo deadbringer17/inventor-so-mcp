@@ -27,6 +27,9 @@ namespace InventorXrSo.Core.Voice
     /// </summary>
     public sealed class VoiceCommandBridge : ICommandAvailability, IDisposable
     {
+        /// <summary>Testo mostrato quando si preme il push-to-talk fuori sessione (Home).</summary>
+        public const string NotInSessionText = "Voce disponibile solo in sessione";
+
         private readonly IVoiceCommandTarget _target;
         private readonly VoiceCommandRouter _router = new VoiceCommandRouter();
         private readonly DictationTarget _dictation;
@@ -57,7 +60,7 @@ namespace InventorXrSo.Core.Voice
             if (recognizer == null) throw new ArgumentNullException(nameof(recognizer));
             _clock = clock ?? (() => DateTimeOffset.UtcNow);
             _dictation = new DictationTarget((id, v) => _target.SetField(id, v));
-            Controller = new PushToTalkController(recognizer, _router, this, _dictation, clock, armingThreshold, resultDisplayTime);
+            Controller = new PushToTalkController(recognizer, _router, this, _dictation, clock, armingThreshold, resultDisplayTime, () => _target.AcceptsVoice);
         }
 
         public CommandAvailability GetAvailability(string commandId)

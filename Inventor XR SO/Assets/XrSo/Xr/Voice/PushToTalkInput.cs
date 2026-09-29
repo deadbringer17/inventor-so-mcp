@@ -82,7 +82,13 @@ namespace InventorXrSo.Xr.Voice
                 if (_latched && !held) _latched = false;
                 if (down && !_latched && tracked && !_requesting)
                 {
-                    if (!_permission.IsGranted)
+                    if (!_controller.CanCapture)
+                    {
+                        // Home / nessuna sessione: ne microfono ne richiesta di permesso; serve rilasciare B prima di riprovare.
+                        _latched = true;
+                        _controller.RefuseCapture();
+                    }
+                    else if (!_permission.IsGranted)
                     {
                         _requesting = true;
                         _permission.Request(granted => Interlocked.Exchange(ref _permissionResult, granted ? 1 : 2));

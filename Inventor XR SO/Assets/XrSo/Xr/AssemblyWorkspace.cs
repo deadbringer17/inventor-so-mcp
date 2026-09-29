@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using InventorXrSo.Core.Backend;
 using InventorXrSo.Core.Session;
+using InventorXrSo.Core.Voice;
 using InventorXrSo.Unity.Scene;
 using InventorXrSo.Unity.Ui;
 using Newtonsoft.Json.Linq;
@@ -275,6 +276,41 @@ namespace InventorXrSo.Xr
             finally { if (generation == _generation) { _busy = false; Render(); } }
         }
         private void Cancel() { if (RequiresCadReview) return; _session?.Cancel(); Reset(); Load(); Render(); }
+        // ---------------------------------------------------------------- voice surface
+
+        private bool OnToolsPage => _screen != "components" && _screen != "references" && _screen != "constraints"
+            && _screen != "compatible" && _screen != "joints" && _screen != "move";
+        private bool VoiceEditable => Editable && !RequiresCadReview && !_numeric && _panel != null;
+
+        /// <summary>Same enablement as "Annulla comando", "Annulla/Ripeti modifica XR" and "Applica". Design-only commands stay disabled.</summary>
+        public bool IsEnabled(string commandId)
+        {
+            switch (commandId)
+            {
+                case CommandIds.CancelDraft: return VoiceEditable;
+                case CommandIds.Apply: return VoiceEditable && _session.CanApply;
+                case CommandIds.Undo: return VoiceEditable && OnToolsPage && _session.Status == DesignStatus.Empty && _history?.CanUndo == true;
+                case CommandIds.Redo: return VoiceEditable && OnToolsPage && _session.Status == DesignStatus.Empty && _history?.CanRedo == true;
+                default: return false;
+            }
+        }
+
+        /// <summary>Runs the command as its button would. Apply only shows a notice: the physical Applica commits.</summary>
+        public bool Invoke(string commandId)
+        {
+            if (!IsEnabled(commandId)) return false;
+            switch (commandId)
+            {
+                case CommandIds.CancelDraft: Cancel(); return true;
+                case CommandIds.Undo: History(false); return true;
+                case CommandIds.Redo: History(true); return true;
+                case CommandIds.Apply:
+                    _notice = "Anteprima verificata. Conferma premendo Applica sul pannello.";
+                    Render(); return true;
+                default: return false;
+            }
+        }
+
         private void Page(string screen) { _screen = screen; _page = 0; Render(); }
         private void Number(string label, double initial, Action<double> done)
         {

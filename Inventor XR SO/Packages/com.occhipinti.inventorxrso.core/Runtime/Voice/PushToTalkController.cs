@@ -33,6 +33,7 @@ namespace InventorXrSo.Core.Voice
         private readonly ICommandAvailability _availability;
         private readonly DictationTarget _dictation;
         private readonly Func<DateTimeOffset> _clock;
+        private readonly Func<bool> _canCapture;
         private CancellationTokenSource _cts;
         private short[] _buffer = new short[SampleRate];
         private int _count, _generation;
@@ -51,10 +52,14 @@ namespace InventorXrSo.Core.Voice
         /// <summary>Il layer Unity chiude il microfono. Una sola volta per cattura.</summary>
         public event Action StopCapture;
         public event Action Changed;
+        /// <summary>Pressione rifiutata perche la voce non e accettata (es. Home): il microfono non e stato aperto.</summary>
+        public event Action CaptureRefused;
 
         public PushToTalkController(ISpeechRecognizer recognizer, VoiceCommandRouter router, ICommandAvailability availability,
-            DictationTarget dictation = null, Func<DateTimeOffset> clock = null, TimeSpan? armingThreshold = null, TimeSpan? resultDisplayTime = null)
+            DictationTarget dictation = null, Func<DateTimeOffset> clock = null, TimeSpan? armingThreshold = null, TimeSpan? resultDisplayTime = null,
+            Func<bool> canCapture = null)
         {
+            _canCapture = canCapture;
             _recognizer = recognizer ?? throw new ArgumentNullException(nameof(recognizer));
             _router = router ?? throw new ArgumentNullException(nameof(router));
             _availability = availability ?? throw new ArgumentNullException(nameof(availability));
@@ -77,8 +82,15 @@ namespace InventorXrSo.Core.Voice
         public DictationProposal ProposedDictation { get { lock (_gate) return _dictationProposal; } }
         public int Generation { get { lock (_gate) return _generation; } }
 
+        /// <summary>Falso quando la voce non e accettata (Home, nessuna sessione): non si deve aprire ne chiedere il microfono.</summary>
+        public bool CanCapture => _canCapture == null || _canCapture();
+
+        /// <summary>Segnala all'utente che la pressione e stata rifiutata; nessuno stato cambia.</summary>
+        public void RefuseCapture() { CaptureRefused?.Invoke(); }
+
         public void Press()
         {
+            if (!CanCapture) { RefuseCapture(); return; }
             Action post = null;
             lock (_gate)
             {

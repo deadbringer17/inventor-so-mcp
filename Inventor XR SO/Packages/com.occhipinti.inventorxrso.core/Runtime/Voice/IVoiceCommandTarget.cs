@@ -21,6 +21,9 @@ namespace InventorXrSo.Core.Voice
     /// </summary>
     public interface IVoiceCommandTarget
     {
+        /// <summary>Falso in Home o senza sessione: il push-to-talk non apre il microfono.</summary>
+        bool AcceptsVoice { get; }
+
         /// <summary>Stessa abilitazione del pulsante manuale.</summary>
         bool IsEnabled(string commandId);
 

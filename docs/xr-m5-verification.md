@@ -59,22 +59,33 @@ Quest. Le evidenze sotto sono solo quelle eseguite davvero in quell'ambiente.
 
 ## Lacune note rispetto alla spec
 
-- Il mirror vocale di `Smusso`, `Raccordo`, `Misura`, `Isola` e `Crea schizzo`
-  (spec M5, sezione Voce) non è collegato: quei comandi vivono nei workspace
-  Design e Ispeziona, che non espongono ancora `IsEnabled`/`Invoke`.
-- La direzione del manipolatore flangia è stimata dalla geometria; il campo
-  numerico resta autorevole.
-- Non è verificato che il contesto Design restituisca gli spigoli liberi della
-  lamiera usati per selezionare i bordi della flangia.
-- Nella Home il microfono si può ancora aprire, ma nessun comando è
-  abilitato.
+- Il mirror vocale copre ora Lamiera, Design (`Crea schizzo`, `Raccordo`, `Smusso`,
+  Annulla/Ripeti, `Annulla comando`, `Applica` solo come avviso), Assembly
+  (Annulla/Ripeti, `Annulla comando`, `Applica` solo come avviso) e Ispeziona
+  (`Misura`). Resta aperto `Isola`: in Ispeziona non esiste alcun pulsante né
+  percorso backend, quindi il comando è disabilitato. Il codice è verificato
+  solo per lettura (Unity non disponibile): compilazione e collaudo su Quest
+  restano aperti.
+- La dettatura numerica in Design vale solo per il campo "Dimensione" della
+  pagina Estrusione/Raccordo/Smusso/Foro cieco; Assembly e Ispeziona usano
+  solo il tastierino modale.
+- La direzione del manipolatore flangia viene calibrata sulla preview
+  calcolata da Inventor (`FlangeDirection`). Se la preview è ambigua (flange
+  sotto circa 30°, forme a L con bracci simili all'altezza) resta la stima con
+  l'avviso "direzione stimata". Il campo numerico resta autorevole. Da
+  confermare su Inventor con datum esterno, interno e tangente.
+- Spigoli per la flangia: dalla lettura del codice, `get_design_context_xr`
+  restituisce tutti gli spigoli di ogni body della parte, lamiera compresa,
+  fino a 2000. Manca la conferma dal vivo.
+- Nella Home il push-to-talk è rifiutato (`AcceptsVoice`): nessun microfono né richiesta
+  di permesso, avviso "Voce disponibile solo in sessione". Da provare su Quest.
 
 ## Evidenze eseguite
 
 | Suite | Esito | Note |
 |---|---|---|
 | `bridge/tests/Bimwright.Ipt.Tests` | 941 passati, 10 falliti | i 10 sono i test di path Windows che falliscono su Linux per costruzione |
-| `Inventor XR SO/Tests~/XrSo.Core.Tests` | 361 passati, 0 falliti | include il corpus di `stt-bench` e i test HTTPS reali con FakeAddIn |
+| `Inventor XR SO/Tests~/XrSo.Core.Tests` | 373 passati, 0 falliti | include il corpus di `stt-bench` e i test HTTPS reali con FakeAddIn |
 | `Tools~/stt-bench` | 70 passati | smoke end-to-end solo con motore finto |
 
 ## Non eseguito

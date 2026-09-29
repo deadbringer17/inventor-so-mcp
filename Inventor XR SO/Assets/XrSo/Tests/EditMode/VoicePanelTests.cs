@@ -12,6 +12,7 @@ namespace InventorXrSo.Tests
     {
         private sealed class Target : IVoiceCommandTarget
         {
+            public bool AcceptsVoice => true;
             public bool IsEnabled(string id) => id == CommandIds.Undo;
             public string DisabledReason(string id) => "";
             public bool Invoke(string id) => true;
