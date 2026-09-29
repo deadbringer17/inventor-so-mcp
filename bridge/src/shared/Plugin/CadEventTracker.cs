@@ -33,7 +33,7 @@ internal sealed class CadEventTracker : IDisposable
     private void Record(string type, _Document doc, Newtonsoft.Json.Linq.JObject? data = null)
     {
         string? id = null;
-        try { id = "doc_" + doc.InternalName; } catch { /* closed document may be disconnected */ }
+        try { id = Handlers.Core.EntityReferences.DocumentId(doc); } catch { /* closed document may be disconnected */ }
         Journal.Append(type, id, data);
     }
     private void Changed(_Document doc, EventTimingEnum timing, CommandTypesEnum reason, NameValueMap context, out HandlingCodeEnum handling)
@@ -56,7 +56,7 @@ internal sealed class CadEventTracker : IDisposable
         handling = HandlingCodeEnum.kEventNotHandled;
         if (timing == EventTimingEnum.kBefore)
         {
-            try { _closing[path] = "doc_" + doc.InternalName; } catch { }
+            try { _closing[path] = Handlers.Core.EntityReferences.DocumentId(doc); } catch { }
         }
         else if (timing == EventTimingEnum.kAfter)
         {

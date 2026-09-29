@@ -45,7 +45,7 @@ internal static class PartSemanticSnapshot
         Check(0);
         if (dirty != part.Dirty || version != part.ComponentDefinition.ModelGeometryVersion)
             throw new InvalidOperationException("DOCUMENT_CHANGED_DURING_CAPTURE");
-        return new JObject { ["schema_version"] = 1, ["document_id"] = "doc_" + part.InternalName,
+        return new JObject { ["schema_version"] = 1, ["document_id"] = EntityReferences.DocumentId(part),
             ["parameters"] = parameters, ["features"] = features, ["physical"] = physical,
             ["database_units"] = "Inventor internal units: cm, kg, rad and derived combinations; text/boolean retain their types" };
     }

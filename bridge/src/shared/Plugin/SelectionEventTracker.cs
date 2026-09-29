@@ -37,7 +37,7 @@ internal sealed class SelectionEventTracker : IDisposable
         try
         {
             var doc = _app.ActiveDocument;
-            if (doc != null) { id = "doc_" + doc.InternalName; count = doc.SelectSet.Count; }
+            if (doc != null) { id = Handlers.Core.EntityReferences.DocumentId(doc); count = doc.SelectSet.Count; }
         }
         catch { /* document closing */ }
         _journal.Append("selection_changed", id, new JObject { ["changed"] = changed, ["selected"] = count });

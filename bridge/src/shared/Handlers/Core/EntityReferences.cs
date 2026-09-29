@@ -13,7 +13,59 @@ internal static class EntityReferences
     /// Inventor version, so this member stays outside the 2027 gate below: legacy add-ins address
     /// documents by this id even though they cannot mint persistent entity references.
     /// </summary>
-    public static string DocumentId(global::Inventor.Document doc) => "doc_" + doc.InternalName;
+    public static string DocumentId(global::Inventor.Document doc)
+        => Compose(doc.InternalName, () => doc.Parent, () => doc.FullFileName);
+
+    /// <summary>Same id for the <c>_Document</c> interface that application events hand out.</summary>
+    public static string DocumentId(global::Inventor._Document doc)
+        => Compose(doc.InternalName, () => doc.Parent, () => doc.FullFileName);
+
+    public static string DocumentId(global::Inventor.PartDocument doc)
+        => Compose(doc.InternalName, () => doc.Parent, () => doc.FullFileName);
+
+    private static string Compose(string internalName, Func<object> parent, Func<string> fullFileName)
+    {
+        bool duplicated = false;
+        string? path = null;
+        try
+        {
+            if (parent() is Application app && DuplicatedNames(app).Contains(internalName))
+            {
+                duplicated = true;
+                path = fullFileName();
+            }
+        }
+        catch { /* application unavailable: fall back to the plain id */ }
+        return DocumentIdComposer.Compose(internalName, path, duplicated);
+    }
+
+    // Documents copied in Explorer share an InternalName. The duplicated set is rebuilt only when the
+    // number of open documents changes, so a loop over N documents costs one COM enumeration, not N.
+    // All callers run on Inventor's STA thread; the lock only keeps the pair (count, set) consistent.
+    private static readonly object DuplicateLock = new();
+    private static int _cachedCount = -1;
+    private static HashSet<string> _cachedDuplicates = new(StringComparer.Ordinal);
+
+    private static HashSet<string> DuplicatedNames(Application app)
+    {
+        Documents documents = app.Documents;
+        int count = documents.Count;
+        lock (DuplicateLock)
+        {
+            if (count == _cachedCount) return _cachedDuplicates;
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var duplicates = new HashSet<string>(StringComparer.Ordinal);
+            foreach (global::Inventor.Document document in documents)
+            {
+                string name;
+                try { name = document.InternalName; } catch { continue; }
+                if (!seen.Add(name)) duplicates.Add(name);
+            }
+            _cachedDuplicates = duplicates;
+            _cachedCount = count;
+            return duplicates;
+        }
+    }
 
 #if INVENTOR2027
     // Persistent entity references (the ent_* id space) ride on the ReferenceKeyManager contract that
