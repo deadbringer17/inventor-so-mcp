@@ -187,5 +187,34 @@ namespace InventorXrSo.Tests
             CollectionAssert.Contains(texts, "Online · rev 42");
             CollectionAssert.Contains(texts, "3 corpi omessi");
         }
+
+        [Test]
+        public void HudShowsLongestMessagesInFullInsideTheCanvas()
+        {
+            var shell = Shell(Catalog(out _));
+            shell.Hud.SetStatus("Online · rev 42");
+            foreach (var msg in new[] { 12 + UiText.Omitted, UiText.SelectionFailed })
+            {
+                shell.Hud.Flash(msg);
+                Canvas.ForceUpdateCanvases();
+                var root = (RectTransform)shell.Hud.Canvas.transform;
+                LayoutRebuilder.ForceRebuildLayoutImmediate(root);
+                var bounds = root.rect;
+                foreach (var t in shell.Hud.GetComponentsInChildren<TextMeshProUGUI>(false))
+                {
+                    t.ForceMeshUpdate();
+                    Assert.IsFalse(t.isTextTruncated, "truncated: " + t.text);
+                    Assert.IsFalse(t.text.Contains("…"), "ellipsis: " + t.text);
+                    var c = new Vector3[4];
+                    ((RectTransform)t.transform).GetWorldCorners(c);
+                    foreach (var w in c)
+                    {
+                        var l = root.InverseTransformPoint(w);
+                        Assert.GreaterOrEqual(l.x, bounds.xMin - 1e-2f); Assert.LessOrEqual(l.x, bounds.xMax + 1e-2f);
+                        Assert.GreaterOrEqual(l.y, bounds.yMin - 1e-2f); Assert.LessOrEqual(l.y, bounds.yMax + 1e-2f);
+                    }
+                }
+            }
+        }
     }
 }

@@ -51,6 +51,11 @@ namespace InventorXrSo.Unity.Ui
             if (_bar != null) _bar.Changed -= RenderBar;
             if (CommitBar != null) Destroy(CommitBar.gameObject);
             if (Hud != null) Destroy(Hud.gameObject);
+            if (Palette != null)
+            {
+                Palette.HideKeypad();
+                if (Palette.Canvas != null) Destroy(Palette.Canvas.gameObject);
+            }
         }
     }
 }
