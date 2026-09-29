@@ -10,6 +10,8 @@ namespace InventorXrSo.Xr.Input
     public static class Haptics
     {
         public static Action<HapticPulse, bool> Sink = PlayOnController;
+        /// <summary>Vibrazione grezza; sostituibile nei test.</summary>
+        public static Action<float, float, OVRInput.Controller> Vibrate = OVRInput.SetControllerVibration;
         private static HapticsRunner _runner;
 
         public static void Play(HapticPulse pulse, bool pen = true) => Sink?.Invoke(pulse, pen);
@@ -21,9 +23,25 @@ namespace InventorXrSo.Xr.Input
             _runner.Play(pulse, pen ? OVRInput.Controller.RTouch : OVRInput.Controller.LTouch);
         }
 
+        /// <summary>Se un impulso era in corso su questo controller lo azzera; non tocca l'altro.</summary>
+        public static void StopAndZero(bool pulseRunning, OVRInput.Controller c)
+        {
+            if (pulseRunning) Vibrate?.Invoke(0, 0, c);
+        }
+
         private sealed class HapticsRunner : MonoBehaviour
         {
-            public void Play(HapticPulse pulse, OVRInput.Controller c) { StopAllCoroutines(); StartCoroutine(Run(pulse, c)); }
+            private Coroutine _right, _left;
+
+            public void Play(HapticPulse pulse, OVRInput.Controller c)
+            {
+                bool right = c == OVRInput.Controller.RTouch;
+                Coroutine running = right ? _right : _left;
+                if (running != null) StopCoroutine(running);
+                StopAndZero(running != null, c);
+                Coroutine next = StartCoroutine(Run(pulse, c));
+                if (right) _right = next; else _left = next;
+            }
 
             private static IEnumerator Run(HapticPulse pulse, OVRInput.Controller c)
             {
@@ -42,9 +60,9 @@ namespace InventorXrSo.Xr.Input
 
             private static IEnumerator Buzz(OVRInput.Controller c, float frequency, float amplitude, float seconds)
             {
-                OVRInput.SetControllerVibration(frequency, amplitude, c);
+                Vibrate?.Invoke(frequency, amplitude, c);
                 yield return new WaitForSecondsRealtime(seconds);
-                OVRInput.SetControllerVibration(0, 0, c);
+                Vibrate?.Invoke(0, 0, c);
             }
         }
     }

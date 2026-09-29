@@ -129,5 +129,20 @@ namespace InventorXrSo.Tests
             finally { Haptics.Sink = old; }
             CollectionAssert.AreEqual(new[] { "Success:True", "Tick:False" }, played);
         }
+
+        [Test]
+        public void StoppingARunningPulseZeroesOnlyThatController()
+        {
+            var calls = new List<string>();
+            var old = Haptics.Vibrate;
+            Haptics.Vibrate = (f, a, c) => calls.Add(c + ":" + f + ":" + a);
+            try
+            {
+                Haptics.StopAndZero(true, OVRInput.Controller.RTouch);
+                Haptics.StopAndZero(false, OVRInput.Controller.LTouch);
+            }
+            finally { Haptics.Vibrate = old; }
+            CollectionAssert.AreEqual(new[] { "RTouch:0:0" }, calls);
+        }
     }
 }
