@@ -11,7 +11,7 @@ namespace InventorXrSo.Unity.Ui
     public sealed class PaletteView : MonoBehaviour
     {
         public const float TextMm = 8f;
-        private static readonly string[] Keys = { "7", "8", "9", "4", "5", "6", "1", "2", "3", "-", "0", ",", "←", "Annulla", "OK" };
+        private static readonly string[] Keys = { "7", "8", "9", "←", "4", "5", "6", "-", "1", "2", "3", ",", "0", "Annulla", "OK" };
 
         private ActionCatalog _catalog;
         private IActionProvider _lastProvider;
@@ -35,12 +35,12 @@ namespace InventorXrSo.Unity.Ui
             var bg = UiFactory.Panel(canvas.transform, "Sfondo", UiFactory.Background);
             UiFactory.Stretch(bg);
             var column = bg.gameObject.AddComponent<VerticalLayoutGroup>();
-            column.padding = new RectOffset(4, 4, 4, 4);
+            column.padding = new RectOffset(3, 3, 3, 3);
             column.spacing = 3;
             column.childControlWidth = column.childControlHeight = true;
             column.childForceExpandHeight = false;
             view._header = UiFactory.Panel(bg, "Schede", Color.clear);
-            view._header.gameObject.AddComponent<LayoutElement>().preferredHeight = 14;
+            view._header.gameObject.AddComponent<LayoutElement>().preferredHeight = 12;
             view._title = UiFactory.Text(view._header, "", TextMm, FontStyles.Bold);
             view._title.alignment = TextAlignmentOptions.Center;
             UiFactory.Stretch(view._title.rectTransform);
@@ -97,16 +97,17 @@ namespace InventorXrSo.Unity.Ui
             grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
             if (KeypadVisible)
             {
-                grid.constraintCount = 3;
-                grid.cellSize = new Vector2(36, 11);
-                _title.text = "Valore";
+                grid.constraintCount = 4;
+                grid.cellSize = new Vector2(25, 15);
+                _header.gameObject.SetActive(false);
                 _chip.gameObject.SetActive(true);
-                _chip.text = _entry.Display;
+                _chip.text = "Valore: " + _entry.Display;
                 foreach (var key in Keys) { var k = key; UiFactory.TextButton(_grid, k, k == "OK" ? UiFactory.Accent : UiFactory.Key, TextMm, () => Press(k)); }
                 return;
             }
             grid.constraintCount = 2;
             grid.cellSize = new Vector2(54, 15);
+            _header.gameObject.SetActive(true);
             _chip.gameObject.SetActive(false);
             var tab = _catalog?.Tabs.FirstOrDefault(t => t.Id == CurrentTab);
             _title.text = tab == null ? "" : "‹ " + tab.Label + " ›";

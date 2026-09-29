@@ -136,6 +136,47 @@ namespace InventorXrSo.Tests
             Assert.AreEqual(UiStyle.For(CommitBarPhase.Stale), shell.CommitBar.GetComponentInChildren<Image>().color);
         }
 
+        private static void AssertPaletteFits(PaletteView palette)
+        {
+            Canvas.ForceUpdateCanvases();
+            var root = (RectTransform)palette.Canvas.transform;
+            LayoutRebuilder.ForceRebuildLayoutImmediate(root);
+            var bounds = root.rect;
+            var buttons = palette.GetComponentsInChildren<Button>(false);
+            Assert.IsNotEmpty(buttons);
+            foreach (var b in buttons)
+            {
+                var r = (RectTransform)b.transform;
+                Assert.GreaterOrEqual(r.rect.height, 15f - 1e-3f, b.name + " height");
+                var c = new Vector3[4];
+                r.GetWorldCorners(c);
+                foreach (var w in c)
+                {
+                    var l = root.InverseTransformPoint(w);
+                    Assert.GreaterOrEqual(l.x, bounds.xMin - 1e-2f, b.name + " left");
+                    Assert.LessOrEqual(l.x, bounds.xMax + 1e-2f, b.name + " right");
+                    Assert.GreaterOrEqual(l.y, bounds.yMin - 1e-2f, b.name + " bottom");
+                    Assert.LessOrEqual(l.y, bounds.yMax + 1e-2f, b.name + " top");
+                }
+            }
+            Assert.LessOrEqual(bounds.width, 120f + 1e-3f);
+            Assert.LessOrEqual(bounds.height, 90f + 1e-3f);
+        }
+
+        [Test]
+        public void PaletteFitsTheCanvasWithMinimumTargetsInTabAndKeypadModes()
+        {
+            var catalog = Catalog(out var spaces);
+            for (int i = 0; i < 7; i++) spaces.All.Add(A("s" + i, "Azione " + i, ActionCatalog.SpacesTab));
+            var shell = Shell(catalog);
+            catalog.NotifyChanged();
+            Assert.AreEqual(8, shell.Palette.GetComponentsInChildren<Button>(false).Length);
+            AssertPaletteFits(shell.Palette);
+            shell.Palette.ShowKeypad(new NumericEntry("h", QuantityUnit.Millimeters, 20, 0.01, 1000));
+            Assert.AreEqual(15, shell.Palette.GetComponentsInChildren<Button>(false).Length);
+            AssertPaletteFits(shell.Palette);
+        }
+
         [Test]
         public void HudKeepsTheStatusBadgeApi()
         {
