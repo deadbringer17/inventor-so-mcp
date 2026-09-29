@@ -83,6 +83,7 @@ internal static class QuestFixture
         var path = Path.Combine(System.Environment.CurrentDirectory, "artifacts", "m4-verification", "quest-fixture.json");
         var fixture = JObject.Parse(System.IO.File.ReadAllText(path));
         var assemblyPath = (string?)fixture["assembly"] ?? throw new InvalidDataException("Fixture path missing.");
+        var partPath = (string?)fixture["part"] ?? throw new InvalidDataException("Fixture part path missing.");
         var previousPath = (string?)fixture["previous_document"];
         if (app.ActiveDocument is not AssemblyDocument active ||
             !string.Equals(active.FullFileName, assemblyPath, StringComparison.OrdinalIgnoreCase))
@@ -91,7 +92,10 @@ internal static class QuestFixture
             string.Equals(document.FullFileName, previousPath, StringComparison.OrdinalIgnoreCase));
         if (previousPath != null && previous == null)
             throw new InvalidOperationException("The previous Inventor document is no longer open.");
+        var part = app.Documents.Cast<Document>().FirstOrDefault(document =>
+            string.Equals(document.FullFileName, partPath, StringComparison.OrdinalIgnoreCase));
         active.Close(true);
+        if (part != null && !string.Equals(partPath, previousPath, StringComparison.OrdinalIgnoreCase)) part.Close(true);
         previous?.Activate();
         Console.WriteLine("Quest batch fixture closed without saving; previous document restored: " + previousPath);
         return 0;
@@ -108,20 +112,27 @@ internal static class QuestFixture
             throw new InvalidOperationException("The dedicated Quest fixture is not active in Inventor.");
         var occurrence = assembly.ComponentDefinition.Occurrences.Cast<ComponentOccurrence>()
             .Single(item => item.Name == moving);
+        var transform = occurrence.Transformation;
         var result = new JObject
         {
             ["assembly"] = assembly.FullFileName,
             ["moving"] = moving,
-            ["x_mm"] = occurrence.Transformation.Cell[1, 4] * 10,
-            ["y_mm"] = occurrence.Transformation.Cell[2, 4] * 10,
-            ["z_mm"] = occurrence.Transformation.Cell[3, 4] * 10,
+            ["x_mm"] = transform.Cell[1, 4] * 10,
+            ["y_mm"] = transform.Cell[2, 4] * 10,
+            ["z_mm"] = transform.Cell[3, 4] * 10,
+            ["rotation_matrix"] = new JArray(
+                transform.Cell[1, 1], transform.Cell[1, 2], transform.Cell[1, 3],
+                transform.Cell[2, 1], transform.Cell[2, 2], transform.Cell[2, 3],
+                transform.Cell[3, 1], transform.Cell[3, 2], transform.Cell[3, 3]),
+            ["constraint_count"] = assembly.ComponentDefinition.Constraints.Count,
+            ["joint_count"] = assembly.ComponentDefinition.Joints.Count,
             ["dirty"] = assembly.Dirty,
         };
         Console.WriteLine(result.ToString(Newtonsoft.Json.Formatting.None));
         return 0;
     }
 
-    internal static int Prepare(global::Inventor.Application app)
+    internal static int Prepare(global::Inventor.Application app, bool wide = false)
     {
         var directory = Path.Combine(Path.GetTempPath(), "xrso-m4-quest-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -131,19 +142,20 @@ internal static class QuestFixture
         {
             part = (PartDocument)app.Documents.Add(DocumentTypeEnum.kPartDocumentObject);
             var sketch = part.ComponentDefinition.Sketches.Add(part.ComponentDefinition.WorkPlanes[3]);
-            sketch.SketchCircles.AddByCenterRadius(app.TransientGeometry.CreatePoint2d(0, 0), 1);
+            sketch.SketchCircles.AddByCenterRadius(app.TransientGeometry.CreatePoint2d(0, 0), wide ? 10 : 1);
             var extrusion = part.ComponentDefinition.Features.ExtrudeFeatures.CreateExtrudeDefinition(sketch.Profiles.AddForSolid(), PartFeatureOperationEnum.kJoinOperation);
-            extrusion.SetDistanceExtent(2, PartFeatureExtentDirectionEnum.kPositiveExtentDirection);
+            extrusion.SetDistanceExtent(wide ? 20 : 2, PartFeatureExtentDirectionEnum.kPositiveExtentDirection);
             part.ComponentDefinition.Features.ExtrudeFeatures.Add(extrusion);
             var partPath = Path.Combine(directory, "Cylinder.ipt"); part.SaveAs(partPath, false);
             assembly = (AssemblyDocument)app.Documents.Add(DocumentTypeEnum.kAssemblyDocumentObject);
             var fixedPart = assembly.ComponentDefinition.Occurrences.Add(partPath, app.TransientGeometry.CreateMatrix());
             fixedPart.Grounded = true;
-            var pose = app.TransientGeometry.CreateMatrix(); pose.SetTranslation(app.TransientGeometry.CreateVector(5, 0, 0));
+            var pose = app.TransientGeometry.CreateMatrix(); pose.SetTranslation(app.TransientGeometry.CreateVector(wide ? 50 : 5, 0, 0));
             var moving = assembly.ComponentDefinition.Occurrences.Add(partPath, pose); moving.Grounded = false;
             var assemblyPath = Path.Combine(directory, "XR_M4_Quest_Acceptance.iam"); assembly.SaveAs(assemblyPath, false);
             var manifest = new JObject { ["assembly"] = assemblyPath, ["part"] = partPath,
-                ["document_id"] = "doc_" + assembly.InternalName, ["moving"] = moving.Name, ["initial_x_mm"] = 50,
+                ["document_id"] = "doc_" + assembly.InternalName, ["moving"] = moving.Name, ["initial_x_mm"] = wide ? 500 : 50,
+                ["wide"] = wide,
                 ["previous_document"] = original?.FullFileName };
             var output = Path.Combine(System.Environment.CurrentDirectory, "artifacts", "m4-verification"); Directory.CreateDirectory(output);
             System.IO.File.WriteAllText(Path.Combine(output, "quest-fixture.json"), manifest.ToString());

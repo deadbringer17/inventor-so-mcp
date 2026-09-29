@@ -1,12 +1,14 @@
 using InventorXrSo.Core.Voice;
 using InventorXrSo.Xr.Voice;
+using InventorXrSo.Unity.Ui;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace InventorXrSo.Tests
 {
     public class WorkspaceVoiceTargetTests
     {
-        private sealed class Surface : IWorkspaceVoiceSurface
+        private sealed class Surface : IWorkspaceVoiceSurface, IWorkspacePanelVoiceSurface, IWorkspaceWristVoiceSurface
         {
             public bool Active { get; set; }
             public bool Enabled { get; set; } = true;
@@ -15,6 +17,10 @@ namespace InventorXrSo.Tests
             public bool Invoke(string id) { LastInvoked = id; return true; }
             public DictationField ArmedField { get; set; }
             public bool SetArmedField(string id, double v) { LastField = id; LastValue = v; return true; }
+            public HomePanel VoicePanel { get; set; }
+            public string LastWrist;
+            public bool IsWristEnabled(string label) => Active && label == "Progettazione";
+            public bool InvokeWrist(string label) { LastWrist = label; return IsWristEnabled(label); }
         }
 
         [Test]
@@ -113,6 +119,89 @@ namespace InventorXrSo.Tests
             Assert.IsFalse(t.IsEnabled(CommandIds.Isolate));
             Assert.AreEqual(WorkspaceVoiceTarget.IsolateUnavailableReason, t.DisabledReason(CommandIds.Isolate));
             Assert.AreEqual(WorkspaceVoiceTarget.UnavailableReason, t.DisabledReason(CommandIds.Fillet));
+        }
+
+        [Test]
+        public void Visible_panel_actions_are_contextual_and_ambiguous_or_apply_actions_are_refused()
+        {
+            var root = new GameObject("voice-test");
+            try
+            {
+                var panel = HomePanel.Create(root.transform);
+                int invoked = 0;
+                panel.ShowMessage("Assembly", "");
+                panel.SetActions(("Componenti", () => invoked++), ("Applica", () => invoked += 100),
+                    ("Apri ›", () => invoked += 10), ("Apri ›", () => invoked += 10));
+                var target = new WorkspaceVoiceTarget(new Surface { Active = true, VoicePanel = panel }) { InSession = true };
+                Assert.IsTrue(target.TryResolveAction("componenti", out var action));
+                Assert.IsTrue(action.Enabled);
+                Assert.IsTrue(target.Invoke(action.Id));
+                Assert.AreEqual(1, invoked);
+                Assert.IsFalse(target.TryResolveAction("applica", out _));
+                Assert.IsFalse(target.TryResolveAction("apri", out _));
+            }
+            finally { Object.DestroyImmediate(root); }
+        }
+
+        [Test]
+        public void Numeric_prompt_uses_the_same_submit_path_after_a_physical_voice_confirmation()
+        {
+            var root = new GameObject("number-test");
+            try
+            {
+                var panel = HomePanel.Create(root.transform);
+                string submitted = null;
+                panel.PromptText("Gradi", "", "0", value => submitted = value, () => { }, "deg", -360, 360);
+                var target = new WorkspaceVoiceTarget(new Surface { Active = true, VoicePanel = panel }) { InSession = true };
+                var field = target.ArmedField;
+                Assert.AreEqual(QuantityUnit.Degrees, field.Unit);
+                target.SetField(field.Id, 12.5);
+                Assert.AreEqual("12.5", submitted);
+                Assert.IsNull(target.ArmedField);
+            }
+            finally { Object.DestroyImmediate(root); }
+        }
+
+        [Test]
+        public void Workspace_mode_can_be_selected_through_the_existing_wrist_action()
+        {
+            var inspect = new Surface { Active = true };
+            var target = new WorkspaceVoiceTarget(null, null, null, inspect) { InSession = true };
+            Assert.IsTrue(target.TryResolveAction("progettazione", out var action));
+            Assert.AreEqual("wrist:Progettazione", action.Id);
+            Assert.IsTrue(target.Invoke(action.Id));
+            Assert.AreEqual("Progettazione", inspect.LastWrist);
+        }
+
+        [Test]
+        public void Extrude_synonyms_use_the_current_visible_button()
+        {
+            var root = new GameObject("extrude-voice-test");
+            try
+            {
+                var panel = HomePanel.Create(root.transform);
+                int opened = 0;
+                panel.ShowMessage("Progettazione", "");
+                panel.SetActions(("Estrusione", () => opened++));
+                var target = new WorkspaceVoiceTarget(new Surface { Active = true, VoicePanel = panel }) { InSession = true };
+                Assert.IsTrue(target.TryResolveAction("estrudi", out var verb));
+                Assert.IsTrue(target.TryResolveAction("estrusione", out var noun));
+                Assert.AreEqual(verb.Id, noun.Id);
+                Assert.IsTrue(target.Invoke(verb.Id));
+                Assert.AreEqual(1, opened);
+                panel.SetActions(("Estrudi schizzo", () => opened++));
+                Assert.IsTrue(target.TryResolveAction("estrudi", out var sketch));
+                Assert.IsTrue(target.Invoke(sketch.Id));
+                Assert.AreEqual(2, opened);
+                panel.SetActions(("Foro", () => opened++));
+                Assert.IsFalse(target.TryResolveAction("estrudi", out _));
+                Assert.IsTrue(target.TryResolveAction("crea foro", out _));
+                panel.SetActions(("Mostra sviluppo", () => opened++));
+                Assert.IsTrue(target.TryResolveAction("mostra sviluppo", out var show));
+                Assert.IsTrue(target.Invoke(show.Id));
+                Assert.AreEqual(3, opened);
+            }
+            finally { Object.DestroyImmediate(root); }
         }
     }
 }

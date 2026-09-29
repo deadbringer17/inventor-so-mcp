@@ -89,6 +89,22 @@ namespace XrSo.Core.Tests.Voice
         }
 
         [Fact]
+        public void Metres_are_accepted_only_for_an_armed_visual_scale_field()
+        {
+            var d = Make();
+            d.Arm("length", QuantityUnit.Meters, 0.2, 20);
+            var p = d.Propose("zero virgola cinque metri");
+            Assert.True(p.Accepted);
+            Assert.Equal(0.5, p.Value);
+            Assert.False(p.UnitAssumed);
+            Assert.Contains(" m", p.DisplayText);
+            Assert.Equal(1, _fields["length"]);
+            Assert.True(d.Confirm());
+            Assert.Equal(0.5, _fields["length"]);
+            Assert.Equal(NumberParseError.AmbiguousUnit, ItalianNumberParser.Parse("zero virgola cinque metri").Error);
+        }
+
+        [Fact]
         public void Proposal_from_another_target_instance_cannot_confirm()
         {
             var a = Make(); var b = Make();

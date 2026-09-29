@@ -187,3 +187,68 @@ Nessun reset del Quest o del pairing. Il comando temporaneo di prossimità
 documentato da Meta è stato ripristinato; `disable_guardian`,
 `disable_dialogs`, `disable_autosleep` risultano `false`.
 Riferimento: [Meta Scriptable Testing Services](https://developers.meta.com/horizon/documentation/native/android/ts-scriptable-testing/).
+
+## Ripetizione del runner il 29 settembre 2026
+
+`artifacts/m4-verification/quest-acceptance-run-20260929-103443.json` registra **PASS COMPLETE** con il nuovo APK di accettazione: A/B e vincoli compatibili, preview Move da 10 mm, Cancel, Apply con centro nativo da 50 a 60 mm, Undo/Redo, stale e riapertura Assembly. La diagnostica Planar ha riportato un rifiuto per interferenza tra i cilindri della fixture; non è conteggiata come successo Planar. L'assieme di prova è stato chiuso senza salvare. Il ripristino precedente lasciava aperta la parte `Cylinder.ipt`: è stata chiusa senza salvare e il metodo `--restore-quest` è stato corretto per chiudere anche la parte nei run futuri. Input controller fisico non esercitato dal runner.
+
+## Prove fisiche guidate del 29 settembre 2026
+
+Su una fixture temporanea pulita (due cilindri, Cylinder:2 a X = 50 mm),
+Grip destro senza Trigger ha mosso solo la vista: nessuna anteprima e posa
+CAD invariata. Il precedente tentativo A01 era contaminato da un tocco su
+Applica dichiarato dall'utente; la ripetizione controllata costituisce la
+prova A01.
+
+A scala 1:1, il gesto Grip+Trigger ha prodotto Δ X = 7,55 mm visualizzati;
+Inventor ha misurato X = 57,554054 mm dopo Applica. Dopo Undo, l'input
+numerico 7,55 mm ha prodotto X = 57,55 mm dopo Apply/Redo: scarto
+0,004054 mm. Per la rotazione attorno all'Asse 1, il gesto ha mostrato
+−4,72°; la matrice nativa corrisponde a −4,717630°. Dopo Undo, l'input
+numerico −4,72° è stato applicato: scarto angolare 0,002370° e scarto
+posizionale 0,000414 mm. Le letture sono in
+`artifacts/m4-verification/a02-rotation-controller-20260929.json` e
+`artifacts/m4-verification/a02-rotation-numeric-20260929.json`. Questo chiude
+il confronto A02 a 1:1; resta la prova fisica a scala ridotta.
+
+L'utente ha selezionato due facce piane A/B e ha visto Mate, Flush, Angle,
+Joint e Clearance 0 mm. Inventor non ha creato vincoli o joint e la posa è
+rimasta invariata. Il log audit ha però mostrato una preview e un commit di
+`assembly_move` dopo la selezione, senza variazione geometrica, benché
+l'utente riferisca di aver usato solo i due Trigger. Il codice lasciava
+attivo CAD Move dopo la scelta di A/B; ora l'ingresso nel workflow di
+relazione cancella il comando Move precedente e non genera una preview.
+Il nuovo test `SelectingReferencesAfterCadMoveDoesNotPreviewStaleMove`
+passa; suite EditMode 178/178. APK ordinario aggiornato SHA-256
+`529299E795437B33876001BAFA9F80A7877A1EB97A31F4B00B432A5135D82E29`.
+La ripetizione fisica A07 sull'APK aggiornato è ancora necessaria per
+escludere click-through/commit involontari. A14 resta aperto.
+
+Per A02 a scala ridotta è stata preparata una seconda fixture temporanea
+con cilindri di diametro 200 mm e Cylinder:2 iniziale a X = 500 mm.
+La fixture precedente è stata chiusa senza salvare; l'assieme robot
+originale resta aperto e non modificato. La nuova fixture è pulita,
+senza vincoli né joint. La prova sul Quest è in attesa del visore attivo.
+
+Il runner automatico M4 è stato esteso per riprodurre CAD Move → A/B senza
+anteprima residua, traslazione e rotazione sintetiche a scala 0,25×, hit della
+UI, perdita di tracking e riapertura pulita. La build di collaudo è riuscita
+(SHA-256 `E248D889FF02351E21DB5E67C6EEA83D97BF928195F872241FA9F4D0663977BE`).
+La prima esecuzione ha verificato l'installazione ma è scaduta prima
+dell'avvio dell'app: Quest in standby, nessun log interno creato. Evidenza:
+`artifacts/m4-verification/quest-acceptance-run-20260929-133351.json`.
+La fixture grande è stata chiusa senza salvare, l'assieme robot originale
+riattivato e l'APK ordinario reinstallato con hash verificato
+`C2A935113F8F5C6A3A1D0FC78B6366D02D604FF9FBAD6A6A9AAD8230197FFB69`.
+I nuovi sottocasi automatici richiedono ancora una run completata sul Quest;
+il runner non sostituisce i gesti fisici né la valutazione di leggibilità.
+
+Lo standard condiviso è stato inserito in `CLAUDE.md` e `bridge/CLAUDE.md`.
+La build QA finale con dichiarazioni `NOT COVERED` per A01/A02/A07/A14
+fisici è riuscita (SHA-256
+`853C72E81A26D1B3EA0C99AB8191369A09BC6C384C608F1A2EA0EC0A2366286B`).
+Il nuovo script registra fase del timeout, stato di avvio e check per gate;
+il run `quest-acceptance-run-20260929-143512.json` ha confermato
+`before_runner_start` con Quest `Asleep`. L'APK ordinario è stato
+reinstallato con hash verificato. La fixture robot dell'utente è rimasta
+invariata.

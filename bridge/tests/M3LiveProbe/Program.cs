@@ -186,6 +186,23 @@ internal static class Program
             authoring=Call("get_design_context_xr",StateArgs());
             FeatureCheck(DesignOperations.Fillet(new[]{(string)authoring["edges"]![0]!["id"]!},1));
             authoring=Call("get_design_context_xr",StateArgs());
+            var blockEdges=((JArray)authoring["edges"]!).Where(e=>(string?)e!["kind"]=="kLineSegmentCurve")
+                .Select(e=>(string)e!["id"]!).ToArray();
+            Check(blockEdges.Length>=8,"Straight block edges for the oversized-fillet regression");
+            var limitRequest=StateArgs();
+            limitRequest["preview"]=true; limitRequest["include_preview_mesh"]=true;
+            limitRequest["validate"]=new JArray("rebuild","feature_health");
+            var limitRevision=journal.Revision(document);
+            var limitVolume=part.ComponentDefinition.MassProperties.Volume;
+            var limitFeatureCount=part.ComponentDefinition.Features.FilletFeatures.Count;
+            limitRequest["operations"]=new JArray(DesignOperations.Fillet(blockEdges,1));
+            Check(commands["atomic_batch"].Execute(context,limitRequest).Ok,"1 mm block-edge fillet previews");
+            limitRequest["operations"]=new JArray(DesignOperations.Fillet(blockEdges,100));
+            var rejected=commands["atomic_batch"].Execute(context,limitRequest);
+            Check(!rejected.Ok && rejected.Error?.Code==InventorErrorCodes.ROLLED_BACK,"100 mm block-edge fillet is rejected and rolled back");
+            Check(journal.Revision(document)==limitRevision && Math.Abs(part.ComponentDefinition.MassProperties.Volume-limitVolume)<1e-8
+                && part.ComponentDefinition.Features.FilletFeatures.Count==limitFeatureCount,"Oversized fillet leaves no CAD changes");
+            Console.WriteLine("Fillet oversized-radius regression: valid 1 mm, rejected 100 mm, preview rollback preserved.");
             FeatureCheck(DesignOperations.Chamfer(new[]{(string)authoring["edges"]![0]!["id"]!},1));
             return 0;
         }

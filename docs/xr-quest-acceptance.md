@@ -61,6 +61,13 @@ l'APK ordinario. Horizon OS può mostrare «Passa ai controller» se il visore n
 è indossato: il runner parte solo dopo che quel dialogo di sistema è stato
 superato. Lo script non modifica le proprietà di test Meta.
 
+Il manifest contiene anche `checks` estratti dalle righe `PASS [gate]` e
+`NOT COVERED [gate]`, `runnerStarted`, `deviceWakefulnessAtLaunch` e
+`timeoutPhase` (`before_runner_start` oppure `runner`). Un timeout senza log
+interno non è un fallimento del caso CAD: indica che il runner non è partito.
+Questi campi applicano a M1–M5 la distinzione fra prova sintetica sul Quest e
+prova fisica prevista dai `CLAUDE.md`.
+
 Per M4 la fixture si prepara con
 `dotnet run --project bridge/tests/M4LiveProbe -- --prepare-quest` (e
 `--restore-quest`); il resto è identico con `-Milestone m4`.
@@ -76,16 +83,85 @@ modificata (estrusione, flangia, sviluppo): va sempre eseguito
 | M1 | DoD 1–2 sessione Online con pairing salvato; DoD 3 Home con PC, versioni, documento e tipo; DoD 4 due occurrence, lato lungo 0,100 m a 1:1, luce 50 mm; DoD 5/7 pick di occurrence e highlight accettato da Inventor; DoD 6 triangolo → faccia e selezione faccia; MR ↔ Studio | DoD 8 cambio documento dal desktop, DoD 9 perdita rete, pairing QR/codice, raggio e trigger fisici |
 | M2 | Inspect dal polso, Browser, proprietà (volume 120000 mm³ come lettura diretta, «—» per i valori assenti), breadcrumb, misura tra centri 150 mm e pin, sezione con offset numerico, Table/Fit/1:1, MR/Studio, attivazione documento dal Browser e invalidazione di misure, selezione e sezione | cambio revisione dello stesso documento, grab di pannello e piano, raggio, leggibilità |
 | M3 | casi 1, 2, 9, 10, 11, 12, 15 del [collaudo M3](xr-m3-quest-collaudo.md): preview di estrusione con revisione invariata, Annulla, Applica con volume 12000 + π·25·20 mm³, Undo/Redo XR, piano stale rifiutato, foro cieco, raccordo, errore di validazione correggibile, parametro, ritorno a Inspect | disegno di schizzo e vincoli, drag del manipolatore, pick di facce e spigoli col raggio (impostati per riflessione), casi 3–8, 13, 14 |
-| M4 | come nel collaudo del 28 settembre: A/B e vincoli compatibili, preview Move, Cancel, Apply, centro nativo, Undo/Redo, stale, riapertura | gate A01, A02, A07, A14 fisici |
-| M5 | M5-01, M5-02, M5-03 (solo campo numerico), M5-04 (Cut preview/Annulla), M5-05, M5-06, M5-07 (solo stale), M5-09, M5-10, M5-11 con testo iniettato nel push-to-talk reale senza microfono | gesto flangia, Face e regola/spessore, rete/preview tardiva/commit incerto, M5-08 microfono e pulsante B, M5-12 |
+| M4 | A/B e vincoli compatibili, preview Move, Cancel, Apply, centro nativo, Undo/Redo, stale, riapertura; runner esteso con A/B dopo CAD Move, gesture sintetiche a 0,25×, blocco UI e perdita tracking | gesto reale, leggibilità, click-through e tracking fisico di A02/A07/A14 |
+| M5 | M5-01, M5-02, M5-03 (solo campo numerico), M5-04 (Cut preview/Annulla/Applica/Undo), M5-05, M5-06, M5-07 (solo stale), M5-09, M5-10, M5-11 con testo iniettato nel push-to-talk reale senza microfono | gesto flangia, Face e regola/spessore, rete/preview tardiva/commit incerto, M5-08 microfono e pulsante B, M5-12 |
 
 ## Stato
 
 Runner, fixture, script e test di contratto sono stati scritti il 29 settembre
-2026 in ambiente Linux, senza Unity, dotnet, Inventor né Quest: **non sono
-ancora stati compilati né eseguiti**. Prima dell'uso servono la compilazione
-Unity dei due APK, il test di contratto EditMode e la compilazione di
-`QuestAcceptanceFixtures` con l'interop di Inventor 2027. I punti dell'API di
-Inventor da confermare dal vivo sono elencati nel README delle fixture. Nessun
-gate è stato segnato come passato sulla base di questi file. Gli esiti vanno
-registrati nei documenti di verifica delle singole milestone.
+2026 in ambiente Linux. I punti dell'API Inventor previsti da verificare dal
+vivo sono elencati nel README delle fixture. Gli esiti sono registrati nei
+documenti di verifica delle singole milestone.
+
+Aggiornamento Windows/Quest del 29 settembre 2026: fixture compilate con l'interop
+2027 e provate in Inventor reale; runner eseguiti sul Quest 3. M1, M2, M4 e M5
+hanno `PASS COMPLETE` programmatico; M3 resta incompleto sul caso del raccordo da
+100 mm (`PreviewReady` inatteso). I manifest e i log sono in
+`artifacts/mN-verification/quest-acceptance-run-20260929-10*.json` e i dettagli
+nei rispettivi verbali. Unity EditMode: 176/177, con un fallimento M5 sul test
+di rilascio della mesh `FlatPatternDisplayTests.MeshesAndMaterialsAreReleasedWithTheDisplay`.
+Il `PASS COMPLETE` non copre i gate fisici indicati nella tabella precedente.
+
+Ritest M3 dello stesso giorno: la sonda CAD ha dimostrato che 100 mm su un solo
+spigolo è valido; C11 usa ora il gruppo degli spigoli rettilinei, per cui 1 mm è
+valido e 100 mm causa un vero rollback. M3 ha raggiunto `PASS COMPLETE` sul Quest 3
+(`artifacts/m3-verification/quest-acceptance-run-20260929-105608.json`). Tutte e
+cinque le milestone hanno quindi superato i sottocasi programmatici dei rispettivi
+runner; restano distinti i gate fisici e il fallimento EditMode M5 indicati sopra.
+
+Correzione successiva del test M5: il caso `MeshesAndMaterialsAreReleasedWithTheDisplay`
+invocava `DestroyImmediate` in EditMode, dove Unity non esegue `OnDestroy` per il
+componente runtime. Il test richiama ora esplicitamente la routine di pulizia e
+verifica la distruzione di root, mesh e materiale. Suite EditMode completa:
+**177/177**, zero fallimenti (`%TEMP%/xrso-editmode-m5-final.xml`). Il codice runtime
+del display non è stato modificato.
+
+Estensione M4 del 29 settembre: il runner verifica anche che A/B selezionate
+dopo CAD Move cancellino la vecchia preview e non abilitino Applica; simula
+traslazione e rotazione del controller a scala 0,25× e controlla la preview
+nativa con revisione invariata; simula un hit della UI e la perdita di tracking,
+poi verifica la riapertura pulita di Assembly. Queste chiamate sintetiche al
+percorso di input non misurano il controller fisico né la leggibilità. L'APK di
+collaudo è stato compilato con successo (SHA-256
+`E248D889FF02351E21DB5E67C6EEA83D97BF928195F872241FA9F4D0663977BE`).
+Il primo avvio ha raggiunto `TIMEOUT` prima della creazione del log interno
+perché il Quest era in standby: manifest
+`artifacts/m4-verification/quest-acceptance-run-20260929-133351.json`.
+I nuovi sottocasi non sono ancora marcati passati sul Quest.
+
+Lo standard comune è ora scritto in `CLAUDE.md` e `bridge/CLAUDE.md`: ogni
+gate distingue unit test/FakeAddIn, runner Quest con input sintetico e prova
+fisica. I runner M1 e M3 dichiarano esplicitamente i rispettivi sottocasi
+fisici non coperti; M4 dichiara A01/A02/A07/A14 fisici. La build QA successiva
+è riuscita (SHA-256
+`853C72E81A26D1B3EA0C99AB8191369A09BC6C384C608F1A2EA0EC0A2366286B`).
+Il manifest `quest-acceptance-run-20260929-143512.json` conferma
+`runnerStarted=false`, `deviceWakefulnessAtLaunch=Asleep`,
+`timeoutPhase=before_runner_start` e nessun check eseguito. L'APK ordinario è
+stato reinstallato con hash verificato. Un comando ADB di wake ha portato
+brevemente il Quest ad `Awake`, poi il visore è tornato in standby senza
+prossimità; nessuna proprietà Meta di test è stata modificata.
+
+Run completo Windows/Quest del 29 settembre: suite backend **951/951**, core XR
+**373/373**, Unity EditMode **178/178**; build delle fixture e dell'APK QA
+riuscite. Dopo il fix del limite di paginazione nel runner M2 e della preview
+residua nel passaggio da CAD Move ad A/B, i cinque runner hanno concluso con
+`PASS COMPLETE` programmatico:
+
+| Milestone | Manifest del run riuscito | Esito |
+|---|---|---|
+| M1 | `artifacts/m1-verification/quest-acceptance-run-20260929-173053.json` | PASS |
+| M2 | `artifacts/m2-verification/quest-acceptance-run-20260929-174042.json` | PASS |
+| M3 | `artifacts/m3-verification/quest-acceptance-run-20260929-174315.json` | PASS |
+| M4 | `artifacts/m4-verification/quest-acceptance-run-20260929-175112.json` | PASS |
+| M5 | `artifacts/m5-verification/quest-acceptance-run-20260929-175218.json` | PASS |
+
+M5 ora verifica anche Cut Apply e Undo contro la revisione nativa. M4 ha avuto
+un timeout transitorio sulla cronologia XR dopo Apply; la ripetizione da una
+fixture nuova è passata. Ogni fixture è stata ispezionata e chiusa senza
+salvare, il documento dell'utente è stato riattivato e l'APK ordinario
+reinstallato. I gate fisici elencati nella tabella restano da collaudare.
+La build ordinaria finale, che include il fix M4, è in
+`artifacts/InventorXrSo-full-ordinary.apk`: SHA-256
+`DCD5846A42040E1AEFDDE6BB6053EF403400A45585A31A16EC79CE5140D509FF`,
+uguale all'hash dell'APK installato sul Quest.

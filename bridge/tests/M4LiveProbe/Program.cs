@@ -30,6 +30,7 @@ internal static class Program
             if (args.Contains("--quest-planar") || args.Contains("--quest-planar-commit"))
                 return QuestPlanarProbe.Run(app, args.Contains("--quest-planar-commit"));
             if (args.Contains("--nested")) return NestedProbe.Run(app);
+            if (args.Contains("--prepare-quest-wide")) return QuestFixture.Prepare(app, wide: true);
             if (args.Contains("--prepare-quest")) return QuestFixture.Prepare(app);
             if (args.Contains("--inspect-quest")) return QuestFixture.Inspect(app);
             if (args.Contains("--save-quest")) return QuestFixture.Save(app);

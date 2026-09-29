@@ -174,11 +174,18 @@ namespace InventorXrSo.Xr
         public void ChooseReference(AssemblyReference reference)
         {
             if (!Editable || reference == null || !reference.Available) return;
+            if (_command == "assembly_move")
+            {
+                // Picking A/B starts a relation workflow, even if Sposta componente was used earlier.
+                // A move ghost belongs to the old workflow and must not survive this switch.
+                _session?.Cancel();
+                _command = null; _type = null; _translation = default; _angle = 0; _dragging = false;
+            }
             if (_a == null || _b != null) { _a = reference; _b = null; }
             else if (_a.OccurrenceId == reference.OccurrenceId) { _notice = "Scegli il secondo riferimento su un altro componente."; Render(); return; }
             else _b = reference;
             InvalidateDraft(); Draw();
-            if (_b != null && _command != null) Preview();
+            if (_b != null && (_command == "assembly_constraint" || _command == "assembly_joint")) Preview();
             else if (_b != null) _screen = "compatible";
             Render();
         }
@@ -277,6 +284,7 @@ namespace InventorXrSo.Xr
         }
         private void Cancel() { if (RequiresCadReview) return; _session?.Cancel(); Reset(); Load(); Render(); }
         // ---------------------------------------------------------------- voice surface
+        public HomePanel VoicePanel => _panel;
 
         private bool OnToolsPage => _screen != "components" && _screen != "references" && _screen != "constraints"
             && _screen != "compatible" && _screen != "joints" && _screen != "move";
@@ -320,7 +328,10 @@ namespace InventorXrSo.Xr
                 if (generation != _generation) return;
                 if (!double.TryParse(text.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out double value) || double.IsNaN(value) || double.IsInfinity(value)) { Ask(); return; }
                 _numeric = false; InvalidateDraft(); done(value); Draw(); Render();
-            }, () => { _numeric = false; Render(); });
+            }, () => { _numeric = false; Render(); },
+                label == "Gradi" ? "deg" : "mm",
+                label.StartsWith("Gioco minimo", StringComparison.Ordinal) ? 0 : label == "Gradi" ? -360 : -1000000,
+                label.StartsWith("Gioco minimo", StringComparison.Ordinal) ? 10000 : label == "Gradi" ? 360 : 1000000);
             Ask();
         }
         private void Render()
@@ -328,17 +339,17 @@ namespace InventorXrSo.Xr
             if (!Active || _numeric || _panel == null) return;
             var actions = new List<(string, Action)>();
             string body = !_online ? "Offline — Applica non disponibile." : _kind != "assembly" ? "Attiva un assieme dal Browser." :
-                "Trigger destro: seleziona. Grip destro: solo vista.\nPer muovere: seleziona → CAD Move → pezzo o asse giallo → Grip poi Trigger destro.\n";
-            body += "\n" + (_occurrence?.Name ?? "Nessun componente") + " • DOF: " + (_occurrence?.TotalDof?.ToString() ?? "?");
-            if (_occurrence?.Grounded == true) body += " • Grounded";
+                "Trigger destro: seleziona. Grip destro: solo vista.\nPer muovere: seleziona → Sposta componente → pezzo o asse giallo → Grip poi Trigger destro.\n";
+            body += "\n" + (_occurrence?.Name ?? "Nessun componente") + " • Gradi di libertà: " + (_occurrence?.TotalDof?.ToString() ?? "?");
+            if (_occurrence?.Grounded == true) body += " • Fissato";
             if (!string.IsNullOrEmpty(_occurrence?.UnavailableReason)) body += "\nComponente non modificabile: " + _occurrence.UnavailableReason;
-            if (_occurrence != null && !_occurrence.DofComplete) body += "\nLibertà non disponibili: CAD Move disabilitato.";
+            if (_occurrence != null && !_occurrence.DofComplete) body += "\nLibertà non disponibili: Sposta componente disabilitato.";
             if (_occurrence?.Kind == "assembly") body += "\nAttivare la definizione per modificarne i figli; gli effetti riguardano tutte le istanze.";
             if (_a != null) body += "\nA: " + _a.Name;
             if (_b != null) body += "   B: " + _b.Name;
-            if (_type != null) body += "\n" + _type + " • valore " + _value.ToString("0.###", CultureInfo.InvariantCulture);
+            if (_type != null) body += "\n" + RelationLabel(_type) + " • valore " + _value.ToString("0.###", CultureInfo.InvariantCulture);
             if (_busy) body += "\nLettura Inventor…";
-            if (_dragging) body += "\nCAD MOVE ARMED";
+            if (_dragging) body += "\nSPOSTAMENTO PRONTO";
             body += "\n" + _notice;
             if (!string.IsNullOrEmpty(_session?.Error))
             {
@@ -369,11 +380,11 @@ namespace InventorXrSo.Xr
                 else if (_screen == "constraints" || _screen == "compatible")
                 {
                     var types = _screen == "compatible" ? AssemblyOperations.CompatibleConstraints(_a, _b) : new[] { "mate", "flush", "mate_axis", "insert", "angle", "tangent" };
-                    foreach (var type in types) { var item = type; actions.Add((item, () => ChooseConstraint(item))); }
-                    actions.Add(("Joint", () => Page("joints")));
+                    foreach (var type in types) { var item = type; actions.Add((RelationLabel(item), () => ChooseConstraint(item))); }
+                    actions.Add(("Giunto", () => Page("joints")));
                 }
                 else if (_screen == "joints")
-                { foreach (var type in AssemblyOperations.JointTypes) { var item = type; actions.Add((item == "slide" ? "Slider" : item, () => ChooseJoint(item))); } }
+                { foreach (var type in AssemblyOperations.JointTypes) { var item = type; actions.Add((RelationLabel(item), () => ChooseJoint(item))); } }
                 else if (_screen == "move")
                 {
                     body += "\nPunta il pezzo selezionato o l'asse giallo; tieni Grip destro, premi Trigger destro, muovi e rilascia. Applica solo dopo l'anteprima.";
@@ -392,12 +403,12 @@ namespace InventorXrSo.Xr
                         try { await SelectOccurrenceAsync(id); if (_occurrence?.Id == id) Page("references"); }
                         catch (Exception ex) { _notice = ex.Message; Render(); }
                     }));
-                    if (_occurrence?.CanMove == true) actions.Add(("CAD Move", BeginMove));
+                    if (_occurrence?.CanMove == true) actions.Add(("Sposta componente", BeginMove));
                     if (_occurrence?.Kind == "assembly" && _backend is IInspectionBackend) actions.Add(("Attiva questo assieme", ActivateSubassembly));
-                    actions.Add(("Vincolo", () => Page("constraints"))); actions.Add(("Joint", () => Page("joints")));
+                    actions.Add(("Vincolo", () => Page("constraints"))); actions.Add(("Giunto", () => Page("joints")));
                     if (_command != null && _command != "assembly_move")
                     {
-                        actions.Add((_type == "angle" ? "Angolo" : "Offset / Gap", () => Number(_type == "angle" ? "Gradi" : "Millimetri", _value, v => { _value = v; if (_b != null) Preview(); })));
+                        actions.Add((_type == "angle" ? "Angolo" : "Distanza / gioco", () => Number(_type == "angle" ? "Gradi" : "Millimetri", _value, v => { _value = v; if (_b != null) Preview(); })));
                         actions.Add(("Inverti direzione", () => { _opposed = !_opposed; _flipOrigin = !_flipOrigin; InvalidateDraft(); Preview(); }));
                         actions.Add((_command == "assembly_joint" ? "Inverti allineamento" : "Tangente interna/esterna", () => { _flipAlignment = !_flipAlignment; _inside = !_inside; InvalidateDraft(); Preview(); }));
                     }
@@ -405,16 +416,24 @@ namespace InventorXrSo.Xr
                     if (_session.Status == DesignStatus.Empty && _history?.CanRedo == true) actions.Add(("Ripeti modifica XR", () => History(true)));
                 }
                 if (_session.CanApply) actions.Add(("Applica", Apply));
-                actions.Add(("Clearance " + _clearance.ToString("0.###") + " mm", () => Number("Clearance minima mm (0–10000)", _clearance, v =>
-                { if (v < 0 || v > 10000 || Math.Abs(v - Math.Round(v, 3)) > 1e-9) { _notice = "Clearance tra 0 e 10000 mm, massimo tre decimali."; return; } _clearance = v; if (_command != null) Preview(); })));
+                actions.Add(("Gioco minimo " + _clearance.ToString("0.###") + " mm", () => Number("Gioco minimo mm (0–10000)", _clearance, v =>
+                { if (v < 0 || v > 10000 || Math.Abs(v - Math.Round(v, 3)) > 1e-9) { _notice = "Il gioco minimo deve essere tra 0 e 10000 mm, con massimo tre decimali."; return; } _clearance = v; if (_command != null) Preview(); })));
                 actions.Add(("Annulla comando", Cancel));
                 if (_screen != "tools") actions.Add(("Strumenti", () => Page("tools")));
-                body += "\nPreview: rebuild, vincoli/joint, nessuna interferenza finale. Contatto ammesso.";
+                body += "\nAnteprima: ricostruzione, vincoli e giunti, nessuna interferenza finale. Contatto ammesso.";
             }
-            actions.Add((_pinned ? "Sblocca pannello" : "Pin pannello", () => { _pinned = !_pinned; Render(); }));
-            actions.Add(("Chiudi Assembly", Close));
-            _panel.ShowMessage("ASSEMBLY", body); _panel.SetActions(actions.ToArray());
+            actions.Add((_pinned ? "Sblocca pannello" : "Blocca pannello", () => { _pinned = !_pinned; Render(); }));
+            actions.Add(("Chiudi Assieme", Close));
+            _panel.ShowMessage("ASSIEME", body); _panel.SetActions(actions.ToArray());
         }
+        private static string RelationLabel(string type) => type switch
+        {
+            "mate" => "Accoppia", "flush" => "Allinea", "mate_axis" => "Assi coincidenti",
+            "insert" => "Inserisci", "angle" => "Angolo", "tangent" => "Tangente",
+            "rigid" => "Rigido", "rotational" => "Rotazionale", "revolute" => "Rotazionale",
+            "slide" => "Scorrevole", "slider" => "Scorrevole", "cylindrical" => "Cilindrico",
+            "planar" => "Planare", "ball" => "Sferico", _ => type
+        };
         private void More(List<(string, Action)> actions, int total)
         { if (_page > 0) actions.Add(("Precedenti", () => { _page--; Render(); })); if ((_page + 1) * 6 < total) actions.Add(("Successivi", () => { _page++; Render(); })); }
         private void Draw() => _visuals?.Show(_occurrence, _a, _b, _command == "assembly_move", _rotating, _axisIndex);

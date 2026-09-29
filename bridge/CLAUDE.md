@@ -113,6 +113,21 @@ else, including the HTTP host and the fake-add-in end-to-end tests, runs anywher
 
 Inventor must be CLOSED before deploying add-in DLLs it would otherwise lock. The Inventor-API handlers have been smoke-tested against a live Inventor session; hold new handler bodies to the same verification bar before calling them done.
 
+### XR Quest acceptance evidence
+- For each XR gate backed by Inventor, exercise the deterministic part through
+  the in-app Quest runner and a dedicated temporary Inventor fixture. Check
+  document identity, revision before/after preview and commit, native geometry
+  or state, rollback, and restoration of the user's previous document. A
+  FakeAddIn or Unity-only check is a separate evidence level.
+- Synthetic controller frames in a Quest runner verify input routing and CAD
+  conversion, but do not count as physical controller, tracking, audio, or
+  readability evidence. Label each assertion with its gate and evidence level;
+  record unexercised physical portions as `NOT COVERED` in the acceptance log
+  and milestone report.
+- Never treat a missing runner log or a startup timeout as a passing gate.
+  Preserve the manifest and diagnose device startup separately from test
+  failures. Use `docs/xr-quest-acceptance.md` for the common workflow.
+
 ### Voice transcription (`server-http/Voice/`)
 `POST /voice/transcribe` (M5 voice, spec `docs/superpowers/specs/2026-09-28-inventor-xr-so-m5-design.md`): same bearer auth and rate limit as `/mcp`, body = raw PCM16 mono 16 kHz (`Content-Type: audio/L16;rate=16000`, or `application/octet-stream` + `X-Audio-Sample-Rate: 16000`), at most 10 s (320000 bytes; 413 `VOICE_TOO_LARGE` decided from `Content-Length` before reading, or while streaming a chunked body), empty/odd length 400, one transcription at a time (429 `VOICE_BUSY`). Answers `{transcript, engine, elapsed_ms}`; errors are `{ok:false, code, error:{code,message}}` with `VOICE_DISABLED` (503, the default), `VOICE_ENGINE_UNAVAILABLE` (503), `VOICE_ENGINE_TIMEOUT` (504), `VOICE_ENGINE_FAILED` (502), `VOICE_UNSUPPORTED_FORMAT` (415). The host only transcribes; command routing stays in the client.
 - `ISpeechEngine` (DI, `TryAdd`) is the replaceable seam. Default `DisabledSpeechEngine`; with `--voice-command` / `INVENTOR_SO_VOICE_COMMAND` / JSON `voiceCommand` the `ExternalProcessSpeechEngine` runs that local command per request (quotes group arguments, no shell): the WAV temp file path is the last argument or replaces `{wav}`, stdout is the transcript, exit 0 = ok (3 = engine unavailable). The temp file is zeroed and deleted in `finally`; the command is killed at `--voice-timeout-ms` / `INVENTOR_SO_VOICE_TIMEOUT_MS` (default 15000). Reference command: `Inventor XR SO/Tools~/stt-bench/serve_once.py`. No network engine exists here; nothing cloud is enabled implicitly.

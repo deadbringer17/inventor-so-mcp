@@ -89,6 +89,7 @@ namespace InventorXrSo.Xr
         /// <summary>The user asked for Modello 3D / Schizzo (Design); the switcher decides.</summary>
         public event Action DesignRequested;
         public event Action ArmedFieldChanged;
+        public HomePanel VoicePanel => _panel;
         public bool IsPrimary => _mode.IsPrimary;
         public SheetMetalMode Mode => _mode;
         public FlangeDraft Flange => _flange;
@@ -916,7 +917,7 @@ namespace InventorXrSo.Xr
             }
             Add(actions, "Modello 3D / Schizzo", () => DesignRequested?.Invoke(), !locked);
             Add(actions, "Ispeziona", Close);
-            Add(actions, _pinned ? "Sblocca pannello" : "Pin pannello", () => { _pinned = !_pinned; Render(); });
+            Add(actions, _pinned ? "Sblocca pannello" : "Blocca pannello", () => { _pinned = !_pinned; Render(); });
             _panel.ShowMessage(title, body); _panel.SetActions(actions.ToArray());
             foreach (var button in _panel.GetComponentsInChildren<Button>())
             {

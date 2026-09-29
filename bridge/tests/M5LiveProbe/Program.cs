@@ -110,7 +110,7 @@ internal sealed class Probe
     private readonly Report _report;
     private readonly int _reps;
     private readonly bool _keep;
-    private readonly List<global::Inventor.Document> _owned = new();
+    private readonly List<PartDocument> _owned = new();
     private CadEventJournal _journal = null!;
     private InventorCommandContext _context = null!;
     private IReadOnlyDictionary<string, IInventorCommand> _commands = null!;
@@ -125,6 +125,7 @@ internal sealed class Probe
     private sealed record Result(bool Ok, JObject Data, string? Code, string? Message, JObject? Details, double Ms);
 
     private static string DocId(global::Inventor.Document doc) => "doc_" + doc.InternalName;
+    private static string DocId(PartDocument doc) => "doc_" + doc.InternalName;
 
     private static void Pump()
     {

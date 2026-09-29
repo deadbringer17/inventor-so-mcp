@@ -110,6 +110,22 @@ Su Linux falliscono per costruzione i test di semantica dei path Windows
 
 ## Regole trasversali
 
+- Per ogni gate XR, porta nel runner automatico sul Quest tutti i passaggi
+  riproducibili in modo deterministico: stato UI, chiamate al percorso input,
+  preview, revisione, risultato nativo e cleanup. Esegui il runner contro una
+  fixture Inventor dedicata, non contro i documenti dell'utente. Se un gesto
+  viene simulato, chiamalo **sintetico** nel log e verifica comunque il backend
+  reale quando il gate dipende da Inventor.
+- Separa sempre tre esiti: test unitario/FakeAddIn, runner sul Quest con input
+  sintetico, prova fisica con persona e controller. Un `PASS COMPLETE` del
+  runner chiude solo i sottocasi effettivamente esercitati; non certifica
+  ergonomia, leggibilità, tracking reale, microfono o gesti fisici. Registra
+  `PASS [gate]` e `NOT COVERED [gate]` con il motivo nel log e nel verbale.
+- Prima di chiedere una prova manuale, automatizza i sottocasi riproducibili e
+  riduci la richiesta fisica al comportamento che il software non può
+  osservare da solo. Dopo ogni run conserva manifest, log e screenshot,
+  distingue un timeout prima dell'avvio da un fallimento del test e ripristina
+  APK ordinario e documento Inventor precedente.
 - Una prova fisica (Quest, Inventor reale, audio, tracking) non eseguita resta
   **aperta**: non segnarla mai come passata sulla base di test automatici o
   FakeAddIn. Registra gli esiti nel file di verifica/collaudo della milestone.

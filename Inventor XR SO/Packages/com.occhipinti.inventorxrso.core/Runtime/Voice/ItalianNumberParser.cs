@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 
 namespace InventorXrSo.Core.Voice
 {
-    public enum QuantityUnit { None, Millimeters, Degrees }
+    public enum QuantityUnit { None, Millimeters, Degrees, Meters }
 
     public enum NumberParseError
     {

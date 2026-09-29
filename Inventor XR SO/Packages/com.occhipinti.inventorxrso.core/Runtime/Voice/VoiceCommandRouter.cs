@@ -146,11 +146,14 @@ namespace InventorXrSo.Core.Voice
                 var undo = availability.GetAvailability(CommandIds.Undo) ?? CommandAvailability.Disabled("");
                 if (undo.Enabled)
                     return VoiceRouteResult.Confirm(VoiceRouteKind.NeedsConfirmation, CommandIds.Undo, key,
-                        "Nessuna bozza attiva. Annullare l'ultima operazione (Undo)? Conferma con il pulsante.");
+                        "Nessuna bozza attiva. Annullare l'ultima modifica? Conferma con il pulsante.");
                 return VoiceRouteResult.Recognized(id, CommandAvailability.Disabled("Nessuna bozza attiva e nulla da annullare."), key);
             }
 
             var av = availability.GetAvailability(id) ?? CommandAvailability.Disabled("");
+            if ((id == CommandIds.Undo || id == CommandIds.Redo) && av.Enabled)
+                return VoiceRouteResult.Confirm(VoiceRouteKind.NeedsConfirmation, id, key,
+                    "Conferma " + (id == CommandIds.Undo ? "Annulla modifica" : "Ripeti modifica") + " con il pulsante.");
             if (id == CommandIds.Apply && av.Enabled)
                 return VoiceRouteResult.Confirm(VoiceRouteKind.ShowApplyConfirmation, id, key,
                     "Conferma il piano premendo il pulsante Applica: la voce non esegue il commit.");

@@ -557,3 +557,13 @@ remain separately identified. See docs/xr-m3-acceptance.md for the final mapping
 of milestone requirements to evidence and docs/xr-m3-quest-collaudo.md for results.
 No further code changes were made after the verified face-selection APK build.
 M3 is complete; M2 acceptance and later product milestones remain separate.
+
+## Runner automatico Quest del 29 settembre 2026
+
+Il nuovo runner su Quest 3/Inventor 2027 **non ha completato** M3. Il primo run (`artifacts/m3-verification/quest-acceptance-run-20260929-102636.json`) ha verificato preview/Cancel/Apply dell'estrusione con volume nativo 13570,796 mm³, poi si è fermato su un filtro del runner che cercava `line` anziché i nomi Inventor `kLineSegmentCurve`/`kLineCurve`; il filtro è stato corretto. La ripetizione (`quest-acceptance-run-20260929-103211.json`) ha superato anche Undo/Redo, rifiuto stale, preview/Cancel del foro cieco e preview/Cancel del raccordo da 1 mm. Si è fermata al caso C11: la preview del raccordo da 100 mm è risultata `PreviewReady`, mentre il runner attendeva un errore di validazione. Occorre verificare se il valore è stato passato e la geometria risultante prima di attribuire il difetto al backend. Entrambe le fixture sono state chiuse senza salvare; l'APK ordinario è stato ripristinato. Questo esito riguarda il nuovo runner e non annulla le precedenti osservazioni fisiche M3.
+
+### Correzione C11 e retest del 29 settembre
+
+La sonda nativa ha isolato l'assunzione errata del runner: Inventor accetta anche un raggio di 100 mm su un singolo spigolo rettilineo del blocco e ne modifica realmente il volume. Lo stesso raccordo da 1 mm sull'insieme degli spigoli rettilinei è valido, mentre 100 mm su tale insieme produce `ROLLED_BACK`. La sonda verifica inoltre che revisione, volume e numero di raccordi restino invariati dopo l'errore.
+
+Il runner C11 ora seleziona quell'insieme, verifica che il valore immesso sia 100 mm e controlla il recupero dell'interfaccia dopo l'errore CAD. La ripetizione sul Quest 3 ha raggiunto `PASS COMPLETE`: estrusione, Undo/Redo, stale, foro cieco, C10, C11, parametro e ritorno a Inspect. In C11, Applica è disabilitato dopo l'errore, il ghost precedente resta visibile e una nuova anteprima da 1 mm riabilita Applica. Evidenza: `artifacts/m3-verification/quest-acceptance-run-20260929-105608.json` e log associato. L'hash dell'APK installato corrisponde all'artefatto `InventorXrSo-acceptance-m3-group.apk`; l'APK ordinario è stato reinstallato. La fixture è stata chiusa senza salvarla e il precedente assieme robot è stato riattivato. Questo runner esercita l'interfaccia per via programmatica; i gate di input fisico restano quelli documentati nel collaudo guidato.

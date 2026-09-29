@@ -35,7 +35,7 @@ internal static class Fixtures
         var directory = Path.Combine(Path.GetTempPath(), "xrso-" + m + "-quest-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         var original = app.ActiveDocument;
-        var created = new List<Document>();
+        var created = new List<object>();
         try
         {
             JObject manifest = m switch
@@ -59,7 +59,7 @@ internal static class Fixtures
         catch
         {
             foreach (var doc in Enumerable.Reverse(created))
-                try { doc.Close(true); } catch { /* best effort */ }
+                try { ((dynamic)doc).Close(true); } catch { /* best effort */ }
             try { original?.Activate(); } catch { /* best effort */ }
             throw;
         }
@@ -80,7 +80,7 @@ internal static class Fixtures
         def.Features.ExtrudeFeatures.Add(extrude);
     }
 
-    private static JObject PrepareAssembly(global::Inventor.Application app, string m, string directory, List<Document> created)
+    private static JObject PrepareAssembly(global::Inventor.Application app, string m, string directory, List<object> created)
     {
         var upper = m.ToUpperInvariant();
         var partName = m == "m1" ? "XR_M1_Quest_Block.ipt" : "XR_M2_Quest_Acceptance_Block.ipt";
@@ -119,7 +119,7 @@ internal static class Fixtures
         return new JObject { ["assembly"] = assemblyPath, ["part"] = partPath, ["documents"] = documents, ["expected"] = expected };
     }
 
-    private static Face? TopPlanarFace(PartComponentDefinition def, out Box3d? range)
+    private static Face? TopPlanarFace(dynamic def, out Box? range)
     {
         Face? best = null; range = null; var bestZ = double.MinValue;
         foreach (Face face in def.SurfaceBodies[1].Faces)
@@ -134,10 +134,11 @@ internal static class Fixtures
         return best;
     }
 
-    private static PlanarSketch SketchOnTopFace(global::Inventor.Application app, PartComponentDefinition def, string name,
+    private static PlanarSketch SketchOnTopFace(global::Inventor.Application app, dynamic def, string name,
         Action<PlanarSketch, Point2d> draw)
     {
-        var face = TopPlanarFace(def, out var box) ?? throw new InvalidOperationException("Top planar face not found.");
+        Box? box;
+        var face = TopPlanarFace(def, out box) ?? throw new InvalidOperationException("Top planar face not found.");
         var sketch = def.Sketches.Add(face);
         sketch.Name = name;
         var centre = app.TransientGeometry.CreatePoint((box!.MinPoint.X + box.MaxPoint.X) / 2,
@@ -146,7 +147,7 @@ internal static class Fixtures
         return sketch;
     }
 
-    private static JObject PrepareM3(global::Inventor.Application app, string directory, List<Document> created)
+    private static JObject PrepareM3(global::Inventor.Application app, string directory, List<object> created)
     {
         var part = (PartDocument)app.Documents.Add(DocumentTypeEnum.kPartDocumentObject);
         created.Add(part);
@@ -166,7 +167,7 @@ internal static class Fixtures
         return new JObject { ["part"] = path, ["documents"] = new JArray(path), ["expected"] = expected };
     }
 
-    private static JObject PrepareM5(global::Inventor.Application app, string directory, List<Document> created)
+    private static JObject PrepareM5(global::Inventor.Application app, string directory, List<object> created)
     {
         var template = app.FileManager.GetTemplateFile(DocumentTypeEnum.kPartDocumentObject, SystemOfMeasureEnum.kDefaultSystemOfMeasure,
             DraftingStandardEnum.kDefault_DraftingStandard, SheetMetalSubType);
