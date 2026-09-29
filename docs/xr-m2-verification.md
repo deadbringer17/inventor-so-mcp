@@ -78,3 +78,7 @@ Esito: flussi principali provati sul Quest con riscontro dell'utente. Non equiva
 ## Limiti deliberati
 
 Misura approssimata sulla mesh, senza precisione B-Rep certificata; per ora distanza punto-punto. Sezione senza superfici di chiusura: non crea corpi tagliati. Fit to room usa un'estensione impostata, non dati del Guardian. Il Browser espone il scene graph, non feature e schizzi interni alla parte. Posizioni e misure sono di sessione, senza salvataggio tra riavvii. Il flusso resta Touch Plus destro per puntamento e sinistro per il menu; configurazione mancino, near interaction, modifica CAD e voce non vengono aggiunte da M2.
+
+## Runner automatico sul Quest
+
+Dal 29 settembre 2026 la milestone ha un runner in-app e una fixture dedicata secondo lo standard M4: vedi [test automatici sul Quest](xr-quest-acceptance.md). Runner e fixture non sono ancora stati compilati né eseguiti; nessun gate di questa milestone cambia stato finché non viene registrato qui un run reale (log `quest-acceptance-*` in `artifacts/`).

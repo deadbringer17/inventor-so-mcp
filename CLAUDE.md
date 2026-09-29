@@ -89,6 +89,7 @@ Build, test e primo collegamento: `Inventor XR SO/README.md`.
 | spec di design di una milestone | `docs/superpowers/specs/<data>-<tema>-design.md` |
 | piano di implementazione | `docs/superpowers/plans/<data>-<tema>.md` |
 | esito di verifica / collaudo | `docs/xr-mN-verification.md`, `docs/xr-mN-collaudo.md`, `docs/xr-m3-acceptance.md` |
+| test automatici sul Quest (runner in-app, fixture, script ADB) | `docs/xr-quest-acceptance.md` |
 
 Milestone XR: M1 visualizzazione e selezione · M2 ispezione · M3 schizzo/design
 · M4 assembly · **M5 lamiera, sviluppo piano e voce** (implementazione

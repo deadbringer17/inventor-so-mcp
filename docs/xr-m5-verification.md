@@ -127,3 +127,7 @@ Nessun gate è `PASS`: la colonna *Software* dice solo quale parte automatizzabi
    `--voice-command` con il motore scelto.
 4. Build dell'APK e collaudo sul Quest (D3, M5-01…M5-12), con le regressioni
    M1–M4.
+
+## Runner automatico sul Quest
+
+Dal 29 settembre 2026 la milestone ha un runner in-app e una fixture dedicata secondo lo standard M4: vedi [test automatici sul Quest](xr-quest-acceptance.md). Runner e fixture non sono ancora stati compilati né eseguiti; nessun gate di questa milestone cambia stato finché non viene registrato qui un run reale (log `quest-acceptance-*` in `artifacts/`).
