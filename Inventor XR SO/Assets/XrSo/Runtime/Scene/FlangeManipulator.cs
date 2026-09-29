@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using InventorXrSo.Core.Backend;
+using InventorXrSo.Core.Glb;
 using UnityEngine;
 
 namespace InventorXrSo.Unity.Scene
@@ -33,6 +34,8 @@ namespace InventorXrSo.Unity.Scene
         public double HeightMm { get; private set; }
         /// <summary>False when the direction is a fallback (no face pair matched the sheet thickness).</summary>
         public bool AxisFromFaces { get; private set; }
+        /// <summary>True when the axis sign was confirmed against the flange Inventor computed (preview). Display only.</summary>
+        public bool AxisCalibrated { get; private set; }
         public Vector3 KnobWorldPosition => _model == null ? Vector3.zero : _model.TransformPoint(CadCoordinates.ToLocal(Origin + Axis * HeightMm));
         public Vector3 OriginWorldPosition => _model == null ? Vector3.zero : _model.TransformPoint(CadCoordinates.ToLocal(Origin));
         /// <summary>Current knob diameter in world metres (constant by construction).</summary>
@@ -75,9 +78,9 @@ namespace InventorXrSo.Unity.Scene
         }
 
         /// <summary>Place the handle. A running drag keeps its own height; only frame changes are applied.</summary>
-        public void Show(CadPoint origin, CadPoint axis, double heightMm, bool axisFromFaces)
+        public void Show(CadPoint origin, CadPoint axis, double heightMm, bool axisFromFaces, bool calibrated = false)
         {
-            Origin = origin; Axis = axis; AxisFromFaces = axisFromFaces;
+            Origin = origin; Axis = axis; AxisFromFaces = axisFromFaces; AxisCalibrated = calibrated;
             if (!Dragging) HeightMm = heightMm;
             Visible = true;
             Apply();
@@ -182,6 +185,25 @@ namespace InventorXrSo.Unity.Scene
             if (candidate.Length < 1e-6) { var z = new CadPoint(0, 0, 1); candidate = z - direction * z.Dot(direction); }
             axis = candidate * (1 / candidate.Length);
             return true;
+        }
+
+        /// <summary>
+        /// Checks the heuristic axis against the previewed part (Inventor's own flange). Pure: nothing is written to CAD
+        /// or to the draft. False when the evidence is ambiguous; the caller then keeps the heuristic.
+        /// </summary>
+        public static bool TryCalibrate(GlbModel preview, DesignEdge edge, CadPoint candidateAxis, bool candidateFromFaces,
+            double heightMm, double? thicknessMm, out CadPoint axis)
+        {
+            axis = candidateAxis;
+            if (preview == null || edge == null || edge.PointsMm == null || edge.PointsMm.Count < 2) return false;
+            var points = edge.PointsMm;
+            var chord = points[points.Count - 1] - points[0];
+            if (chord.Length < 1e-9) chord = points[1] - points[0];
+            if (chord.Length < 1e-9) return false;
+            double length = 0;
+            for (int i = 1; i < points.Count; i++) length += (points[i] - points[i - 1]).Length;
+            return FlangeDirection.Calibrate(preview, Midpoint(points), chord, length, candidateAxis, heightMm,
+                out axis, out _, thicknessMm, !candidateFromFaces);
         }
 
         private static bool HasSheetPartner(DesignFace face, IReadOnlyList<DesignFace> faces, double thickness)

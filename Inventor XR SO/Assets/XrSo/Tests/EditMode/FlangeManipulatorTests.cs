@@ -1,4 +1,5 @@
 using InventorXrSo.Core.Backend;
+using InventorXrSo.Core.Glb;
 using InventorXrSo.Unity.Scene;
 using NUnit.Framework;
 using UnityEngine;
@@ -97,6 +98,42 @@ namespace InventorXrSo.Tests
             Assert.False(fromFaces);
             Assert.AreEqual(1, axis.Y, 1e-9); Assert.AreEqual(0, axis.X, 1e-9, "Perpendicular to the edge.");
             Assert.False(FlangeManipulator.TryFrame(new DesignEdge("x", "line", new[] { new CadPoint(1, 1, 1) }), null, null, out _, out _, out _));
+        }
+
+        private static GlbModel PreviewWithTip(double tipZMm)
+        {
+            float[] mm = { 0, -100, 0, 100, 0, 2, 50, 0, 2, 50, 0, (float)(2 + tipZMm) };
+            var positions = new float[mm.Length];
+            for (int i = 0; i < mm.Length; i++) positions[i] = mm[i] / 1000f;
+            return new GlbModel("doc", new[] { new GlbPrimitive(1, "b", true, positions, new float[0], new uint[0], System.Array.Empty<FaceRange>()) });
+        }
+
+        [Test] public void CalibrationFlipsAWrongSignAndKeepsTheRightOne()
+        {
+            var edge = new DesignEdge("ent_edge", "line", new[] { new CadPoint(0, 0, 2), new CadPoint(100, 0, 2) });
+            var up = new CadPoint(0, 0, 1);
+            Assert.True(FlangeManipulator.TryCalibrate(PreviewWithTip(-20), edge, up, true, 20, 2.0, out var axis));
+            Assert.AreEqual(-1, axis.Z, 1e-6, "Inventor grew the flange downwards.");
+            Assert.True(FlangeManipulator.TryCalibrate(PreviewWithTip(20), edge, up, true, 20, 2.0, out axis));
+            Assert.AreEqual(1, axis.Z, 1e-6);
+        }
+
+        [Test] public void CalibrationWithoutEvidenceLeavesTheHeuristicAlone()
+        {
+            var edge = new DesignEdge("ent_edge", "line", new[] { new CadPoint(0, 0, 2), new CadPoint(100, 0, 2) });
+            var up = new CadPoint(0, 0, 1);
+            Assert.False(FlangeManipulator.TryCalibrate(PreviewWithTip(0.5), edge, up, true, 20, 2.0, out var axis));
+            Assert.AreEqual(1, axis.Z, 1e-9);
+            Assert.False(FlangeManipulator.TryCalibrate(null, edge, up, true, 20, 2.0, out _));
+            Assert.False(FlangeManipulator.TryCalibrate(PreviewWithTip(20), null, up, true, 20, 2.0, out _));
+        }
+
+        [Test] public void ACalibratedHandleIsFlaggedAndFollowsTheNewAxis()
+        {
+            _manip.Show(new CadPoint(0, 0, 0), new CadPoint(0, -1, 0), 20, false, true);
+            Assert.True(_manip.AxisCalibrated); Assert.False(_manip.AxisFromFaces);
+            _manip.Show(new CadPoint(0, 0, 0), new CadPoint(0, 1, 0), 20, false);
+            Assert.False(_manip.AxisCalibrated);
         }
 
         [Test] public void MidpointIsTheLengthMidpointOfAPolyline()

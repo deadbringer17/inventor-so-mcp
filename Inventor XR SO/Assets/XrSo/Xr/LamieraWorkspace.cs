@@ -58,6 +58,8 @@ namespace InventorXrSo.Xr
         private FlatPatternView _flat;
         private readonly SheetMetalMode _mode = new SheetMetalMode();
         private readonly FlangeDraft _flange = new FlangeDraft();
+        // Handle direction confirmed against the preview; valid only for the draft key it was measured on.
+        private string _calibKey; private CadPoint _calibAxis;
         private SheetMetalContext _sheetContext;
         private DesignContext _designContext;
         private DesignHistory _history;
@@ -306,6 +308,7 @@ namespace InventorXrSo.Xr
                     _selection?.Clear(); _previewView.Show(_session.Preview);
                     _renderedPlan = _session.Preview.PlanId;
                     _session.ConfirmRendered(_renderedPlan);
+                    CalibrateFlangeAxis(_session.Preview);
                 }
                 catch (Exception ex) { _notice = "Anteprima non visualizzabile: " + ex.Message; }
             }
@@ -327,6 +330,34 @@ namespace InventorXrSo.Xr
             _geometry.ShowErrorContext(paths);
         }
 
+        private string CalibrationKey() => string.Join(",", _flange.EdgeIds) + "|" + _flange.Datum + "|" + _flange.AngleDegrees.ToString("R", CultureInfo.InvariantCulture);
+
+        private DesignEdge FirstSelectedEdge()
+        {
+            if (_designContext == null || _flange.EdgeIds.Count == 0) return null;
+            return _designContext.Edges.FirstOrDefault(e => e.Id == _flange.EdgeIds[0]);
+        }
+
+        /// <summary>
+        /// Once Inventor's preview of the current flange draft is on screen, check the handle direction against it.
+        /// View only: never touches the draft values nor CAD. On ambiguous evidence the heuristic (and its warning) stays.
+        /// </summary>
+        private void CalibrateFlangeAxis(DesignPreview preview)
+        {
+            _calibKey = null;
+            try
+            {
+                var edge = FirstSelectedEdge();
+                if (_mode.Armed == SheetMetalCommand.Flange && edge != null && preview?.Model != null
+                    && double.IsFinite(_flange.HeightMm) && _flange.HeightMm > 0
+                    && FlangeManipulator.TryFrame(edge, _designContext.Faces, _mode.Context?.ThicknessMm, out _, out var candidate, out var fromFaces)
+                    && FlangeManipulator.TryCalibrate(preview.Model, edge, candidate, fromFaces, _flange.HeightMm, _mode.Context?.ThicknessMm, out var axis))
+                { _calibKey = CalibrationKey(); _calibAxis = axis; }
+            }
+            catch (Exception) { _calibKey = null; }
+            RefreshFlangeVisuals();
+        }
+
         private void RefreshFlangeVisuals()
         {
             if (_geometry == null || _manip == null) return;
@@ -338,7 +369,11 @@ namespace InventorXrSo.Xr
             var first = selected.FirstOrDefault(e => e.Id == _flange.EdgeIds[0]) ?? selected.FirstOrDefault();
             if (first != null && _session?.CanEdit == true
                 && FlangeManipulator.TryFrame(first, _designContext.Faces, _mode.Context?.ThicknessMm, out var origin, out var axis, out var fromFaces))
-                _manip.Show(origin, axis, SafeHeight(_flange.HeightMm), fromFaces);
+            {
+                bool calibrated = _calibKey != null && _calibKey == CalibrationKey();
+                if (calibrated) axis = _calibAxis;
+                _manip.Show(origin, axis, SafeHeight(_flange.HeightMm), fromFaces, calibrated);
+            }
             else _manip.Hide();
         }
 
@@ -797,7 +832,7 @@ namespace InventorXrSo.Xr
                         body += "Bordi selezionati: " + _flange.EdgeIds.Count + ". Trigger su un bordo: aggiungi o togli.\n"
                             + "Grip + Trigger sul pomello: altezza (solo con Flangia armata). Grip semplice muove la vista.\n"
                             + "Altezza " + Fmt(_flange.HeightMm) + " mm • Angolo " + Fmt(_flange.AngleDegrees) + "° • Riferimento " + DatumLabel(_flange.Datum) + ".\n";
-                        if (_manip != null && _manip.Visible && !_manip.AxisFromFaces) body += "Direzione del pomello stimata: verifica il risultato in anteprima.\n";
+                        if (_manip != null && _manip.Visible && !_manip.AxisFromFaces && !_manip.AxisCalibrated) body += "Direzione del pomello stimata: verifica il risultato in anteprima.\n";
                         if (_armedField != null) body += "Campo attivo: " + ArmedField?.Label + ".\n";
                         Add(actions, "Altezza: " + Fmt(_flange.HeightMm) + " mm", () => AskNumber(FieldFlangeHeight), !locked);
                         Add(actions, "Angolo: " + Fmt(_flange.AngleDegrees) + " °", () => AskNumber(FieldFlangeAngle), !locked);
