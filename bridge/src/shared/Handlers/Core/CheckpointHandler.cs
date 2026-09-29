@@ -28,7 +28,7 @@ public sealed class CheckpointHandler : HandlerBase, IInventorCommand
         if (_action == "diff")
         {
             if (!ActiveDocumentSupport.TryGetActivePart(ctx, Name, out _, out var active, out var failure)) return failure!;
-            string activeId = "doc_" + active.InternalName;
+            string activeId = EntityReferences.DocumentId(active);
             if ((string?)p["document_id"] != activeId) return Fail(ctx, ConcurrencyFailure.DocumentChanged((string?)p["document_id"], activeId));
             string? revision = ctx.Events?.Revision(activeId);
             if (revision == null || (string?)p["expected_revision"] != revision)
