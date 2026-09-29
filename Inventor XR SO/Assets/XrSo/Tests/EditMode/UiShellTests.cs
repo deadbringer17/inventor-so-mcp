@@ -1,0 +1,150 @@
+using System.Collections.Generic;
+using System.Linq;
+using InventorXrSo.Core.Ui;
+using InventorXrSo.Core.Voice;
+using InventorXrSo.Unity.Ui;
+using NUnit.Framework;
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+
+namespace InventorXrSo.Tests
+{
+    public class UiShellTests
+    {
+        private sealed class Provider : IActionProvider
+        {
+            public List<XrTab> TabList = new List<XrTab>();
+            public List<XrAction> All = new List<XrAction>();
+            public CommitBarState Bar = new CommitBarState();
+            public IReadOnlyList<XrTab> Tabs => TabList;
+            public IEnumerable<XrAction> Actions => All;
+            public IEnumerable<XrAction> ContextActions(SelectionKind s) => Enumerable.Empty<XrAction>();
+            public CommitBarState CommitBar => Bar;
+        }
+
+        private readonly List<GameObject> _roots = new List<GameObject>();
+        private GameObject _anchor, _head;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _anchor = new GameObject("left"); _head = new GameObject("head");
+            _roots.Add(_anchor); _roots.Add(_head);
+        }
+
+        [TearDown]
+        public void TearDown() { foreach (var r in _roots) if (r != null) Object.DestroyImmediate(r); _roots.Clear(); }
+
+        private static XrAction A(string id, string label, string tab, System.Action run = null, bool enabled = true)
+            => new XrAction(id, label, tab, () => enabled, run ?? (() => { }), () => "spento");
+
+        private UiShell Shell(ActionCatalog catalog)
+        {
+            var shell = UiShell.Create(_anchor.transform, _head.transform, catalog);
+            _roots.Add(shell.gameObject); _roots.Add(shell.CommitBar.Canvas.gameObject); _roots.Add(shell.Hud.Canvas.gameObject);
+            return shell;
+        }
+
+        private static ActionCatalog Catalog(out Provider spaces)
+        {
+            spaces = new Provider();
+            spaces.TabList.Add(new XrTab(ActionCatalog.SpacesTab, "Spazi"));
+            spaces.All.Add(A("spaces.inspect", "Ispeziona", ActionCatalog.SpacesTab));
+            return new ActionCatalog(spaces);
+        }
+
+        private static string[] Labels(Component root) =>
+            root.GetComponentsInChildren<Button>(false).Select(b => b.GetComponentInChildren<TextMeshProUGUI>().text).ToArray();
+
+        [Test]
+        public void PaletteFollowsTheLeftControllerAndShowsSpacesByDefault()
+        {
+            var shell = Shell(Catalog(out _));
+            Assert.AreSame(_anchor.transform, shell.Palette.Canvas.transform.parent);
+            Assert.AreEqual(ActionCatalog.SpacesTab, shell.Palette.CurrentTab);
+            CollectionAssert.Contains(Labels(shell.Palette), "Ispeziona");
+        }
+
+        [Test]
+        public void TabsCycleAndButtonsInvokeActions()
+        {
+            var catalog = Catalog(out _);
+            int runs = 0;
+            var design = new Provider();
+            design.TabList.Add(new XrTab("sketch", "Schizzo"));
+            design.All.Add(A("design.sketch", "Crea schizzo", "sketch", () => runs++));
+            var shell = Shell(catalog);
+            catalog.SetActive(design);
+            Assert.AreEqual("sketch", shell.Palette.CurrentTab);
+            shell.Palette.GetComponentsInChildren<Button>().First(b => b.GetComponentInChildren<TextMeshProUGUI>().text == "Crea schizzo").onClick.Invoke();
+            Assert.AreEqual(1, runs);
+            shell.Palette.SelectTab(+1);
+            Assert.AreEqual(ActionCatalog.SpacesTab, shell.Palette.CurrentTab);
+            shell.Palette.SelectTab(+1);
+            Assert.AreEqual("sketch", shell.Palette.CurrentTab);
+        }
+
+        [Test]
+        public void DisabledActionsAreNotInteractable()
+        {
+            var catalog = Catalog(out _);
+            var p = new Provider();
+            p.TabList.Add(new XrTab("t", "T"));
+            p.All.Add(A("off", "Spento", "t", enabled: false));
+            var shell = Shell(catalog);
+            catalog.SetActive(p);
+            Assert.IsFalse(shell.Palette.GetComponentsInChildren<Button>().First(b => b.GetComponentInChildren<TextMeshProUGUI>().text == "Spento").interactable);
+        }
+
+        [Test]
+        public void KeypadReplacesTheTabAndCommitsIntoTheEntry()
+        {
+            var shell = Shell(Catalog(out _));
+            var entry = new NumericEntry("h", QuantityUnit.Millimeters, 20, 0.01, 1000);
+            shell.Palette.ShowKeypad(entry);
+            Assert.IsTrue(shell.Palette.KeypadVisible);
+            Button Key(string t) => shell.Palette.GetComponentsInChildren<Button>().First(b => b.GetComponentInChildren<TextMeshProUGUI>().text == t);
+            Key("1").onClick.Invoke(); Key("2").onClick.Invoke(); Key(",").onClick.Invoke(); Key("5").onClick.Invoke();
+            Key("OK").onClick.Invoke();
+            Assert.AreEqual(12.5, entry.Value, 1e-9);
+            Assert.IsFalse(shell.Palette.KeypadVisible);
+        }
+
+        [Test]
+        public void CommitBarShowsOnlyTheAllowedButtonsAndTheRecovery()
+        {
+            var catalog = Catalog(out _);
+            var p = new Provider();
+            int applied = 0;
+            p.All.Add(A(CommitIds.Preview, "Anteprima", ActionCatalog.CommitTab));
+            p.All.Add(A(CommitIds.Apply, "Applica", ActionCatalog.CommitTab, () => applied++));
+            p.All.Add(A(CommitIds.Cancel, "Annulla", ActionCatalog.CommitTab));
+            p.All.Add(A(CommitIds.Recover, "Recupera", ActionCatalog.CommitTab));
+            var shell = Shell(catalog);
+            catalog.SetActive(p);
+
+            Assert.IsFalse(shell.CommitBar.Canvas.gameObject.activeSelf, "Empty hides the bar");
+            p.Bar.Update(new CommitBarInputs(true, false, false, false, false, true, null), 0);
+            CollectionAssert.AreEquivalent(new[] { "Anteprima", "Annulla" }, Labels(shell.CommitBar));
+            p.Bar.Update(new CommitBarInputs(true, false, false, false, true, false, null), 0);
+            CollectionAssert.AreEquivalent(new[] { "Applica", "Annulla" }, Labels(shell.CommitBar));
+            shell.CommitBar.GetComponentsInChildren<Button>().First(b => b.GetComponentInChildren<TextMeshProUGUI>().text == "Applica").onClick.Invoke();
+            Assert.AreEqual(1, applied);
+            p.Bar.Update(new CommitBarInputs(true, false, true, false, true, false, null), 0);
+            CollectionAssert.AreEquivalent(new[] { "Aggiorna documento" }, Labels(shell.CommitBar));
+            Assert.AreEqual(UiStyle.For(CommitBarPhase.Stale), shell.CommitBar.GetComponentInChildren<Image>().color);
+        }
+
+        [Test]
+        public void HudKeepsTheStatusBadgeApi()
+        {
+            var shell = Shell(Catalog(out _));
+            shell.Hud.SetStatus("Online · rev 42");
+            shell.Hud.Flash("3 corpi omessi");
+            var texts = shell.Hud.GetComponentsInChildren<TextMeshProUGUI>().Select(t => t.text).ToArray();
+            CollectionAssert.Contains(texts, "Online · rev 42");
+            CollectionAssert.Contains(texts, "3 corpi omessi");
+        }
+    }
+}
