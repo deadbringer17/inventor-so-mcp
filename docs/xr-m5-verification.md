@@ -224,3 +224,28 @@ Resta **aperto** come prova fisica, con `NOT COVERED` nel log:
 
 Il timeout del runner è ora 540 s: `scripts/run-quest-acceptance.ps1` va
 lanciato con `-TimeoutSeconds 600` o più.
+
+## Parte fisica superata — 30 settembre 2026
+
+L'utente ha dichiarato in chat che la parte fisica di M5 sul Quest 3 è
+**superata**, dopo la prova parziale e il runner con gesti sintetici descritti
+sopra. La dichiarazione non elenca i singoli passi né i comandi vocali
+pronunciati; il verbale la registra così com'è, senza dettagli aggiunti.
+
+| Gate | Stato |
+|---|---|
+| M5-03-physical (gesto Grip + Trigger sul pomello, controller reale, scala ridotta, leggibilità) | superato, per dichiarazione dell'utente |
+| M5-06-physical (Grip sullo sviluppo staccato, confronto visivo col pezzo piegato) | superato, per dichiarazione dell'utente |
+| M5-08 (push-to-talk con pulsante B e microfono reale) | superato, per dichiarazione dell'utente |
+| M5-12 (percorso flangia → sviluppo → detach in ambiente d'uso) | superato, per dichiarazione dell'utente |
+
+Restano **non esercitati** (nessun runner né prova li ha coperti; non erano tra
+i passi fisici):
+
+- M5-04: comandi Face e regola/spessore da schizzo e cambio regola.
+- M5-05: esito su parti multi-body o con sviluppo impossibile (`NOT_RUN` nel
+  probe nativo, la fixture non produce due corpi).
+- M5-07: perdita di rete, anteprima tardiva, commit incerto.
+
+Le regressioni M1–M4 sul Quest sono i runner del 30 settembre (tutti `PASS
+COMPLETE`, vedi [verifica M6](xr-m6-verification.md)).
