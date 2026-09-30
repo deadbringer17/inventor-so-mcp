@@ -36,6 +36,8 @@ Discovery / target descriptor (`TargetDescriptor`):
 
 The server scans these files (`TargetRegistry.List()`), dropping any whose `process_id` is dead, whose `last_heartbeat_utc` is older than the max age (~120 s), whose `host_app != "Inventor"`, or whose year is outside 2022-2027. Use 4-digit calendar years (2022..2027), never legacy version codes. Agents should call `inventor_list_available_targets` to enumerate live instances and `inventor_get_current_target` to inspect the pinned one rather than guessing.
 
+Target pinning (`PluginClient.CurrentTarget`): an *explicit* pin (`inventor_switch_target`, or a config `TargetId` equal to an exact target id such as `inventor-2027-66440`) never moves; if that instance exits the target is null (fail-closed). An *automatic* pin (config year / pipe name / pid alias, or no config and a single live instance) follows an Inventor restart: when the pinned instance is gone it is re-resolved by the same rule and, if exactly one live target matches, re-pinned with one stderr line (`re-pinned Inventor target from <old> to <new>`); zero or several matches stay null. The long-lived remote host for the Quest should therefore be started with `--target 2027`. A re-pin is visible as a new `target_id` in `inventor_get_current_target`; the new add-in has a new `CadEventJournal` epoch, so revision tokens from the old instance no longer validate and `EventSubscriptionService` receives `resync_required`.
+
 ## Project Structure
 
 ```

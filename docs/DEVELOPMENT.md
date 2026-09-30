@@ -2,6 +2,21 @@
 
 Target: Inventor 2027 x64. Full functional scope remains the 80-point assessment in `analisi-spec-inventor-so-mcp.md`; the work below does not replace it with a smaller goal.
 
+## Host remoto: segue il riavvio di Inventor — 2026-09-30
+
+`PluginClient.CurrentTarget` restituiva `null` per sempre quando il processo Inventor agganciato terminava, anche se il pin era nato in automatico. L'host HTTPS usato dal Quest è di lunga durata: a ogni riavvio di Inventor il visore perdeva la connessione fino al riavvio manuale dell'host.
+
+Comportamento attuale:
+
+- **Pin esplicito** (`inventor_switch_target`, oppure `TargetId` di configurazione uguale a un id esatto come `inventor-2027-66440`): invariato, se l'istanza sparisce il target è `null` (fail-closed, nessun reindirizzamento silenzioso).
+- **Pin automatico** (`TargetId` come anno `2027`, alias pipe/PID, oppure nessuna configurazione con una sola istanza viva): se l'istanza agganciata non c'è più viene risolta di nuovo con la stessa regola; con esattamente un target vivo si riaggancia e scrive su stderr una riga `re-pinned Inventor target from <vecchio> to <nuovo>`. Con zero o più target resta `null`.
+- Lo stato di selezione è protetto da un lock (l'host HTTP legge `CurrentTarget` in concorrenza).
+- Visibilità: `inventor_get_current_target` riporta il nuovo `target_id`. Il nuovo add-in ha un nuovo epoch di `CadEventJournal`, quindi i token di revisione della vecchia istanza non validano più e `EventSubscriptionService` riceve `resync_required`. Nessun altro meccanismo di reset per target.
+
+Avvio consigliato dell'host remoto: `--target 2027`.
+
+Test: 5 nuovi in `MetaToolsTests` (alias anno, due target, id esatto, `SwitchTarget`, istanza singola senza configurazione).
+
 ## Inventor XR SO — Milestone 1 — 2026-09-27
 
 Continued after C2 with the Unity CAD scene, face/occurrence highlighting,

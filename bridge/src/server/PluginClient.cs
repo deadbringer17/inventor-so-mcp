@@ -51,6 +51,8 @@ public sealed class PluginClient
     private readonly TargetRegistry _registry;
     private TargetDescriptor? _current;
     private string? _selectedTargetId;
+    private bool _pinExplicit;
+    private readonly object _selectionLock = new();
 
     private readonly Action<string> _log;
 
@@ -63,21 +65,47 @@ public sealed class PluginClient
 
     public IReadOnlyList<TargetDescriptor> ListTargets() => _registry.List();
 
+    /// <summary>
+    /// The pinned target, refreshed from the registry on every read. An explicit pin (SwitchTarget, or a config
+    /// TargetId equal to an exact target id) never moves: if that instance disappears the result is null. An
+    /// automatic pin (config year / pipe / pid alias, or the single-live-instance rule) is re-resolved with the same
+    /// rule when its instance is gone, so a long-lived host follows an Inventor restart; zero or several matches
+    /// stay null (fail-closed).
+    /// </summary>
     public TargetDescriptor? CurrentTarget
     {
         get
         {
             var live = _registry.List();
-            // Never silently redirect CAD writes when an explicitly selected instance disappears.
-            // Refresh descriptors on every read so credentials and active-document metadata are current.
-            if (_selectedTargetId is { } selected)
-                return _current = live.FirstOrDefault(t => t.TargetId == selected);
-            if (!string.IsNullOrWhiteSpace(_config.TargetId))
-                _current = ResolveUnique(live, _config.TargetId!);
-            else
-                _current = live.Count == 1 ? live[0] : null;
-            if (_current is not null) _selectedTargetId = _current.TargetId;
-            return _current;
+            lock (_selectionLock)
+            {
+                if (_selectedTargetId is { } selected)
+                {
+                    var still = live.FirstOrDefault(t => t.TargetId == selected);
+                    if (still is not null || _pinExplicit) return _current = still;
+                    // Automatic pin whose instance is gone: fall through and re-resolve by the original rule.
+                }
+                var previous = _selectedTargetId;
+                TargetDescriptor? resolved;
+                bool explicitPin = false;
+                if (!string.IsNullOrWhiteSpace(_config.TargetId))
+                {
+                    var key = _config.TargetId!;
+                    resolved = ResolveUnique(live, key);
+                    explicitPin = resolved is not null &&
+                        string.Equals(resolved.TargetId, key.Trim(), StringComparison.OrdinalIgnoreCase);
+                }
+                else
+                    resolved = live.Count == 1 ? live[0] : null;
+
+                _current = resolved;
+                if (resolved is null) return null; // keep the old automatic pin id: a later restart may still re-pin
+                _selectedTargetId = resolved.TargetId;
+                _pinExplicit = explicitPin;
+                if (previous is not null && previous != resolved.TargetId)
+                    _log($"inventor-so-mcp: re-pinned Inventor target from {previous} to {resolved.TargetId} (previous instance is gone)");
+                return resolved;
+            }
         }
     }
 
@@ -89,8 +117,12 @@ public sealed class PluginClient
         var live = _registry.List();
         var match = ResolveUnique(live, key);
         if (match is null) return false;
-        _current = match;
-        _selectedTargetId = match.TargetId;
+        lock (_selectionLock)
+        {
+            _current = match;
+            _selectedTargetId = match.TargetId;
+            _pinExplicit = true;
+        }
         return true;
     }
 
