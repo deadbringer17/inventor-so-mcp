@@ -160,3 +160,30 @@ L'APK ordinario finale è stato compilato con esito `Build Successful`, installa
 su Quest 3 (`2G0YC1ZFB407P1`) e avviato; il processo dell'app è presente.
 SHA-256 dell'APK installato: `4B0249CF7E508322780E9696BCDA70A3C1F6DB3DEF07532F02A01211843D02C5`.
 La suite EditMode finale è `182/182` (`%TEMP%/xrso-voice-italian-final2.xml`).
+
+## Prova fisica parziale — 30 settembre 2026
+
+Eseguita dall'utente sul Quest 3 con l'APK ordinario della Fase 1 di M6
+(sha256 `4aacd424…c8eb`, contiene tutte le funzioni M5), Inventor 2027 reale e
+la fixture dedicata `XR_M5_Quest_Acceptance.ipt`. Host HTTPS avviato con
+`--target 2027`.
+
+| Passo | Esito riferito dall'utente |
+|---|---|
+| Avvio dell'app e sessione Online | OK |
+| Lamiera come modalità primaria; regola `Default_mm` e spessore 0,5 mm visibili (M5-01, M5-02) | OK |
+| Flangia con gesto Grip + Trigger sul pomello, Grip semplice, Anteprima e Applica (M5-03) | **non eseguito**: l'utente ha chiesto di coprirlo con test automatici |
+| Sviluppo piano, distacco e spostamento con Grip (M5-05, M5-06) | **non eseguito**: come sopra |
+| Voce con pulsante B e microfono reale (M5-08…M5-11) | «funziona»; l'utente non ha dettagliato i singoli comandi |
+
+Conseguenze:
+
+- La parte fisica di M5-03 e M5-06 (controller reale, tracking, leggibilità)
+  resta **aperta**. I sottocasi riproducibili passano al runner con gesti
+  sintetici (vedi [test automatici sul Quest](xr-quest-acceptance.md)); un
+  `PASS` sintetico non chiude la prova fisica.
+- M5-08 (pulsante B e microfono) è stato provato di persona con esito positivo,
+  senza elenco dei comandi pronunciati: la pronuncia di ogni singolo comando
+  resta da collaudare.
+- M5-12 (percorso completo flangia → sviluppo → detach in ambiente d'uso) resta
+  **aperto**.
