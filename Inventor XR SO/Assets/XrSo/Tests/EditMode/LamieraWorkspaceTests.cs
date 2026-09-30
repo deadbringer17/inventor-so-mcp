@@ -373,6 +373,173 @@ namespace InventorXrSo.Tests
             Assert.Null(_view.transform.Find("Flat pattern (view only)"));
         }
 
+        // M5-03 (gesture path): synthetic controller frames through the same ProcessControllerFrame as Update()
+        private void Frame(bool tracked, bool grip, bool trigger, bool gripDown = false, bool triggerDown = false, bool ui = false, bool onPanel = false)
+            => typeof(LamieraWorkspace).GetMethod("ProcessControllerFrame", BindingFlags.Instance | BindingFlags.NonPublic)
+                .Invoke(_workspace, new object[] { tracked, grip, trigger, gripDown, triggerDown, ui, onPanel });
+
+        private Vector3 AxisWorld() => _view.transform.TransformDirection(CadCoordinates.ToLocal(Manipulator.Axis)).normalized;
+
+        private void AimAtKnob()
+        {
+            var axis = AxisWorld();
+            var side = Vector3.Cross(axis, Vector3.up).normalized;
+            if (side.sqrMagnitude < 0.1f) side = Vector3.Cross(axis, Vector3.right).normalized;
+            _ray.Origin.SetPositionAndRotation(Manipulator.KnobWorldPosition + side * 0.15f, Quaternion.LookRotation(-side));
+        }
+
+        /// <summary>Moves the controller by a physical distance along the flange axis: the same CAD millimetres at any view scale.</summary>
+        private void MoveHandAlongAxis(double cadMm) => _ray.Origin.position += AxisWorld() * (float)(cadMm * 0.001 * _view.transform.lossyScale.x);
+
+        [TestCase(1f)][TestCase(0.25f)]
+        public void GripTriggerOnKnobDragsTheDraftHeightByTheSameMillimetresAtAnyScale(float scale)
+        {
+            ArmFlangeWithEdge();
+            _view.transform.localScale = Vector3.one * scale;
+            AimAtKnob();
+            Frame(true, true, true, gripDown: true, triggerDown: true);
+            Assert.True(Manipulator.Dragging);
+            MoveHandAlongAxis(10);
+            Frame(true, true, true);
+            Assert.That(_workspace.Flange.HeightMm, Is.EqualTo(20).Within(0.05));
+            Assert.AreEqual(0, _backend.Previews, "Dragging alone never computes a preview.");
+            Frame(true, false, false);
+            Assert.False(Manipulator.Dragging);
+            Assert.AreEqual(1, _backend.Previews); Assert.AreEqual(0, _backend.Commits);
+            Assert.That((double)_backend.LastOperations[0]["arguments"]["height_mm"], Is.EqualTo(20).Within(0.05));
+            Assert.True(PreviewView.IsShowing);
+        }
+
+        [Test] public void PlainGripNeverChangesTheFlangeDraft()
+        {
+            ArmFlangeWithEdge();
+            int version = _workspace.Flange.Version;
+            AimAtKnob();
+            Frame(true, true, false, gripDown: true);
+            MoveHandAlongAxis(10);
+            Frame(true, true, false);
+            Assert.False(Manipulator.Dragging);
+            Assert.AreEqual(10, _workspace.Flange.HeightMm); Assert.AreEqual(version, _workspace.Flange.Version);
+            Frame(true, false, false);
+            Assert.AreEqual(0, _backend.Previews); Assert.AreEqual(0, _backend.Commits);
+        }
+
+        [Test] public void TriggerWithoutGripNeverStartsTheKnobDrag()
+        {
+            ArmFlangeWithEdge(); AimAtKnob();
+            Frame(true, false, true, triggerDown: true);
+            Assert.False(Manipulator.Dragging); Assert.AreEqual(10, _workspace.Flange.HeightMm);
+        }
+
+        [Test] public void ReleasingTheTriggerEndsTheDragAndFurtherMotionIsIgnored()
+        {
+            ArmFlangeWithEdge(); AimAtKnob();
+            Frame(true, true, true, gripDown: true, triggerDown: true);
+            MoveHandAlongAxis(5); Frame(true, true, true);
+            Assert.That(_workspace.Flange.HeightMm, Is.EqualTo(15).Within(0.05));
+            Frame(true, true, false); // trigger released, grip still held: view grab, never the draft
+            Assert.False(Manipulator.Dragging); Assert.AreEqual(1, _backend.Previews);
+            MoveHandAlongAxis(20); Frame(true, true, false);
+            Assert.That(_workspace.Flange.HeightMm, Is.EqualTo(15).Within(0.05));
+            Assert.AreEqual(0, _backend.Commits);
+        }
+
+        [Test] public void TrackingLossEndsTheDragAndKeepsTheLastValidHeight()
+        {
+            ArmFlangeWithEdge(); AimAtKnob();
+            Frame(true, true, true, gripDown: true, triggerDown: true);
+            MoveHandAlongAxis(8); Frame(true, true, true);
+            Assert.That(_workspace.Flange.HeightMm, Is.EqualTo(18).Within(0.05));
+            MoveHandAlongAxis(500); // garbage pose reported while tracking is lost
+            Frame(false, false, false);
+            Assert.False(Manipulator.Dragging);
+            Assert.That(_workspace.Flange.HeightMm, Is.EqualTo(18).Within(0.05));
+            Assert.AreEqual(0, _backend.Commits);
+            Frame(false, true, true, gripDown: true, triggerDown: true);
+            Assert.False(Manipulator.Dragging, "No drag can start while untracked.");
+            Assert.That(_workspace.Flange.HeightMm, Is.EqualTo(18).Within(0.05));
+        }
+
+        [Test] public void UiHitBlocksTheKnobDrag()
+        {
+            ArmFlangeWithEdge(); AimAtKnob();
+            Frame(true, true, true, gripDown: true, triggerDown: true, ui: true);
+            Assert.False(Manipulator.Dragging); Assert.AreEqual(10, _workspace.Flange.HeightMm);
+            Frame(true, true, true, gripDown: true, triggerDown: true);
+            Assert.True(Manipulator.Dragging, "The same gesture works once the ray leaves the UI.");
+        }
+
+        [Test] public void KnobDragNeedsTheFlangeCommandArmedWithAnEdge()
+        {
+            Frame(true, true, true, gripDown: true, triggerDown: true);
+            Assert.False(Manipulator.Visible); Assert.False(Manipulator.Dragging);
+            Click("Flangia"); // armed, still no edge
+            Frame(true, true, true, gripDown: true, triggerDown: true);
+            Assert.False(Manipulator.Dragging);
+        }
+
+        [Test] public void TriggerRayOnAnUnobstructedEdgeTogglesItInTheFlangeDraft()
+        {
+            Click("Flangia");
+            var draft = _workspace.Flange;
+            var context = (DesignContext)typeof(LamieraWorkspace).GetField("_designContext", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(_workspace);
+            var target = context.Edges.Single(e => e.Id == "ent_edge");
+            Assert.True(FlangeManipulator.TryFrame(target, context.Faces, 2.0, out var origin, out var normal, out _));
+            var point = _view.transform.TransformPoint(CadCoordinates.ToLocal(origin));
+            var away = _view.transform.TransformDirection(CadCoordinates.ToLocal(normal)).normalized;
+            _ray.Origin.SetPositionAndRotation(point + away * 0.3f, Quaternion.LookRotation(-away));
+            Frame(true, false, true, triggerDown: true);
+            CollectionAssert.AreEqual(new[] { "ent_edge" }, draft.EdgeIds.ToArray());
+            Frame(true, false, true, triggerDown: true);
+            Assert.AreEqual(0, draft.EdgeIds.Count);
+            Assert.AreEqual(0, _backend.Commits);
+        }
+
+        // M5-06 (gesture path): Grip moves only the detached flat pattern view
+        private FlatPatternDisplay ShowFlatAndAimAt()
+        {
+            _backend.FlatExists = true; Start(_backend); Click("Mostra sviluppo");
+            var display = _workspace.GetComponentInChildren<FlatPatternDisplay>(true);
+            Assert.True(display.IsShowing);
+            var center = _view.transform.TransformPoint(display.LocalBounds.center);
+            _ray.Origin.SetPositionAndRotation(center + Vector3.back * 0.5f, Quaternion.identity);
+            return display;
+        }
+
+        [Test] public void GripOnTheDetachedFlatPatternMovesOnlyTheFlatMeshRoot()
+        {
+            var display = ShowFlatAndAimAt();
+            _workspace.FlatPattern.Detach();
+            var model = _view.transform;
+            Vector3 rootBefore = display.MeshRoot.localPosition, modelPosition = model.position, modelScale = model.localScale;
+            var modelRotation = model.rotation;
+            int previews = _backend.Previews, commits = _backend.Commits;
+            var delta = new Vector3(0.05f, 0.02f, 0f);
+            Frame(true, true, false, gripDown: true);
+            _ray.Origin.position += delta;
+            Frame(true, true, false);
+            var expected = rootBefore + model.InverseTransformVector(delta);
+            Assert.That(Vector3.Distance(display.MeshRoot.localPosition, expected), Is.LessThan(1e-4f));
+            Assert.AreEqual(modelPosition, model.position); Assert.AreEqual(modelScale, model.localScale); Assert.AreEqual(modelRotation, model.rotation);
+            Frame(true, false, false);
+            _ray.Origin.position += delta; Frame(true, false, false);
+            Assert.That(Vector3.Distance(display.MeshRoot.localPosition, expected), Is.LessThan(1e-4f), "Released grip stops the movement.");
+            Assert.AreEqual(previews, _backend.Previews); Assert.AreEqual(commits, _backend.Commits, "Moving the view never touches CAD.");
+        }
+
+        [Test] public void GripDoesNotGrabTheFlatPatternWhenItIsNotDetached()
+        {
+            var display = ShowFlatAndAimAt();
+            Assert.False(_workspace.FlatPattern.Detached);
+            var rootBefore = display.MeshRoot.localPosition;
+            Frame(true, true, false, gripDown: true);
+            _ray.Origin.position += new Vector3(0.05f, 0.02f, 0f);
+            Frame(true, true, false);
+            Assert.AreEqual(rootBefore, display.MeshRoot.localPosition);
+            Assert.AreEqual(0, _workspace.FlatPattern.OffsetX);
+            Assert.AreEqual(0, _backend.Commits);
+        }
+
         // M5-07
         [Test] public void OfflineKeepsPatternReadOnlyBlocksWritesAndReverifiesOnReconnect()
         {

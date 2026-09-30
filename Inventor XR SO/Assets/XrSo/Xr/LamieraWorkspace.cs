@@ -947,12 +947,28 @@ namespace InventorXrSo.Xr
             if (!Active || !_visible || _ray == null || _ray.Origin == null) return;
             bool tracked = OVRInput.IsControllerConnected(_ray.Controller) && OVRInput.GetControllerPositionTracked(_ray.Controller)
                 && OVRInput.GetControllerOrientationTracked(_ray.Controller);
-            if (!tracked) { EndManipulation(); _grab = null; return; }
+            var input = EventSystem.current?.currentInputModule as ControllerUiInputModule;
+            bool ui = input != null && input.CurrentHit.isValid;
+            bool uiOnPanel = ui && _panel != null && input.CurrentHit.gameObject.transform.IsChildOf(_panel.transform);
+            ProcessControllerFrame(tracked,
+                OVRInput.Get(OVRInput.Button.PrimaryHandTrigger, _ray.Controller),
+                OVRInput.Get(OVRInput.Button.PrimaryIndexTrigger, _ray.Controller),
+                OVRInput.GetDown(OVRInput.Button.PrimaryHandTrigger, _ray.Controller),
+                OVRInput.GetDown(OVRInput.Button.PrimaryIndexTrigger, _ray.Controller),
+                ui, uiOnPanel);
+        }
+
+        /// <summary>
+        /// One controller frame. <paramref name="ui"/>: the UI ray hits something; <paramref name="uiOnPanel"/>: that hit
+        /// belongs to this workspace's panel (Grip then grabs the panel). Split from <see cref="Update"/> so tests and the
+        /// Quest acceptance runner can feed synthetic frames through the very same path.
+        /// </summary>
+        private void ProcessControllerFrame(bool tracked, bool grip, bool trigger, bool gripDown, bool triggerDown, bool ui, bool uiOnPanel)
+        {
+            if (!Active || !_visible || _ray == null || _ray.Origin == null) return;
+            if (!tracked) { EndManipulation(); _grab = null; _grabFlat = false; return; }
             var ray = new Ray(_ray.Origin.position, _ray.Origin.forward);
-            var ui = EventSystem.current?.currentInputModule as ControllerUiInputModule;
-            bool overUi = ui != null && ui.CurrentHit.isValid;
-            bool grip = OVRInput.Get(OVRInput.Button.PrimaryHandTrigger, _ray.Controller);
-            bool trigger = OVRInput.Get(OVRInput.Button.PrimaryIndexTrigger, _ray.Controller);
+            bool overUi = ui;
             bool canManipulate = _session?.CanEdit == true && _mode.CanWrite && _mode.Armed == SheetMetalCommand.Flange
                 && _flange.EdgeIds.Count > 0 && _manip.Visible && _screen != "numeric";
             if (_manip.Dragging)
@@ -971,13 +987,13 @@ namespace InventorXrSo.Xr
             }
             if (grip && !trigger)
             {
-                if (OVRInput.GetDown(OVRInput.Button.PrimaryHandTrigger, _ray.Controller)) BeginGrab(ray, ui, overUi);
+                if (gripDown) BeginGrab(ray, overUi, uiOnPanel);
                 if (_grab != null) MoveGrab();
                 return;
             }
             _grab = null; _grabFlat = false;
             if (overUi || _screen == "numeric" || _session?.CanEdit != true || grip) return;
-            if (!OVRInput.GetDown(OVRInput.Button.PrimaryIndexTrigger, _ray.Controller)) return;
+            if (!triggerDown) return;
             if (_mode.Armed == SheetMetalCommand.Flange && _designContext != null && _mode.CanWrite && SceneCurrent)
             {
                 string edge = CadCoordinates.PickEdge(_view.transform, _designContext.Edges, ray, requireVisible: true);
@@ -995,10 +1011,10 @@ namespace InventorXrSo.Xr
             PreviewPending();
         }
 
-        private void BeginGrab(Ray ray, ControllerUiInputModule ui, bool overUi)
+        private void BeginGrab(Ray ray, bool overUi, bool uiOnPanel)
         {
             _grab = null; _grabFlat = false;
-            if (overUi && ui.CurrentHit.gameObject.transform.IsChildOf(_panel.transform)) _grab = _panel.transform;
+            if (overUi && uiOnPanel) _grab = _panel.transform;
             else if (!overUi && _flat != null && _flat.Detached && _flat.IsVisible && _flatDisplay.HitTest(ray) && _flatDisplay.MeshRoot != null)
             { _grab = _flatDisplay.MeshRoot; _grabFlat = true; }
             else if (!overUi && CadRaycaster.TryPick(ray, 20, out _, out _, out _)) _grab = _view.transform;

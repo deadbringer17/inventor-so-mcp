@@ -33,6 +33,10 @@ namespace InventorXrSo.Xr
             "LamieraWorkspace._flatDisplay",
             "LamieraWorkspace._notice",
             "LamieraWorkspace._pendingMutations",
+            "LamieraWorkspace._ray",
+            "LamieraWorkspace._view",
+            "LamieraWorkspace._manip",
+            "LamieraWorkspace.ProcessControllerFrame",
             "LamieraWorkspace.ArmFlange",
             "LamieraWorkspace.CancelCommand",
             "LamieraWorkspace.OpenSketchPick",
@@ -49,7 +53,7 @@ namespace InventorXrSo.Xr
         private const string DictatedPhrase = "venti virgola cinque";
 
         protected override string Milestone => "m5";
-        protected override int TimeoutSeconds => 420;
+        protected override int TimeoutSeconds => 540;
         protected override string CompletionNote =>
             "physical controller input, microphone and audio were not exercised by this runner";
 
@@ -142,6 +146,9 @@ namespace InventorXrSo.Xr
                 "Cancel disarms the flange command and clears the edge selection");
             await AssertUnchanged(initial, "flange Cancel", ct);
             Pass("M5-03", "Cancel cleared the flange draft, preview and rendering; revision unchanged");
+
+            // ---- M5-03 (gesture path): synthetic controller frames through LamieraWorkspace.ProcessControllerFrame
+            await CheckSyntheticFlangeGestures(edgeId, initial, ct);
 
             // ---- M5-04: Cut from Taglio_M5, preview, Cancel
             await WaitUntil(() => _ws.IsEnabled(CommandIds.SheetMetalCut), ct);
@@ -346,10 +353,13 @@ namespace InventorXrSo.Xr
             Pass("M5-06", "Detach performed no backend call (asset reused, never Loading), revision " + revisionAfter.Revision
                 + " unchanged and scene root " + rootBefore + " unchanged");
 
-            Record("NOT COVERED [M5-03] Grip+Trigger manipulator gesture and trigger edge pick: the edge was toggled on FlangeDraft and the height set through the numeric field path");
+            // ---- M5-06 (gesture path): synthetic Grip on the detached flat pattern
+            await CheckSyntheticFlatGrab(flat, display, ct);
+
+            Record("NOT COVERED [M5-03-physical] real controller, real tracking, reduced-scale feel and readability of the flange manipulator: the Grip+Trigger gesture and the Trigger edge pick above were synthetic frames fed to LamieraWorkspace.ProcessControllerFrame, not a person's hand");
             Record("NOT COVERED [M5-04] Face and rule/thickness commands: Cut preview, Cancel, Apply and Undo run here");
             Record("NOT COVERED [M5-05] flat pattern outcomes on multi-body or non-unfoldable parts: only AlreadyExists is asserted");
-            Record("NOT COVERED [M5-06] Grip repositioning gesture and visual comparison of the detached pattern with the folded part");
+            Record("NOT COVERED [M5-06-physical] real Grip grab of the detached pattern and visual comparison with the folded part: the grab above was a synthetic frame, orientation and legibility need a person wearing the Quest");
             Record("NOT COVERED [M5-07] network loss, late preview and uncertain commit: only the stale commit after Undo is asserted");
             Record("NOT COVERED [M5-08] push-to-talk button, microphone and audio: recognized text was injected into a PushToTalkController with silent samples, MicrophoneCapture and PushToTalkInput were not started");
             Record("NOT COVERED [M5-12] physical journey on Quest with Inventor in the real use environment and M1-M4 regressions");
@@ -362,6 +372,241 @@ namespace InventorXrSo.Xr
             _ws.Close();
             Check(!_ws.Active, "Lamiera workspace closes");
             Record("Clean end: command cancelled, flat pattern hidden, Lamiera closed");
+        }
+
+        // ---------------------------------------------------------------- synthetic controller gestures (M5-03, M5-06)
+
+        /// <summary>One synthetic controller frame, called "synthetic" everywhere: never physical evidence.</summary>
+        private void Frame(bool tracked, bool grip, bool trigger, bool gripDown, bool triggerDown, bool ui)
+            => Call(_ws, "ProcessControllerFrame", tracked, grip, trigger, gripDown, triggerDown, ui, false);
+
+        private static Vector3 AxisWorld(FlangeManipulator manip, Transform model)
+            => model.TransformDirection(CadCoordinates.ToLocal(manip.Axis)).normalized;
+
+        /// <summary>Puts the ray origin beside the knob, looking at it (within the knob pick radius).</summary>
+        private static void AimAtKnob(FlangeManipulator manip, Transform model, Transform hand)
+        {
+            var axis = AxisWorld(manip, model);
+            var side = Vector3.Cross(axis, Vector3.up).normalized;
+            if (side.sqrMagnitude < 0.1f) side = Vector3.Cross(axis, Vector3.right).normalized;
+            hand.SetPositionAndRotation(manip.KnobWorldPosition + side * 0.15f, Quaternion.LookRotation(-side));
+        }
+
+        /// <summary>Moves the hand by the physical distance that equals <paramref name="cadMm"/> CAD mm at the current view scale.</summary>
+        private static void MoveAlongAxis(FlangeManipulator manip, Transform model, Transform hand, double cadMm)
+            => hand.position += AxisWorld(manip, model) * (float)(cadMm * 0.001 * model.lossyScale.x);
+
+        private async Task WaitPreviewReady(CancellationToken ct)
+        {
+            await WaitUntil(() => _design.Status == DesignStatus.PreviewReady || _design.Status == DesignStatus.Error, ct);
+            Check(_design.Status == DesignStatus.PreviewReady && _design.CanApply && _previewView.IsShowing,
+                "a new rendered native preview follows the gesture: " + _design.Error);
+        }
+
+        private async Task CancelFlangeDraft(CancellationToken ct)
+        {
+            Call(_ws, "CancelCommand");
+            await WaitUntil(() => _design.Status == DesignStatus.Empty && _ws.IsEnabled(CommandIds.Flange), ct);
+        }
+
+        private async Task CheckSyntheticFlangeGestures(string edgeId, DocumentState baseline, CancellationToken ct)
+        {
+            var hand = Read<ControllerRay>(_ws, "_ray").Origin;
+            var model = Read<CadSceneView>(_ws, "_view").transform;
+            var manip = Read<FlangeManipulator>(_ws, "_manip");
+            var savedHandPosition = hand.position; var savedHandRotation = hand.rotation;
+            var savedPosition = model.position; var savedRotation = model.rotation; var savedScale = model.localScale;
+            const double DragMm = 10;
+            try
+            {
+                var reached = new double[2];
+                var scales = new[] { 1f, 0.25f };
+                for (int i = 0; i < scales.Length; i++)
+                {
+                    string label = scales[i] == 1f ? "1:1" : "0.25x";
+                    model.localScale = Vector3.one * scales[i];
+                    Check(await TryFlangePreview(edgeId, FlangeHeightMm, ct), "flange preview before the " + label + " synthetic gesture: " + _design.Error);
+                    Check(manip.Visible, "flange knob is visible at " + label);
+                    AimAtKnob(manip, model, hand);
+                    Frame(true, true, true, true, true, false);
+                    Check(manip.Dragging, "synthetic Grip+Trigger on the knob starts a drag at " + label);
+                    MoveAlongAxis(manip, model, hand, DragMm);
+                    Frame(true, true, true, false, false, false);
+                    reached[i] = _ws.Flange.HeightMm;
+                    Check(Math.Abs(reached[i] - (FlangeHeightMm + DragMm)) < 0.05,
+                        "synthetic controller displacement at " + label + " converts to +" + F(DragMm) + " mm, height " + F(reached[i]));
+                    Check(!_design.CanApply, "Apply is disabled while the knob edits the draft");
+                    Frame(true, false, false, false, false, false);
+                    Check(!manip.Dragging, "releasing Grip+Trigger ends the drag");
+                    await WaitPreviewReady(ct);
+                    CheckFlangePreviewShown(FlangeHeightMm + DragMm);
+                    await AssertUnchanged(baseline, "synthetic knob drag at " + label, ct);
+                    if (i == 0)
+                        Pass("M5-03-programmatic", "synthetic Grip+Trigger on the flange knob at scale 1:1 changed the height " + F(FlangeHeightMm)
+                            + " -> " + F(reached[i]) + " mm (+" + F(DragMm) + " within 0.05); rendered native preview ready, revision "
+                            + baseline.Revision + " unchanged until Apply");
+                    else
+                        Pass("M5-03-programmatic", "synthetic Grip+Trigger at scale 0.25x: the same physical displacement converted to the same CAD height "
+                            + F(reached[i]) + " mm as at 1:1 (" + F(reached[0]) + " mm, within 0.05); rendered native preview ready, revision unchanged");
+                    await CancelFlangeDraft(ct);
+                }
+                Check(Math.Abs(reached[0] - reached[1]) < 0.05, "1:1 and 0.25x gestures give equivalent CAD millimetres");
+
+                // Plain Grip on the knob never writes the draft (it only moves the view, restored below).
+                model.localScale = Vector3.one * scales[0];
+                Check(await TryFlangePreview(edgeId, FlangeHeightMm, ct), "flange preview before the synthetic plain Grip: " + _design.Error);
+                string plan = _design.Preview.PlanId; int version = _ws.Flange.Version;
+                AimAtKnob(manip, model, hand);
+                Frame(true, true, false, true, false, false);
+                MoveAlongAxis(manip, model, hand, DragMm);
+                Frame(true, true, false, false, false, false);
+                Check(!manip.Dragging && Math.Abs(_ws.Flange.HeightMm - FlangeHeightMm) < 1e-9 && _ws.Flange.Version == version,
+                    "synthetic plain Grip left the flange draft untouched");
+                Check(_design.Status == DesignStatus.PreviewReady && _design.Preview.PlanId == plan && _design.CanApply && _previewView.IsShowing,
+                    "synthetic plain Grip left the rendered preview in place");
+                Frame(true, false, false, false, false, false);
+                model.SetPositionAndRotation(savedPosition, savedRotation);
+                CheckFlangePreviewShown(FlangeHeightMm);
+                await AssertUnchanged(baseline, "synthetic plain Grip", ct);
+                Pass("M5-03-programmatic", "synthetic plain Grip (no Trigger) on the knob left the flange draft " + F(FlangeHeightMm)
+                    + " mm, its preview and the native revision " + baseline.Revision + " unchanged");
+                await CancelFlangeDraft(ct);
+
+                // Release of the Trigger and a tracking loss both close the capture: last valid height, a preview request, no commit.
+                // (M5-08 is the push-to-talk microphone gate; the manipulator drag belongs to M5-03.)
+                Check(await TryFlangePreview(edgeId, FlangeHeightMm, ct), "flange preview before the synthetic release: " + _design.Error);
+                AimAtKnob(manip, model, hand);
+                Frame(true, true, true, true, true, false);
+                Check(manip.Dragging, "drag armed before the synthetic Trigger release");
+                MoveAlongAxis(manip, model, hand, DragMm);
+                Frame(true, true, true, false, false, false);
+                Frame(true, true, false, false, false, false);
+                Check(!manip.Dragging, "releasing the Trigger (Grip still held) closes the drag");
+                MoveAlongAxis(manip, model, hand, 20);
+                Frame(true, true, false, false, false, false);
+                Check(Math.Abs(_ws.Flange.HeightMm - (FlangeHeightMm + DragMm)) < 0.05, "motion after the release does not change the height");
+                Frame(true, false, false, false, false, false);
+                model.SetPositionAndRotation(savedPosition, savedRotation);
+                await WaitPreviewReady(ct);
+                CheckFlangePreviewShown(FlangeHeightMm + DragMm);
+                await AssertUnchanged(baseline, "synthetic Trigger release", ct);
+                Pass("M5-03-programmatic", "synthetic Trigger release closed the drag at " + F(FlangeHeightMm + DragMm)
+                    + " mm, asked for a preview and made no CAD mutation (revision " + baseline.Revision + ")");
+                await CancelFlangeDraft(ct);
+
+                Check(await TryFlangePreview(edgeId, FlangeHeightMm, ct), "flange preview before the synthetic tracking loss: " + _design.Error);
+                AimAtKnob(manip, model, hand);
+                Frame(true, true, true, true, true, false);
+                Check(manip.Dragging, "drag armed before the synthetic tracking loss");
+                MoveAlongAxis(manip, model, hand, 7);
+                Frame(true, true, true, false, false, false);
+                MoveAlongAxis(manip, model, hand, 500); // pose reported while tracking is lost must not reach the draft
+                Frame(false, false, false, false, false, false);
+                Check(!manip.Dragging && Math.Abs(_ws.Flange.HeightMm - (FlangeHeightMm + 7)) < 0.05,
+                    "tracking loss closes the drag and keeps the last valid height " + F(_ws.Flange.HeightMm));
+                Frame(false, true, true, true, true, false);
+                Check(!manip.Dragging, "no drag can start while untracked");
+                await WaitPreviewReady(ct);
+                CheckFlangePreviewShown(FlangeHeightMm + 7);
+                await AssertUnchanged(baseline, "synthetic tracking loss", ct);
+                Pass("M5-03-programmatic", "synthetic tracking loss closed the drag at the last valid " + F(FlangeHeightMm + 7)
+                    + " mm, asked for a preview and made no CAD mutation (revision " + baseline.Revision + ")");
+                await CancelFlangeDraft(ct);
+
+                // Trigger ray on the real edge, from the outward face normal so nothing hides it.
+                model.localScale = Vector3.one * scales[0];
+                await WaitUntil(() => _ws.IsEnabled(CommandIds.Flange), ct);
+                Call(_ws, "ArmFlange");
+                var design = Read<DesignContext>(_ws, "_designContext");
+                var edge = design.Edges.First(item => item.Id == edgeId);
+                bool framed = FlangeManipulator.TryFrame(edge, design.Faces, _ws.Mode.Context?.ThicknessMm, out var origin, out var normal, out bool fromFaces);
+                if (framed && fromFaces)
+                {
+                    var point = model.TransformPoint(CadCoordinates.ToLocal(origin));
+                    var away = model.TransformDirection(CadCoordinates.ToLocal(normal)).normalized;
+                    hand.SetPositionAndRotation(point + away * 0.3f, Quaternion.LookRotation(-away));
+                    Frame(true, false, true, false, true, false);
+                    if (_ws.Flange.EdgeIds.Count == 1 && _ws.Flange.EdgeIds[0] == edgeId)
+                    {
+                        Frame(true, false, true, false, true, false);
+                        Check(_ws.Flange.EdgeIds.Count == 0, "a second synthetic Trigger ray on the same edge deselects it");
+                        await AssertUnchanged(baseline, "synthetic Trigger edge pick", ct);
+                        Pass("M5-03-programmatic", "synthetic Trigger ray on real edge " + edgeId + " toggled it in the flange draft (selected, then deselected); revision unchanged");
+                    }
+                    else Record("NOT COVERED [M5-03-programmatic] synthetic Trigger ray on edge " + edgeId + " selected nothing (edge hidden or off the ray): pick by ray not asserted");
+                }
+                else Record("NOT COVERED [M5-03-programmatic] synthetic Trigger edge pick: no face-derived frame for edge " + edgeId + " to aim from");
+                await CancelFlangeDraft(ct);
+            }
+            finally
+            {
+                model.localScale = savedScale;
+                model.SetPositionAndRotation(savedPosition, savedRotation);
+                hand.SetPositionAndRotation(savedHandPosition, savedHandRotation);
+            }
+        }
+
+        private async Task CheckSyntheticFlatGrab(FlatPatternView flat, FlatPatternDisplay display, CancellationToken ct)
+        {
+            var hand = Read<ControllerRay>(_ws, "_ray").Origin;
+            var model = Read<CadSceneView>(_ws, "_view").transform;
+            var savedHandPosition = hand.position; var savedHandRotation = hand.rotation;
+            var savedPosition = model.position; var savedRotation = model.rotation; var savedScale = model.localScale;
+            double offsetX = flat.OffsetX, offsetY = flat.OffsetY, offsetZ = flat.OffsetZ;
+            try
+            {
+                Check(flat.Detached && flat.IsVisible && display.IsShowing && display.MeshRoot != null,
+                    "flat pattern is detached and shown before the synthetic grab");
+                var baseline = await _backend.GetDocumentStateAsync(ct);
+                var asset = flat.Asset; bool sawLoading = false;
+                Action watch = () => { if (flat.State == FlatPatternState.Loading) sawLoading = true; };
+                flat.Changed += watch;
+                try
+                {
+                    var center = model.TransformPoint(display.LocalBounds.center);
+                    hand.SetPositionAndRotation(center + Vector3.back * 0.5f, Quaternion.identity);
+                    Check(display.HitTest(new Ray(hand.position, hand.forward)), "the synthetic ray hits the flat pattern");
+                    var rootBefore = display.MeshRoot.localPosition;
+                    var delta = new Vector3(0.05f, 0.02f, 0f);
+                    Frame(true, true, false, true, false, false);
+                    hand.position += delta;
+                    Frame(true, true, false, false, false, false);
+                    var expected = rootBefore + model.InverseTransformVector(delta);
+                    Check(Vector3.Distance(display.MeshRoot.localPosition, expected) < 1e-3f,
+                        "synthetic Grip moved the flat mesh root by the hand displacement");
+                    Check(Vector3.Distance(model.position, savedPosition) < 1e-5f && Quaternion.Angle(model.rotation, savedRotation) < 1e-3f
+                        && Vector3.Distance(model.localScale, savedScale) < 1e-6f, "the model view transform is unchanged");
+                    Frame(true, false, false, false, false, false);
+                    var moved = display.MeshRoot.localPosition;
+                    hand.position += delta; Frame(true, false, false, false, false, false);
+                    Check(Vector3.Distance(display.MeshRoot.localPosition, moved) < 1e-6f, "releasing Grip stops the flat movement");
+
+                    flat.Attach();
+                    var attached = display.MeshRoot.localPosition;
+                    hand.SetPositionAndRotation(model.TransformPoint(display.LocalBounds.center) + Vector3.back * 0.5f, Quaternion.identity);
+                    Frame(true, true, false, true, false, false);
+                    hand.position += delta;
+                    Frame(true, true, false, false, false, false);
+                    Frame(true, false, false, false, false, false);
+                    Check(Vector3.Distance(display.MeshRoot.localPosition, attached) < 1e-6f && flat.OffsetX == 0,
+                        "an attached flat pattern is not grabbed");
+                }
+                finally { flat.Changed -= watch; }
+                Check(!sawLoading && ReferenceEquals(flat.Asset, asset) && flat.State == FlatPatternState.Ready,
+                    "the synthetic grabs never re-fetched the flat pattern (same asset, never Loading)");
+                var after = await _backend.GetDocumentStateAsync(ct);
+                Check(after.DocumentId == baseline.DocumentId && after.Revision == baseline.Revision, "synthetic grabs leave the native revision unchanged");
+                Pass("M5-06-programmatic", "synthetic Grip on the detached flat pattern moved only the flat mesh root (view state): no backend call (asset reused, never Loading), "
+                    + "revision " + after.Revision + " unchanged, model view transform unchanged; an attached pattern is not grabbed");
+            }
+            finally
+            {
+                model.localScale = savedScale;
+                model.SetPositionAndRotation(savedPosition, savedRotation);
+                hand.SetPositionAndRotation(savedHandPosition, savedHandRotation);
+                if (!flat.Detached) flat.Detach();
+                flat.MoveLocal(offsetX, offsetY, offsetZ);
+            }
         }
 
         private async Task RunVoice(DocumentState baseline, CancellationToken ct)
