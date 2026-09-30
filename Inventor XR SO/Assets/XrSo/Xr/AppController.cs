@@ -8,6 +8,7 @@ using InventorXrSo.Core.Net;
 using InventorXrSo.Core.Pairing;
 using InventorXrSo.Core.Selection;
 using InventorXrSo.Core.Session;
+using InventorXrSo.Core.Ui;
 using InventorXrSo.Unity.Net;
 using InventorXrSo.Unity.Pairing;
 using InventorXrSo.Unity.Scene;
@@ -31,7 +32,10 @@ namespace InventorXrSo.Xr
         [SerializeField] private QrScanner qrScanner;
 
         private HomePanel _home;
-        private StatusBadge _badge;
+        private HudView _badge;
+        private ActionCatalog _catalog;
+        private UiShell _shell;
+        private InventorXrSo.Xr.Input.XrInput _input;
         private ICredentialStore _store;
         private PairedServer _server;
         private SessionController _session;
@@ -64,8 +68,6 @@ namespace InventorXrSo.Xr
         {
             _home = HomePanel.Create(null);
             XrUi.MakeInteractive(_home.Canvas, head.GetComponent<Camera>());
-            _badge = StatusBadge.Create(head);
-            _badge.gameObject.SetActive(false);
             _inspect = gameObject.AddComponent<InspectWorkspace>();
             var left = head.parent.Find("LeftHandAnchor/LeftControllerAnchor") ?? head.parent.Find("LeftHandAnchor");
             _inspect.Initialize(sceneView, selectionVisuals, ray, head, left, environment);
@@ -79,8 +81,20 @@ namespace InventorXrSo.Xr
             _design.CanEnter = () => !_assembly.RequiresCadReview && !_lamiera.RequiresCadReview;
             _assembly.CanEnter = () => !_design.RequiresCadReview && !_lamiera.RequiresCadReview;
             _lamiera.CanEnter = () => !_design.RequiresCadReview && !_assembly.RequiresCadReview;
-            _inspect.DesignRequested += () => { if (!_assembly.RequiresCadReview && !_lamiera.RequiresCadReview) { _assembly.Close(); _lamiera.Close(); _design.Open(); } };
-            _inspect.AssemblyRequested += () => { if (!_design.RequiresCadReview && !_lamiera.RequiresCadReview) { _design.Close(); _lamiera.Close(); _assembly.Open(); } };
+            _catalog = new ActionCatalog(new SpacesActions(OpenInspection, OpenDesign, OpenLamiera, OpenAssembly, LeaveSession,
+                () => _inSession, () => _design.CanEnter(), () => _lamiera.CanEnter(), () => _assembly.CanEnter()));
+            _shell = UiShell.Create(left, head, _catalog);
+            // Below the controller so it does not overlap the wrist menu; phase 4 moves it back when the wrist menu is removed.
+            _shell.Palette.Canvas.transform.localPosition = new Vector3(0, -0.07f, 0.02f);
+            XrUi.MakeInteractive(_shell.Palette.Canvas, head.GetComponent<Camera>());
+            XrUi.MakeInteractive(_shell.CommitBar.Canvas, head.GetComponent<Camera>());
+            _badge = _shell.Hud;
+            _badge.gameObject.SetActive(false);
+            _input = gameObject.AddComponent<InventorXrSo.Xr.Input.XrInput>();
+            _input.TabDelta += _shell.Palette.SelectTab;
+            _input.Back += _shell.Palette.HideKeypad;
+            _inspect.DesignRequested += OpenDesign;
+            _inspect.AssemblyRequested += OpenAssembly;
             _inspect.LamieraRequested += OpenLamiera;
             _lamiera.DesignRequested += () => { if (!_assembly.RequiresCadReview && !_lamiera.RequiresCadReview) { _lamiera.Close(); _design.Open(); } };
             _lamiera.PrimaryChanged += OnLamieraPrimaryChanged;
@@ -92,6 +106,9 @@ namespace InventorXrSo.Xr
             _lamiera.ActiveChanged += _inspect.SetLamieraActive;
             // Voice enablement follows the active workspace: re-evaluate whenever the mode changes.
             _design.ActiveChanged += _ => NotifyVoiceModeChanged();
+            _design.ActiveChanged += _ => _catalog.NotifyChanged();
+            _assembly.ActiveChanged += _ => _catalog.NotifyChanged();
+            _lamiera.ActiveChanged += _ => _catalog.NotifyChanged();
             _assembly.ActiveChanged += _ => NotifyVoiceModeChanged();
             _lamiera.ActiveChanged += _ => NotifyVoiceModeChanged();
             _inspect.InspectionRequested += NotifyVoiceModeChanged;
@@ -118,7 +135,7 @@ namespace InventorXrSo.Xr
             qrScanner?.Stop();
             if (ray != null) { ray.Picked -= OnPicked; ray.PickedNothing -= OnPickedNothing; }
             if (_home != null) Destroy(_home.gameObject);
-            if (_badge != null) Destroy(_badge.gameObject);
+            if (_shell != null) Destroy(_shell.gameObject);
             _lifetime.Dispose();
         }
 
@@ -154,6 +171,7 @@ namespace InventorXrSo.Xr
         {
             Debug.Log($"[XrSession] status={status} error={_session?.LastError}");
             _inspect.SetOnline(status == SessionStatus.Online);
+            _catalog?.NotifyChanged();
             _design.SetOnline(status == SessionStatus.Online);
             _assembly.SetOnline(status == SessionStatus.Online);
             _lamiera.SetOnline(status == SessionStatus.Online);
@@ -325,6 +343,7 @@ namespace InventorXrSo.Xr
         private void ShowHome()
         {
             _inSession = false;
+            _catalog?.NotifyChanged();
             if (_voiceTarget != null) _voiceTarget.InSession = false;
             _inspect?.SetVisible(false);
             _design?.SetVisible(false);
@@ -345,6 +364,7 @@ namespace InventorXrSo.Xr
         {
             environment.Set(mode);
             _inSession = true;
+            _catalog?.NotifyChanged();
             if (_voiceTarget != null) _voiceTarget.InSession = true;
             _home.gameObject.SetActive(false);
             _badge.gameObject.SetActive(true);
@@ -360,6 +380,10 @@ namespace InventorXrSo.Xr
             // A sheet-metal part opens Lamiera as the primary mode; an ordinary part never does.
             if (_lamiera.IsPrimary) OpenLamiera();
         }
+
+        private void OpenDesign() { if (!_assembly.RequiresCadReview && !_lamiera.RequiresCadReview) { _assembly.Close(); _lamiera.Close(); _design.Open(); } }
+        private void OpenAssembly() { if (!_design.RequiresCadReview && !_lamiera.RequiresCadReview) { _design.Close(); _lamiera.Close(); _assembly.Open(); } }
+        private void OpenInspection() { _design.Close(); _assembly.Close(); _lamiera.Close(); NotifyVoiceModeChanged(); }
 
         private void OpenLamiera()
         {

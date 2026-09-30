@@ -1,7 +1,7 @@
 {
   "name": "InventorXrSo.Unity",
   "rootNamespace": "InventorXrSo.Unity",
-  "references": ["InventorXrSo.Core", "UnityEngine.UI"],
+  "references": ["InventorXrSo.Core", "UnityEngine.UI", "Unity.TextMeshPro"],
   "includePlatforms": [],
   "autoReferenced": true
 }

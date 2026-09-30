@@ -88,7 +88,7 @@ l'altezza del piano di lavoro si allinea a quel punto.
 | Componente isolato | a metà strada tra assieme e utente; resto dell'assieme al 20% di opacità |
 | Barra di conferma | centrata sul bordo vicino del piano di lavoro, inclinata verso l'utente |
 | HUD | striscia ~15° sopra l'orizzonte, lazy follow (segue lo yaw solo oltre ±25°) |
-| Tavolozza | sulla faccia del controller sinistro, ~12×9 cm, rivolta verso la testa |
+| Tavolozza | sulla faccia del controller sinistro, 160×110 mm, rivolta verso la testa |
 | Chip valore | accanto alla maniglia/quota, billboard verso la testa |
 | Anello contestuale | attorno al punto selezionato, massimo 6 azioni, raggio ~6 cm |
 
@@ -96,9 +96,13 @@ Transizioni tra modalità (tavolo, foglio, assieme sollevato, isolamento):
 interpolazione di posa e scala di ~250 ms; nessun salto istantaneo.
 
 Leggibilità: tutto il testo è TextMeshPro SDF. Altezza minima delle
-maiuscole: 14 mm sul piano di lavoro e sulla barra, 8 mm sulla tavolozza
+maiuscole: 14 mm sul piano di lavoro e sulla barra, 7 mm sulla tavolozza
 (~30 cm dagli occhi). Bersagli puntabili di almeno 25 mm sul piano, 15 mm
-sulla tavolozza.
+sulla tavolozza. Le etichette della tavolozza usano i nomi completi di
+Inventor: una parola lunga fino a ~13 caratteri («Progettazione») sta su una
+riga, le etichette più lunghe vanno a capo su due righe; nessuna etichetta
+viene troncata. (Decisione del 29 settembre 2026: la prima geometria da
+12×9 cm con testo a 8 mm conteneva solo ~7 caratteri per pulsante.)
 
 ### Schizzo: tavolo da disegno
 
@@ -175,7 +179,7 @@ sostituisce il menù polso attuale. Schede per workspace:
 
 Il contenuto esatto di ogni scheda è l'insieme di azioni già offerte oggi dal
 workspace, redistribuito; M6 non aggiunge né toglie comandi CAD. Una scheda
-mostra al massimo 8 pulsanti in griglia 2×4; se servono di più la scheda si
+mostra al massimo 8 pulsanti in griglia 2×4 (celle ~75×20 mm); se servono di più la scheda si
 divide, senza paginazione «Precedenti/Successivi».
 
 **Tastierino.** Toccando un chip valore, la tavolozza passa in modalità
