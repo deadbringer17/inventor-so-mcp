@@ -114,4 +114,104 @@ public sealed class MetaToolsTests : IDisposable
         var client = new PluginClient(new InventorMcpConfig { DescriptorDirectory = _dir });
         Assert.Null(client.CurrentTarget);
     }
+
+    // --- Following an Inventor restart: only an automatic (alias / single-instance) pin may re-pin. ---
+
+    private PluginClient ClientWith(string? targetId, System.Collections.Generic.List<string> log) =>
+        new(new InventorMcpConfig { DescriptorDirectory = _dir, TargetId = targetId }, log.Add);
+
+    // Same live pid on purpose: the registry only checks the process is alive; target ids differ by year/pid text.
+    private void WriteInstance(string file, int year, string idSuffix)
+    {
+        File.WriteAllText(Path.Combine(_dir, file), $$"""
+        {
+          "target_id": "inventor-{{year}}-{{idSuffix}}",
+          "inventor_year": {{year}},
+          "process_id": {{Environment.ProcessId}},
+          "host_app": "Inventor",
+          "transport": "pipe",
+          "port": 0,
+          "pipe_name": "BimwrightInventor-{{idSuffix}}",
+          "auth_token": "tok-{{idSuffix}}",
+          "document_title": "x.ipt",
+          "document_path": "x.ipt",
+          "last_heartbeat_utc": "{{DateTimeOffset.UtcNow.UtcDateTime:O}}"
+        }
+        """);
+    }
+
+    [Fact]
+    public void YearAliasPinFollowsRestartWhenExactlyOneNewTargetIsLive()
+    {
+        var log = new System.Collections.Generic.List<string>();
+        WriteInstance("a.json", 2027, "1001");
+        var client = ClientWith("2027", log);
+        Assert.Equal("inventor-2027-1001", client.CurrentTarget!.TargetId);
+        File.Delete(Path.Combine(_dir, "a.json"));
+        WriteInstance("b.json", 2027, "1002");
+
+        Assert.Equal("inventor-2027-1002", client.CurrentTarget!.TargetId);
+        Assert.Equal("inventor-2027-1002", client.CurrentTarget!.TargetId);
+        var line = Assert.Single(log);
+        Assert.Contains("inventor-2027-1001", line);
+        Assert.Contains("inventor-2027-1002", line);
+    }
+
+    [Fact]
+    public void YearAliasPinWithTwoNewTargetsFailsClosed()
+    {
+        var log = new System.Collections.Generic.List<string>();
+        WriteInstance("a.json", 2027, "1001");
+        var client = ClientWith("2027", log);
+        Assert.NotNull(client.CurrentTarget);
+        File.Delete(Path.Combine(_dir, "a.json"));
+        WriteInstance("b.json", 2027, "1002");
+        WriteInstance("c.json", 2027, "1003");
+
+        Assert.Null(client.CurrentTarget);
+        Assert.Empty(log);
+    }
+
+    [Fact]
+    public void ExactIdConfigPinDoesNotFollowRestart()
+    {
+        var log = new System.Collections.Generic.List<string>();
+        WriteInstance("a.json", 2027, "1001");
+        var client = ClientWith("inventor-2027-1001", log);
+        Assert.NotNull(client.CurrentTarget);
+        File.Delete(Path.Combine(_dir, "a.json"));
+        WriteInstance("b.json", 2027, "1002");
+
+        Assert.Null(client.CurrentTarget);
+        Assert.Empty(log);
+    }
+
+    [Fact]
+    public void ExplicitSwitchTargetPinDoesNotFollowRestart()
+    {
+        var log = new System.Collections.Generic.List<string>();
+        WriteInstance("a.json", 2027, "1001");
+        var client = ClientWith("2027", log);
+        Assert.True(client.SwitchTarget("2027"));
+        File.Delete(Path.Combine(_dir, "a.json"));
+        WriteInstance("b.json", 2027, "1002");
+
+        Assert.Null(client.CurrentTarget);
+        Assert.Empty(log);
+    }
+
+    [Fact]
+    public void SingleInstancePinWithoutConfigFollowsRestart()
+    {
+        var log = new System.Collections.Generic.List<string>();
+        WriteInstance("a.json", 2027, "1001");
+        var client = ClientWith(null, log);
+        Assert.Equal("inventor-2027-1001", client.CurrentTarget!.TargetId);
+        File.Delete(Path.Combine(_dir, "a.json"));
+        WriteInstance("b.json", 2027, "1002");
+
+        Assert.Equal("inventor-2027-1002", client.CurrentTarget!.TargetId);
+        Assert.Single(log);
+        Assert.Contains("inventor-2027-1002", new MetaTools(client).GetCurrentTarget());
+    }
 }

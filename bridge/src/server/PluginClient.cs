@@ -52,9 +52,12 @@ public sealed class PluginClient
     private TargetDescriptor? _current;
     private string? _selectedTargetId;
 
-    public PluginClient(InventorMcpConfig config)
+    private readonly Action<string> _log;
+
+    public PluginClient(InventorMcpConfig config, Action<string>? log = null)
     {
         _config = config;
+        _log = log ?? (line => Console.Error.WriteLine(line)); // stderr only: stdio MCP owns stdout
         _registry = new TargetRegistry(config.DescriptorDirectory);
     }
 
