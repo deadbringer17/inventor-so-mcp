@@ -187,3 +187,40 @@ Conseguenze:
   resta da collaudare.
 - M5-12 (percorso completo flangia → sviluppo → detach in ambiente d'uso) resta
   **aperto**.
+
+## Runner esteso con gesti sintetici — 30 settembre 2026
+
+Il runner M5 sul Quest 3, con Inventor 2027 reale e la fixture dedicata, copre
+ora anche i gesti della flangia e dello sviluppo staccato con frame di
+controller **sintetici** passati a `LamieraWorkspace.ProcessControllerFrame`
+(stesso percorso di `Update()`). Manifest:
+`artifacts/m5-verification/quest-acceptance-run-20260930-182053.json`,
+**PASS COMPLETE**, visore sveglio all'avvio, APK ordinario reinstallato con
+hash verificato (`6d112bbf…e328`), fixture chiusa senza salvare e documento
+precedente riattivato.
+
+| Gate | Sottocaso sintetico che passa | Evidenza |
+|---|---|---|
+| M5-03-programmatic | Grip + Trigger sul pomello: altezza 20 → 30 mm (+10 entro 0,05), anteprima nativa renderizzata, revisione invariata | runner Quest + Inventor reale |
+| M5-03-programmatic | stesso spostamento fisico a scala 0,25×: stessa altezza CAD, 30 mm | runner Quest + Inventor reale |
+| M5-03-programmatic | Grip semplice: bozza, anteprima e revisione invariate | runner Quest + Inventor reale |
+| M5-03-programmatic | rilascio del Trigger e perdita di tracking chiudono il trascinamento all'ultimo valore valido (30 e 27 mm), senza mutazione CAD | runner Quest + Inventor reale |
+| M5-03-programmatic | raggio sintetico sul bordo reale: bordo selezionato e deselezionato nella bozza | runner Quest + Inventor reale |
+| M5-06-programmatic | Grip sullo sviluppo staccato sposta solo la mesh dello sviluppo: nessuna chiamata backend, revisione e vista del modello invariate | runner Quest + Inventor reale |
+
+Il runner registra il rilascio e la perdita di tracking sotto M5-03 e non sotto
+M5-08: nella spec M5-08 è il push-to-talk fisico (microfono, permesso,
+interruzioni), che il runner non esercita.
+
+Resta **aperto** come prova fisica, con `NOT COVERED` nel log:
+
+- `M5-03-physical` e `M5-06-physical`: controller reale, tracking, sensazione a
+  scala ridotta, leggibilità, confronto visivo dello sviluppo col pezzo piegato.
+  I passi 3 e 4 della prova del 30 settembre non sono stati eseguiti di persona.
+- M5-04 (comandi Face e regola/spessore), M5-05 (multi-body e sviluppo
+  impossibile), M5-07 (rete, anteprima tardiva, commit incerto), M5-08
+  (pulsante B e microfono: provati di persona senza dettaglio dei comandi),
+  M5-12 (percorso completo in ambiente d'uso).
+
+Il timeout del runner è ora 540 s: `scripts/run-quest-acceptance.ps1` va
+lanciato con `-TimeoutSeconds 600` o più.
