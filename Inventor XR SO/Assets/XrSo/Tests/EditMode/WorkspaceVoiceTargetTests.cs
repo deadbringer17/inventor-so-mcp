@@ -23,6 +23,38 @@ namespace InventorXrSo.Tests
             public bool InvokeWrist(string label) { LastWrist = label; return IsWristEnabled(label); }
         }
 
+        // Workspace M6 senza pannello: VoicePanel null, le etichette vengono dalle azioni dichiarate.
+        private sealed class ActionSurface : IWorkspaceVoiceSurface, IWorkspacePanelVoiceSurface, IWorkspaceActionVoiceSurface
+        {
+            public bool Active { get; set; } = true;
+            public bool IsEnabled(string id) => true;
+            public bool Invoke(string id) => true;
+            public DictationField ArmedField => null;
+            public bool SetArmedField(string id, double v) => false;
+            public HomePanel VoicePanel => null;
+            public readonly System.Collections.Generic.List<string> Invoked = new System.Collections.Generic.List<string>();
+            public System.Collections.Generic.IEnumerable<(string label, bool enabled)> VoiceActions { get; set; } =
+                new[] { ("Estrusione", true), ("Foro", true), ("Applica", true), ("Raccordo", false), ("Linea", true), ("Linea", true) };
+            public bool InvokeVoiceAction(string label) { Invoked.Add(label); return true; }
+        }
+
+        [Test]
+        public void Panelless_workspace_resolves_labels_from_its_actions_and_never_voices_apply()
+        {
+            var surface = new ActionSurface();
+            var target = new WorkspaceVoiceTarget(null, surface) { InSession = true };
+            Assert.IsTrue(target.TryResolveAction("estrudi", out var extrude));
+            Assert.IsTrue(target.IsEnabled(extrude.Id));
+            Assert.IsTrue(target.Invoke(extrude.Id));
+            Assert.AreEqual("Estrusione", surface.Invoked[0]);
+            Assert.IsTrue(target.TryResolveAction("crea foro", out _));
+            Assert.IsFalse(target.TryResolveAction("applica", out _), "M5-11: Apply is physical only");
+            Assert.IsFalse(target.TryResolveAction("linea", out _), "homonymous labels need the pointer");
+            Assert.IsTrue(target.TryResolveAction("raccordo", out var disabled));
+            Assert.IsFalse(disabled.Enabled);
+            Assert.IsFalse(target.Invoke(disabled.Id));
+        }
+
         [Test]
         public void InactiveWorkspaceIsDisabledWithItalianReason()
         {

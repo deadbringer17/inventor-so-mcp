@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using InventorXrSo.Core.Backend;
 using InventorXrSo.Core.Selection;
 using InventorXrSo.Core.Session;
+using InventorXrSo.Core.Ui;
 using InventorXrSo.Core.Voice;
 using InventorXrSo.Unity.Scene;
 using InventorXrSo.Unity.Ui;
@@ -14,18 +15,30 @@ using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using UiSelectionKind = InventorXrSo.Core.Ui.SelectionKind;
 
 namespace InventorXrSo.Xr
 {
-    /// <summary>Quest M3: local drafts, explicit Inventor preview and explicit Apply.</summary>
+    /// <summary>
+    /// Quest M3/M6: local drafts, explicit Inventor preview and explicit Apply. No floating panel: the actions are declared to
+    /// the palette (<see cref="IActionProvider"/>, see DesignActions.cs), the commit bar is the only place that applies.
+    /// </summary>
     [DefaultExecutionOrder(115)]
-    public sealed class DesignWorkspace : MonoBehaviour
+    public sealed partial class DesignWorkspace : MonoBehaviour, IActionProvider
     {
         private CadSceneView _view;
         private SelectionVisuals _selection;
         private ControllerRay _ray;
         private Transform _head;
-        private HomePanel _panel;
+        private UiShell _shell;
+        private ActionCatalog _catalog;
+        private Workbench _bench;
+        private SketchSheetView _sheet;
+        private ChipView _chip;
+        private RingView _ring;
+        private NumericEntry _dimensionEntry, _ask;
+        private bool _syncingEntry, _sheetSuppressed;
+        private string _ringEdge, _lastErrorShown;
         private DesignPreviewView _previewView;
         private DesignGeometryView _geometry;
         private IDesignWorkspaceBackend _backend;
@@ -42,17 +55,16 @@ namespace InventorXrSo.Xr
         private SketchDraft _sketch;
         private SketchShape _shape;
         private int _dimensionStep, _dimensionIndex = -1;
-        private string[] _constraintRows = Array.Empty<string>();
         private string _constraintKind;
         private string _parameterName;
         private readonly List<int> _constraintPicks = new List<int>();
         private CadPoint? _first;
         private SketchSnap _candidate;
-        private bool _snapLocked, _online, _visible, _busy, _through = true, _negative, _symmetric, _pinned;
+        private bool _snapLocked, _online, _visible, _busy, _through = true, _negative, _symmetric;
         private string _operation = "join";
         private readonly HashSet<string> _edges = new HashSet<string>();
         private double _dimension = 10, _diameter = 5;
-        private int _page, _generation;
+        private int _generation;
         private CancellationTokenSource _reads = new CancellationTokenSource();
         private Transform _grab;
         private Vector3 _grabPosition;
@@ -64,20 +76,22 @@ namespace InventorXrSo.Xr
         private LineRenderer _handle;
         private Text _cursorText;
         private Canvas _cursorCanvas;
-        private float _nextRender;
         public bool Active { get; private set; }
         public bool RequiresCadReview => _reviewAfterRebind || _pendingMutations > 0 || _session?.Status == DesignStatus.Committing || _session?.Status == DesignStatus.RefreshRequired;
         public Func<bool> CanEnter { get; set; }
         public event Action<bool> ActiveChanged;
+        /// <summary>Raised only when an open workspace closes: the shell restores the Inspect placement of the model.</summary>
+        public event Action Closed;
+        /// <summary>Notices and error detail for the HUD (the commit bar only carries a short message).</summary>
+        public event Action<string> HudMessage;
+        /// <summary>Last notice, also sent to <see cref="HudMessage"/> when non-empty.</summary>
+        public string Notice => _notice;
+        /// <summary>The numeric entry currently waiting for the keypad (or dictation), if any.</summary>
+        public NumericEntry ActiveEntry => _ask;
 
         public void Initialize(CadSceneView view, SelectionVisuals selection, ControllerRay ray, Transform head)
         {
             _view = view; _selection = selection; _ray = ray; _head = head;
-            _panel = HomePanel.Create(transform); _panel.name = "Design";
-            ((RectTransform)_panel.transform).sizeDelta = new Vector2(820, 1100);
-            _panel.transform.localScale = Vector3.one * 0.00065f;
-            XrUi.MakeInteractive(_panel.Canvas, head.GetComponent<Camera>());
-            _panel.gameObject.SetActive(false);
             _previewView = view.gameObject.AddComponent<DesignPreviewView>(); _previewView.Initialize(view,head);
             var geometry = new GameObject("Design local geometry"); geometry.transform.SetParent(view.transform, false);
             _geometry = geometry.AddComponent<DesignGeometryView>(); _geometry.Initialize(ray.LineMaterial);
@@ -87,6 +101,31 @@ namespace InventorXrSo.Xr
             label.transform.localScale = Vector3.one * 0.0005f;
             _cursorText = UiFactory.Label(label.transform, "", 24);
             UiFactory.Stretch(_cursorText.rectTransform); label.gameObject.SetActive(false);
+        }
+
+        /// <summary>
+        /// Shell parts the workspace draws on: palette/commit bar/HUD through the catalog, plus chip and ring created here.
+        /// The bench and the sheet view are optional (not present in headless tests).
+        /// </summary>
+        public void Attach(UiShell shell, Workbench bench = null, SketchSheetView sheet = null)
+        {
+            _shell = shell; _catalog = shell?.Catalog; _bench = bench; _sheet = sheet;
+            if (shell == null || _head == null) return;
+            var eye = _head.GetComponent<Camera>();
+            if (_ring == null)
+            {
+                _ring = RingView.Create(null);
+                XrUi.MakeInteractive(_ring.Canvas, eye);
+            }
+            if (_chip == null)
+            {
+                _chip = ChipView.Create(null);
+                XrUi.MakeInteractive(_chip.Canvas, eye);
+                _chip.Face(_head);
+                _chip.Bind(DimEntry, "Dimensione");
+                _chip.Tapped += OpenDimensionKeypad;
+                _chip.Canvas.gameObject.SetActive(false);
+            }
         }
 
         public void Bind(IDesignWorkspaceBackend backend)
@@ -103,7 +142,7 @@ namespace InventorXrSo.Xr
                 _session.Changed += SessionChanged;
             }
             _context = null; _state = null; _online = false; ResetDraft();
-            Render();
+            Refresh();
         }
         public void SetScene(LoadedScene scene)
         {
@@ -125,7 +164,7 @@ namespace InventorXrSo.Xr
             _online = online; CancelReads(); _context = null; ResetDraft();
             _session?.SetContext(_state, online, _kind == "part");
             if (online && Active) LoadContext();
-            Render();
+            Refresh();
         }
         public void SetVisible(bool visible)
         {
@@ -136,22 +175,23 @@ namespace InventorXrSo.Xr
         {
             if (!_visible || CanEnter?.Invoke() == false) return;
             Active = true; _ray.CanPick = false; _selection.Clear();
-            ActiveChanged?.Invoke(true); _panel.gameObject.SetActive(true);
-            if (!_pinned)
-            {
-                var forward = Vector3.ProjectOnPlane(_head.forward, Vector3.up).normalized;
-                if (forward.sqrMagnitude < 0.01f) forward = Vector3.forward;
-                _panel.transform.SetPositionAndRotation(_head.position+forward*0.9f+_head.right*0.48f, Quaternion.LookRotation(forward));
-            }
-            _screen = "tools"; Render(); LoadContext();
+            _screen = "tools";
+            ActiveChanged?.Invoke(true);
+            PlaceWorkbench(); Refresh(); LoadContext();
         }
         public void Close()
         {
+            bool was = Active;
             Active = false; CancelReads();
             if (_session != null && _session.Status != DesignStatus.Committing && _session.Status != DesignStatus.RefreshRequired) _session.Cancel();
-            ResetDraft(); _panel?.gameObject.SetActive(false); _selection?.Clear();
+            ResetDraft(); _selection?.Clear();
+            _shell?.Palette.HideKeypad();
+            if (_chip != null) _chip.Canvas.gameObject.SetActive(false);
             if (_ray != null) _ray.CanPick = _visible;
+            if (was) { _sheet?.Exit(); _bench?.Release(); }
+            UpdateBar();
             ActiveChanged?.Invoke(false);
+            if (was) Closed?.Invoke();
         }
         private void CancelReads()
         { _generation++; _reads.Cancel(); _reads.Dispose(); _reads = new CancellationTokenSource(); _busy = false; }
@@ -161,22 +201,27 @@ namespace InventorXrSo.Xr
             _dimensionStep = 0; _dimensionIndex = -1;
             _history = null;
             _sketch = null; _first = null; _feature = null; _existingSketch = null; _face = null;
-            _faceSelection = null;
+            _faceSelection = null; _ringEdge = null; _ask = null; _lastErrorShown = null;
             _edges.Clear(); _snapLocked = false; _dimensionDrag = false; _grab = null; _renderedPlan = null;
             _previewView?.Clear(); _geometry?.Clear();
             if (_handle != null) _handle.positionCount = 0;
             if (_cursorCanvas != null) _cursorCanvas.gameObject.SetActive(false);
             _screen = "tools";
+            HideRing(); ClosePicker(false);
+            if (_sheet != null && _sheet.State == SketchSheetState.Sheet && _bench?.Frame != null) _sheet.ShowModel(_bench.PartPose);
+            _sheetSuppressed = false;
         }
         private async void LoadContext()
         {
-            if (!_online || _state == null || _kind != "part" || _backend == null || _busy) { Render(); return; }
+            if (!_online || _state == null || _kind != "part" || _backend == null || _busy) { Refresh(); return; }
             int generation = _generation; var state = _state; _busy = true; _history = null;
+            Refresh();
             try
             {
                 var context = await _backend.GetDesignContextAsync(state, _reads.Token);
                 if (generation != _generation) return;
-                _context = context; _notice = context.Truncated ? "Elenco CAD parziale: alcune entità superano i limiti." : "";
+                _context = context; _notice = "";
+                if (context.Truncated) SetNotice("Elenco CAD parziale: alcune entità superano i limiti.");
                 if (_backend is IDesignHistoryBackend historyBackend)
                 {
                     _history = null;
@@ -186,8 +231,8 @@ namespace InventorXrSo.Xr
                 }
             }
             catch (OperationCanceledException) { }
-            catch (Exception ex) { if (generation == _generation) _notice = ex.Message; }
-            finally { if (generation == _generation) { _busy = false; Render(); } }
+            catch (Exception ex) { if (generation == _generation) SetNotice(ex.Message); }
+            finally { if (generation == _generation) { _busy = false; Refresh(); } }
         }
         private void SessionChanged()
         {
@@ -206,11 +251,24 @@ namespace InventorXrSo.Xr
                     }
                     _session.ConfirmRendered(_renderedPlan);
                 }
-                catch (Exception ex) { _notice = "Anteprima non visualizzabile: " + ex.Message; }
+                catch (Exception ex) { SetNotice("Anteprima non visualizzabile: " + ex.Message); }
             }
             if (_session.Preview == null) { _previewView.Clear(); _renderedPlan = null; }
             ShowValidationContext();
-            Render();
+            ShowErrorDetail();
+            if (Active && _sketch?.Frame != null && !_sheetSuppressed && _sheet != null && _sheet.State != SketchSheetState.Sheet) EnterSheet();
+            Refresh();
+        }
+
+        /// <summary>The commit bar carries a short message; the detail (and the orange-geometry hint) goes to the HUD, once per error.</summary>
+        private void ShowErrorDetail()
+        {
+            if (_session.Status != DesignStatus.Error || string.IsNullOrEmpty(_session.Error)) { _lastErrorShown = null; return; }
+            if (_session.Error == _lastErrorShown) return;
+            _lastErrorShown = _session.Error;
+            string detail = "Comando non completato: " + _session.Error;
+            if (_geometry != null && _geometry.HasErrorContext) detail += "\nIn arancione: geometria del comando da controllare.";
+            HudMessage?.Invoke(detail);
         }
 
         private void ShowValidationContext()
@@ -238,23 +296,220 @@ namespace InventorXrSo.Xr
                 _selection.Show(_faceSelection);
         }
 
+        // ---------------------------------------------------------------- notices, bar, chip, ring
+
+        private void SetNotice(string text)
+        {
+            _notice = text ?? "";
+            if (_notice.Length > 0) HudMessage?.Invoke(_notice);
+        }
+
+        /// <summary>Content or enablement changed: rebuild the declared actions, the bar and the chip, and tell the catalog.</summary>
+        private void Refresh()
+        {
+            _actions = null;
+            UpdateBar();
+            UpdateChip();
+            _catalog?.NotifyChanged();
+        }
+
+        private const string ShortError = "Comando non completato. Correggi e riprova.";
+
+        private void UpdateBar()
+        {
+            var s = _session;
+            bool working = s != null && (s.Status == DesignStatus.Previewing || s.Status == DesignStatus.Committing);
+            CommitBar.Update(new CommitBarInputs(
+                online: _online,
+                outcomeUnknown: s?.CommitOutcomeUnknown == true,
+                refreshRequired: s?.Status == DesignStatus.RefreshRequired,
+                busy: working || _pendingMutations > 0 || (_busy && InDraftScreen),
+                hasPreview: s != null && s.Status == DesignStatus.PreviewReady && s.CanApply,
+                hasDraft: s != null && InDraftScreen,
+                error: s?.Status == DesignStatus.Error ? ShortError : ""), Time.unscaledTimeAsDouble);
+        }
+
+        private bool DimensionApplies => _feature == "extrude" || _feature == "fillet" || _feature == "chamfer" || (_feature == "hole" && !_through);
+
+        private void UpdateChip()
+        {
+            if (_chip == null) return;
+            bool show = Active && _screen == "feature" && DimensionApplies && HasDimensionTarget;
+            _chip.Canvas.gameObject.SetActive(show);
+            if (!show) return;
+            _chip.Place(_view.transform.TransformPoint(CadCoordinates.ToLocal(DimensionEnd)) + Vector3.up * 0.05f);
+            _chip.Armed = true;
+            _chip.SetModified(_session?.Status == DesignStatus.Draft);
+        }
+
+        private NumericEntry DimEntry
+        {
+            get
+            {
+                if (_dimensionEntry == null)
+                {
+                    _dimensionEntry = new NumericEntry(FieldDimension, QuantityUnit.Millimeters, _dimension, MinDimensionMm, MaxDimensionMm);
+                    _dimensionEntry.Changed += OnDimensionEntryChanged;
+                }
+                return _dimensionEntry;
+            }
+        }
+
+        private void SyncDimensionEntry()
+        {
+            _syncingEntry = true;
+            try { DimEntry.SetValue(_dimension, out _); } finally { _syncingEntry = false; }
+        }
+
+        // Keypad confirmation, thumbstick step and dictation all arrive here; typing in the keypad does not.
+        private void OnDimensionEntryChanged()
+        {
+            if (_syncingEntry || _dimensionEntry.Editing) return;
+            if (_ask == _dimensionEntry) _ask = null;   // confirmed or cancelled from the keypad
+            if (_screen != "feature" || _dimensionEntry.Value == _dimension) return;
+            _dimension = _dimensionEntry.Value;
+            try { _notice = ""; UpdateDraft(); } catch (Exception ex) { SetNotice(ex.Message); }
+            Refresh();
+        }
+
+        /// <summary>The palette closed the keypad (Annulla / X): the pending prompt is gone.</summary>
+        private void DropClosedKeypad()
+        {
+            if (_ask != null && _shell != null && !_shell.Palette.KeypadVisible) _ask = null;
+        }
+
+        private void OpenDimensionKeypad()
+        {
+            if (_screen != "feature") return;
+            SyncDimensionEntry();
+            _ask = DimEntry;
+            if (_shell != null) _shell.Palette.ShowKeypad(DimEntry, "Dimensione"); else DimEntry.BeginEdit();
+        }
+
+        /// <summary>Thumbstick left/right on the armed chip: one step.</summary>
+        public bool NudgeDimension(int direction) => Active && _screen == "feature" && DimensionApplies && DimEntry.Nudge(direction);
+        /// <summary>Thumbstick up/down on the armed chip: 0,1 / 1 / 10 step.</summary>
+        public void CycleDimensionStep(int direction) { if (Active && _screen == "feature" && DimensionApplies) DimEntry.CycleStep(direction); }
+
+        private void ShowRing(UiSelectionKind kind, Vector3 worldPoint)
+        {
+            if (_ring == null || _head == null) return;
+            var actions = ContextActions(kind).ToArray();
+            if (actions.Length == 0) { HideRing(); return; }
+            _ring.Show(worldPoint + Vector3.up * 0.01f, actions, _head);
+        }
+
+        private void HideRing()
+        {
+            _ringEdge = null;
+            _ring?.Hide();
+        }
+
+        /// <summary>X: closes the ring, otherwise the open list. Keypad closing is handled by the palette.</summary>
+        public void Back()
+        {
+            if (!Active) return;
+            if (_ring != null && _ring.Visible) { HideRing(); return; }
+            if (_picker != null) ClosePicker();
+        }
+
+        // ---------------------------------------------------------------- workbench and sheet
+
+        private double ModelExtentM()
+        {
+            var size = ScenePlacement.LocalBounds(_view.transform).size;
+            return Math.Max(size.x, Math.Max(size.y, size.z));
+        }
+
+        private void PlaceWorkbench()
+        {
+            if (_bench == null || _head == null || _view == null) return;
+            var frame = _bench.Recenter(_head);
+            _bench.ApplyPart(_view.transform, ModelExtentM());
+            PlaceCommitBar(frame);
+        }
+
+        private void PlaceCommitBar(WorkbenchFrame frame)
+        {
+            if (_shell == null || frame == null) return;
+            var p = WorkbenchLayout.CommitBarPosition(frame);
+            _shell.PlaceCommitBar(new Vector3((float)p.X, (float)p.Y, (float)p.Z), Quaternion.Euler(45, (float)frame.YawDegrees, 0));
+        }
+
+        /// <summary>The model changed (new revision/scene): put it back on the work plane, or on the sheet if a sketch is open.</summary>
+        public void RefreshWorkbench()
+        {
+            if (!Active || _bench == null || _view == null) return;
+            if (_sheet != null && _sheet.State == SketchSheetState.Sheet && _sketch?.Frame != null) EnterSheet();
+            else _bench.ApplyPart(_view.transform, ModelExtentM());
+        }
+
+        /// <summary>Y short press: fit the model to the work plane (or the sheet) again.</summary>
+        public void FitView()
+        {
+            if (!Active || _bench == null) return;
+            if (_sheet != null && _sheet.State == SketchSheetState.Sheet) EnterSheet(); else _bench.Fit();
+        }
+
+        /// <summary>Y long press: new bench frame from the head; keeps the sheet if one is open.</summary>
+        public void RecenterView()
+        {
+            if (!Active || _bench == null || _head == null) return;
+            var frame = _bench.Recenter(_head);
+            PlaceCommitBar(frame);
+            if (_sheet != null && _sheet.State == SketchSheetState.Sheet) EnterSheet();
+        }
+
+        private void EnterSheet()
+        {
+            if (_sheet == null || _bench?.Frame == null || _sketch?.Frame == null) return;
+            double width = 100, height = 100;
+            foreach (var element in _sketch.Elements)
+                foreach (var p in element.Outline()) { width = Math.Max(width, Math.Abs(p.X) * 1.25); height = Math.Max(height, Math.Abs(p.Y) * 1.25); }
+            _sheet.Enter(_sketch.Frame, width, height, _bench.Frame);
+        }
+
+        private void ShowModelView()
+        {
+            _sheetSuppressed = true;
+            if (_sheet != null && _bench?.Frame != null) _sheet.ShowModel(_bench.PartPose);
+            Refresh();
+        }
+
+        private void ShowSheetView()
+        {
+            _sheetSuppressed = false;
+            EnterSheet();
+            Refresh();
+        }
+
+        // ---------------------------------------------------------------- commands
+
         private void StartSketch(string plane, SketchFrame frame)
         {
             ResetDraft(); _sketch = new SketchDraft(plane, frame); _shape = SketchShape.Line; _screen = "sketch";
-            UpdateDraft(); Preview();
+            UpdateDraft(); EnterSheet(); Refresh(); Preview();
         }
         private void CreateSketch()
         {
             if (_face != null && _context?.PlanarFaces.Contains(_face) == true)
                 StartSketch(_face, null);
-            else Page("planes");
+            else OpenPicker("Piano dello schizzo", _context.Planes.Select(plane =>
+                new PickerItem(plane.Name, () => StartSketch(plane.Reference, plane.Frame))));
         }
         private void Feature(string feature)
         {
             _dimensionStep=0; _dimensionIndex=-1;
             if (feature != "extrude") { _sketch = null; _existingSketch = null; _geometry.Clear(); }
             _feature = feature; _screen = "feature"; _first = null; _dimension = feature == "fillet" || feature == "chamfer" ? 2 : 10;
-            _notice = ""; UpdateDraft(); Render();
+            SyncDimensionEntry();
+            _notice = ""; UpdateDraft(); Refresh();
+        }
+        private void PickExtrusionSketch()
+        {
+            if (_screen == "sketch" && _sketch != null) { Feature("extrude"); return; }
+            OpenPicker("Profilo da estrudere", _context.Sketches.Select(sketch =>
+                new PickerItem(sketch.Name, () => { _sketch = null; _existingSketch = sketch.Name; Feature("extrude"); })));
         }
         private JObject FeatureOperation()
         {
@@ -280,17 +535,19 @@ namespace InventorXrSo.Xr
                 else if (feature != null) _session.SetDraft(new JArray(feature));
                 UpdateHandle();
             }
-            catch (Exception ex) { _notice = ex.Message; UpdateHandle(); _session.RejectDraft(ex.Message); }
+            catch (Exception ex) { SetNotice(ex.Message); UpdateHandle(); _session.RejectDraft(ex.Message); }
         }
         private async void Preview()
         {
             try { UpdateDraft(); if (_session.Status != DesignStatus.Error) await _session.PreviewAsync(); }
-            catch (Exception ex) { _notice = ex.Message; Render(); }
+            catch (Exception ex) { SetNotice(ex.Message); Refresh(); }
         }
         private async void Apply()
         {
             var session=_session;
             await RunMutation(session,()=>session.ApplyAsync());
+            if (this != null && session == _session && session.LastCommit != null && !session.CommitOutcomeUnknown)
+                CommitBar.MarkApplied(Time.unscaledTimeAsDouble);
         }
         private async void ApplyHistory(bool redo)
         {
@@ -302,19 +559,20 @@ namespace InventorXrSo.Xr
         {
             if (owner==null || _pendingMutations>0) return;
             _pendingMutations++;
+            Refresh();
             try
             {
                 await mutation();
             }
-            catch (Exception ex) { if (owner==_session) _notice=ex.Message; }
+            catch (Exception ex) { if (owner==_session) SetNotice(ex.Message); }
             finally { _pendingMutations--; }
             if (this==null) return;
             if (owner==_session && !owner.CommitOutcomeUnknown && owner.Status==DesignStatus.RefreshRequired)
             {
                 try { await RefreshAfterApply(false); }
-                catch(Exception ex) { if(owner==_session) _notice=ex.Message; }
+                catch(Exception ex) { if(owner==_session) SetNotice(ex.Message); }
             }
-            Render();
+            Refresh();
         }
         private async Task RefreshAfterApply(bool reviewed)
         {
@@ -323,311 +581,92 @@ namespace InventorXrSo.Xr
             var state = await backend.GetDocumentStateAsync(_reads.Token);
             if (this==null || backend!=_backend || session!=_session || generation!=_generation) return;
             session.AcknowledgeRefresh(state, reviewed); _reviewAfterRebind=false; _state = state; ResetDraft(); LoadContext();
-            _notice = "Documento aggiornato. Attendo il modello da Inventor.";
+            SetNotice("Documento aggiornato. Attendo il modello da Inventor.");
         }
         private async void ReviewUnknown()
         {
             try { await RefreshAfterApply(true); }
-            catch (Exception ex) { _notice = ex.Message; }
-            Render();
+            catch (Exception ex) { SetNotice(ex.Message); }
+            Refresh();
         }
+        private async void PreviewParameter() { try { await _session.PreviewAsync(); } catch (Exception ex) { SetNotice(ex.Message); Refresh(); } }
+        private void CancelDraft() { _session.Cancel(); ResetDraft(); Refresh(); }
 
-        private void Render()
-        {
-            if (!Active || _screen == "numeric" || _panel == null) return;
-            var actions = new List<(string, Action)>();
-            string title = "PROGETTAZIONE", body = "Seleziona una faccia con il raggio. Grip sposta solo la vista.\n";
-            bool editable = _session?.CanEdit == true && _context != null && !_busy;
-            if (_kind != "part") body = "Progettazione richiede una parte attiva in Inventor.\nApri Esplora e attiva una parte già aperta sul PC.";
-            else if (!_online) body = "Offline: anteprima e modifiche CAD disabilitate.";
-            else if (_busy) body = "Lettura del contesto CAD…";
-            else if (_context == null && _session?.Status != DesignStatus.RefreshRequired)
-            { body = "Riferimenti di progettazione non disponibili."; actions.Add(("Riprova", LoadContext)); }
-            else if (_session?.Status == DesignStatus.RefreshRequired)
-            {
-                body = _pendingMutations>0 ? "Attendo la conclusione della richiesta CAD precedente. Nessun nuovo comando verrà inviato."
-                    : _session.CommitOutcomeUnknown ? "Esito della modifica CAD non confermato. Controlla il modello in Inventor prima di proseguire. Il comando non verrà ripetuto."
-                    : "Aggiornamento del documento necessario prima di un altro comando.";
-                if(_pendingMutations==0) actions.Add((_session.CommitOutcomeUnknown ? "Ho controllato il CAD" : "Aggiorna documento", ReviewUnknown));
-            }
-            else if (editable)
-            {
-                if (_screen == "tools")
-                {
-                    actions.Add(("Crea schizzo", CreateSketch));
-                    actions.Add(("Estrusione", () => Page("sketches")));
-                    actions.Add(("Foro", () => Feature("hole")));
-                    actions.Add(("Raccordo", () => Feature("fillet")));
-                    actions.Add(("Smusso", () => Feature("chamfer")));
-                    actions.Add(("Parametri", () => Page("parameters")));
-                    actions.Add(("Aggiorna riferimenti", LoadContext));
-                    if (_session.Status == DesignStatus.Empty)
-                    {
-                        if (_history?.CanUndo == true) actions.Add(("Annulla modifica XR", () => ApplyHistory(false)));
-                        if (_history?.CanRedo == true) actions.Add(("Ripeti modifica XR", () => ApplyHistory(true)));
-                    }
-                    body += "Un’anteprima nuova cancella la possibilità di Ripeti in Inventor.\n";
-                }
-                else if (_screen == "planes")
-                {
-                    title = "Piano dello schizzo";
-                    if (_face != null) actions.Add(("Faccia selezionata", () => StartSketch(_face, null)));
-                    var planes = _context.Planes.ToArray();
-                    foreach (var plane in planes.Skip(_page*6).Take(6)) actions.Add((plane.Name, () => StartSketch(plane.Reference, plane.Frame)));
-                    Pagination(actions, planes.Length);
-                }
-                else if (_screen == "sketches")
-                {
-                    title = "Profilo da estrudere";
-                    foreach (var sketch in _context.Sketches.Skip(_page*6).Take(6)) actions.Add((sketch.Name, () => { _sketch = null; _existingSketch = sketch.Name; Feature("extrude"); }));
-                    Pagination(actions, _context.Sketches.Count);
-                }
-                else if (_screen == "parameters")
-                {
-                    title = "Parametri CAD";
-                    var items = _context.Parameters.OfType<JObject>().Where(p => p["value_mm"] != null || p["value_deg"] != null || (string)p["unit"] == "ul").ToArray();
-                    foreach (var p in items.Skip(_page*6).Take(6))
-                    {
-                        string name = (string)p["name"], unit = p["value_mm"] != null ? "mm" : p["value_deg"] != null ? "deg" : "ul";
-                        double value = (double?)(p["value_mm"] ?? p["value_deg"] ?? p["value_unitless"]) ?? 0;
-                        actions.Add((name + " = " + Format(value) + " " + unit, () => Numbers(name, new[] { unit }, new[] { value }, values =>
-                        { _feature = null; _sketch = null; _parameterName=name; _screen = "parameter"; _session.SetDraft(new JArray(DesignOperations.Parameter(name, values[0], unit))); PreviewParameter(); })));
-                    }
-                    Pagination(actions, items.Length);
-                }
-                else if (_screen == "sketch")
-                {
-                    title = "Schizzo • " + _shape;
-                    body = (_sketch?.Frame == null ? "Attendo il piano esatto da Inventor." : "Trigger: primo e secondo punto. A: blocca/sblocca snap.\n")
-                        + "Geometrie: " + _sketch?.Elements.Count + ". Vincoli confermati: " + _sketch?.ConstraintCount + ". Massimo 30 complessivi. Input in mm.\n";
-                    foreach (SketchShape shape in Enum.GetValues(typeof(SketchShape)))
-                    { var value = shape; actions.Add((shape == SketchShape.Line ? "Linea" : shape == SketchShape.Rectangle ? "Rettangolo" : "Cerchio", () => { _shape = value; _first = null; _dimensionStep=0; _geometry.ShowDraft(_sketch); Render(); })); }
-                    actions.Add(("Coordinate numeriche", NumericShape));
-                    actions.Add(("Quota geometria", () => { _dimensionStep=1; _dimensionIndex=-1; _first=null; _notice="Quota: seleziona una linea, un rettangolo o un cerchio con il raggio."; Render(); }));
-                    actions.Add(("Aggiungi vincolo",()=>{_dimensionStep=0; _first=null; Page("constraint_kind");}));
-                    actions.Add(("Vincoli della geometria", () => {
-                        if (CurrentSketchSnapshot == null) _notice="Calcola prima l’anteprima per leggere i vincoli reali.";
-                        else { _dimensionStep=3; _first=null; _notice="Seleziona la geometria per vedere i vincoli di Inventor."; } Render(); }));
-                    actions.Add(("Mostra tutti i vincoli", () => {
-                        var snapshot=CurrentSketchSnapshot;
-                        if (snapshot == null) { _notice="Calcola prima l’anteprima per leggere i vincoli reali."; Render(); }
-                        else ShowConstraints(snapshot.Constraints); }));
-                    actions.Add(("Rimuovi ultimo", () => { _dimensionStep=0; _sketch.RemoveLast(); UpdateDraft(); Render(); }));
-                    actions.Add(("Estrudi schizzo", () => Feature("extrude")));
-                }
-                else if (_screen == "constraint_kind")
-                {
-                    title="Vincolo da confermare"; body="Seleziona il tipo, poi le geometrie. Il CAD cambia soltanto con Applica.";
-                    foreach (var item in new[] { ("Tangente","tangent"),("Uguale","equal"),("Simmetria","symmetric"),
-                        ("Parallelo","parallel"),("Perpendicolare","perpendicular"),("Concentrico","concentric") })
-                    { var kind=item.Item2; actions.Add((item.Item1,()=>{_constraintKind=kind; _constraintPicks.Clear(); Page("constraint_entities");})); }
-                    if (_sketch.ConstraintCount>0) actions.Add(("Rimuovi ultimo vincolo",()=>{_sketch.RemoveLastConstraint(); UpdateDraft(); Page("sketch");}));
-                    actions.Add(("Torna allo schizzo",()=>Page("sketch")));
-                }
-                else if (_screen == "constraint_entities")
-                {
-                    title="Geometrie del vincolo";
-                    int needed=_constraintKind=="symmetric" ? 3 : 2;
-                    body=_constraintPicks.Count==2 && needed==3 ? "Seleziona la linea asse di simmetria." : "Seleziona geometria "+(_constraintPicks.Count+1)+" di "+needed+".";
-                    var entities=_sketch.ConstraintEntityKeys.Where(i=>!_constraintPicks.Contains(i)).ToArray();
-                    foreach(int index in entities.Skip(_page*6).Take(6))
-                    {
-                        int selected=index;
-                        actions.Add((_sketch.ConstraintEntityLabel(index),()=>{
-                            _constraintPicks.Add(selected); _geometry.ShowDraft(_sketch,selected/4,_sketch.Elements[selected/4].Shape==SketchShape.Rectangle ? selected%4 : -1);
-                            Page(_constraintPicks.Count==needed ? "constraint_confirm" : "constraint_entities"); }));
-                    }
-                    if(entities.Length==0) body+=" Nessuna geometria disponibile. Disegna linee o cerchi separati.";
-                    Pagination(actions,entities.Length);
-                    actions.Add(("Annulla selezione",()=>{_constraintPicks.Clear(); Page("sketch");}));
-                }
-                else if (_screen == "constraint_confirm")
-                {
-                    title="Conferma vincolo";
-                    string kindLabel=_constraintKind switch { "tangent"=>"Tangente", "equal"=>"Uguale", "symmetric"=>"Simmetria", "parallel"=>"Parallelo", "perpendicular"=>"Perpendicolare", _=>"Concentrico" };
-                    body=kindLabel+" • "+string.Join(", ",_constraintPicks.Select(_sketch.ConstraintEntityLabel))+".\nInserisce il vincolo nella bozza; poi Anteprima e Applica.";
-                    actions.Add(("Conferma nella bozza",()=>{
-                        try { _sketch.AddEntityConstraint(_constraintKind,_constraintPicks[0],_constraintPicks[1],_constraintPicks.Count==3 ? _constraintPicks[2] : -1); _notice="Vincolo aggiunto alla bozza. Calcola l’anteprima."; UpdateDraft(); Page("sketch"); }
-                        catch(Exception ex) { _notice=ex.Message; Render(); }
-                    }));
-                    actions.Add(("Scegli di nuovo",()=>{_constraintPicks.Clear(); Page("constraint_entities");}));
-                    actions.Add(("Annulla vincolo",()=>Page("sketch")));
-                }
-                else if (_screen == "constraints")
-                {
-                    title="Vincoli Inventor";
-                    body=_constraintRows.Length==0 ? "Nessun vincolo geometrico restituito." : string.Join("\n",_constraintRows.Skip(_page*8).Take(8));
-                    if (_page>0) actions.Add(("Precedenti",()=>{_page--;Render();}));
-                    if ((_page+1)*8<_constraintRows.Length) actions.Add(("Successivi",()=>{_page++;Render();}));
-                    actions.Add(("Torna allo schizzo",()=>Page("sketch")));
-                }
-                else if (_screen == "feature")
-                {
-                    title = _feature == "extrude" ? "Estrusione" : _feature == "hole" ? "Foro" : _feature == "fillet" ? "Raccordo" : "Smusso";
-                    body = (_feature=="extrude" && _symmetric ? "Dimensione totale (metà per lato): " : "Dimensione: ") + Format(_dimension) + " mm.\nGrip + Trigger sulla freccia: regola la dimensione.\n";
-                    if (_feature == "fillet" || _feature == "chamfer") body += "Trigger sugli spigoli: aggiungi/rimuovi. Selezionati: " + _edges.Count + "\n";
-                    actions.Add(("Dimensione numerica", () => Numbers("Dimensione", new[] { "mm" }, new[] { _dimension }, n => { _dimension = n[0]; UpdateDraft(); })));
-                    if (_feature == "hole")
-                    {
-                        body += "Diametro: " + Format(_diameter) + " mm. Seleziona una faccia piana.\n";
-                        actions.Add(("Diametro", () => Numbers("Diametro foro", new[] { "mm" }, new[] { _diameter }, n => { _diameter = n[0]; UpdateDraft(); })));
-                        actions.Add((_through ? "Passante → Cieco" : "Cieco → Passante", () => { _through = !_through; UpdateDraft(); Render(); }));
-                        actions.Add(("Posizione esatta XYZ", () => Numbers("Centro foro nel modello", new[] { "X mm", "Y mm", "Z mm" }, new[] { _facePoint.X,_facePoint.Y,_facePoint.Z }, n => { _facePoint = new CadPoint(n[0],n[1],n[2]); UpdateDraft(); })));
-                    }
-                    if (_feature == "extrude")
-                    {
-                        actions.Add(("Operazione: " + OperationLabel(_operation), () => { var options = new[] { "join","cut","intersect","new_body" }; _operation = options[(Array.IndexOf(options,_operation)+1)%4]; UpdateDraft(); Render(); }));
-                        actions.Add((_symmetric ? "Simmetrica" : _negative ? "Negativa" : "Positiva", () => { if (_symmetric) { _symmetric=false; _negative=false; } else if (_negative) _symmetric=true; else _negative=true; UpdateDraft(); Render(); }));
-                    }
-                }
-            }
-            if (_session != null && _session.Status != DesignStatus.RefreshRequired && _session.Status != DesignStatus.Committing)
-            {
-                if (_screen == "sketch" || _screen == "feature" || _screen == "parameter")
-                {
-                    actions.Add(("Anteprima", _screen == "parameter" ? PreviewParameter : Preview));
-                    actions.Add(("Applica", Apply));
-                    actions.Add(("Annulla comando", () => { _session.Cancel(); ResetDraft(); Render(); }));
-                }
-                if (_screen != "tools") actions.Add(("Strumenti", () => Page("tools")));
-            }
-            body += "\n" + (_session?.Status == DesignStatus.Previewing ? "Calcolo anteprima…" : _session?.Status == DesignStatus.Committing ? "Applicazione in corso…" : _session?.CanApply == true ? "Anteprima verificata. Applica oppure modifica." : "");
-            body += "\n" + _notice;
-            if (!string.IsNullOrEmpty(_session?.Error))
-            {
-                body += "\nComando non completato. Correggi i parametri e riprova.";
-                if (_geometry.HasErrorContext) body += "\nIn arancione: geometria del comando da controllare.";
-                actions.Add(("Dettagli errore", () => { _panel.ShowMessage("Dettagli", _session.Error); _panel.SetActions(("Indietro", Render)); }));
-            }
-            actions.Add((_pinned ? "Sblocca pannello" : "Blocca pannello", () => { _pinned = !_pinned; Render(); }));
-            actions.Add(("Torna a Ispeziona", Close));
-            _panel.ShowMessage(title, body); _panel.SetActions(actions.ToArray());
-            foreach (var button in _panel.GetComponentsInChildren<Button>())
-            {
-                string label = button.GetComponentInChildren<Text>()?.text;
-                if (label == "Applica") button.interactable = _session?.CanApply == true;
-                else if (_session?.Status == DesignStatus.Committing || _session?.Status == DesignStatus.Previewing)
-                    button.interactable = label == "Torna a Ispeziona" || label == "Annulla comando";
-            }
-        }
-        private static string OperationLabel(string operation) => operation switch
-        {
-            "join" => "Unisci", "cut" => "Taglia", "intersect" => "Interseca", "new_body" => "Nuovo corpo", _ => operation
-        };
         // ---------------------------------------------------------------- voice surface
 
         public const string FieldDimension = "design.dimension";
         private const double MinDimensionMm = 0.001, MaxDimensionMm = 10000;
 
         private bool InDraftScreen => _screen == "sketch" || _screen == "feature" || _screen == "parameter";
-        public HomePanel VoicePanel => _panel;
-
-        /// <summary>Same gate as the tool buttons: part, online, context read, no request in flight, on the tools page.</summary>
-        private bool ToolsEditable => Active && _panel != null && _kind == "part" && _online && !_busy && _context != null
-            && _pendingMutations == 0 && _session != null && _session.CanEdit && _screen == "tools"
-            && _session.Status != DesignStatus.Committing && _session.Status != DesignStatus.Previewing;
-
-        /// <summary>Same enablement as the buttons "Crea schizzo", "Raccordo", "Smusso", "Annulla modifica XR", "Ripeti modifica XR", "Annulla comando" and "Applica".</summary>
-        public bool IsEnabled(string commandId)
-        {
-            switch (commandId)
-            {
-                case CommandIds.CreateSketch:
-                case CommandIds.Fillet:
-                case CommandIds.Chamfer: return ToolsEditable;
-                case CommandIds.Undo: return ToolsEditable && _session.Status == DesignStatus.Empty && _history?.CanUndo == true;
-                case CommandIds.Redo: return ToolsEditable && _session.Status == DesignStatus.Empty && _history?.CanRedo == true;
-                case CommandIds.CancelDraft:
-                    return Active && _panel != null && _session != null && InDraftScreen
-                        && _session.Status != DesignStatus.RefreshRequired && _session.Status != DesignStatus.Committing;
-                case CommandIds.Apply:
-                    return Active && _panel != null && _session != null && InDraftScreen && _pendingMutations == 0
-                        && _session.Status != DesignStatus.RefreshRequired && _session.Status != DesignStatus.Committing
-                        && _session.CanApply;
-                default: return false;   // sheet-metal, inspect commands belong to other workspaces
-            }
-        }
-
-        /// <summary>Runs the command exactly as its button would. Apply only shows a notice: the physical Applica is the single commit path.</summary>
-        public bool Invoke(string commandId)
-        {
-            if (!IsEnabled(commandId)) return false;
-            switch (commandId)
-            {
-                case CommandIds.CreateSketch: CreateSketch(); return true;
-                case CommandIds.Fillet: Feature("fillet"); return true;
-                case CommandIds.Chamfer: Feature("chamfer"); return true;
-                case CommandIds.Undo: ApplyHistory(false); return true;
-                case CommandIds.Redo: ApplyHistory(true); return true;
-                case CommandIds.CancelDraft: _session.Cancel(); ResetDraft(); Render(); return true;
-                case CommandIds.Apply:
-                    _notice = "Anteprima verificata. Conferma premendo Applica sul pannello.";
-                    Render(); return true;
-                default: return false;
-            }
-        }
+        /// <summary>Progettazione no longer has a floating panel: voice labels come from the declared actions.</summary>
+        public HomePanel VoicePanel => null;
 
         private bool DimensionFieldAvailable => Active && _screen == "feature" && _session?.CanEdit == true && _context != null && !_busy
             && _pendingMutations == 0 && _session.Status != DesignStatus.Committing && _session.Status != DesignStatus.Previewing
-            && (_feature == "extrude" || _feature == "fillet" || _feature == "chamfer" || (_feature == "hole" && !_through));
+            && DimensionApplies;
 
-        /// <summary>The single numeric field of the feature page ("Dimensione numerica"), or null when none is on screen.</summary>
-        public DictationField ArmedField => DimensionFieldAvailable
-            ? new DictationField(FieldDimension, QuantityUnit.Millimeters, MinDimensionMm, MaxDimensionMm) : null;
+        /// <summary>The numeric field waiting for the keypad, else the dimension chip of the feature, or null when none is on screen.</summary>
+        public DictationField ArmedField => _ask != null ? new DictationField(_ask.Id, _ask.Unit, _ask.Min, _ask.Max)
+            : DimensionFieldAvailable ? new DictationField(FieldDimension, QuantityUnit.Millimeters, MinDimensionMm, MaxDimensionMm) : null;
 
-        /// <summary>Sets the dimension through the keypad path (draft updated, preview invalidated, Apply blocked until a new preview).</summary>
+        /// <summary>
+        /// Dictation: validated by the entry like the keypad. With the keypad open it confirms that value; otherwise it sets the
+        /// chip (draft updated, preview invalidated, Apply blocked until a new preview).
+        /// </summary>
         public bool SetArmedField(string fieldId, double value)
         {
+            if (_ask != null && fieldId == _ask.Id) return _ask.CommitValue(value, out _);
             if (fieldId != FieldDimension || !DimensionFieldAvailable) return false;
-            if (double.IsNaN(value) || double.IsInfinity(value) || value < MinDimensionMm || value > MaxDimensionMm) return false;
-            try { _notice = ""; _dimension = value; UpdateDraft(); } catch (Exception ex) { _notice = ex.Message; }
-            Render();
+            if (!DimEntry.SetValue(value, out _)) return false;
+            if (_dimension != value)
+            {
+                _dimension = value;
+                try { _notice = ""; UpdateDraft(); } catch (Exception ex) { SetNotice(ex.Message); }
+            }
+            Refresh();
             return true;
         }
 
-        private async void PreviewParameter() { try { await _session.PreviewAsync(); } catch (Exception ex) { _notice = ex.Message; Render(); } }
-        private void Page(string page) { _screen = page; _page = 0; Render(); }
-        private void Pagination(List<(string,Action)> actions, int count)
-        {
-            if (_page > 0) actions.Add(("Precedenti", () => { _page--; Render(); }));
-            if ((_page+1)*6 < count) actions.Add(("Successivi", () => { _page++; Render(); }));
-        }
         private static string Format(double value) => value.ToString("0.###", CultureInfo.GetCultureInfo("it-IT"));
-        private void Numbers(string title, string[] labels, double[] values, Action<double[]> done)
+
+        /// <summary>Numeric prompts, one value at a time through the palette keypad; <paramref name="done"/> runs after the last one.</summary>
+        private void Ask(string title, string[] labels, double[] values, Action<double[]> done, QuantityUnit unit = QuantityUnit.Millimeters)
         {
-            int generation = _generation, index = 0; string back = _screen; _screen = "numeric";
-            void Ask()
+            int generation = _generation, index = 0;
+            var results = (double[])values.Clone();
+            void Next()
             {
-                _panel.PromptText(title + " • " + labels[index], "Valore esatto. Separatore decimale: punto.", values[index].ToString(CultureInfo.InvariantCulture), text =>
+                var entry = new NumericEntry("design.ask." + index, unit, results[index], -100000, 100000);
+                _ask = entry;
+                entry.Committed += () =>
                 {
-                    if (generation != _generation) return;
-                    if (!double.TryParse(text.Replace(',','.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
-                        || double.IsNaN(value) || double.IsInfinity(value)) { Ask(); return; }
-                    values[index++] = value;
-                    if (index < values.Length) { Ask(); return; }
-                    _screen = back;
-                    try { _notice = ""; done(values); } catch (Exception ex) { _notice = ex.Message; }
-                    Render();
-                }, () => { _screen = back; Render(); });
+                    if (generation != _generation || _ask != entry) return;
+                    results[index++] = entry.Value;
+                    if (index < results.Length) { Next(); return; }
+                    _ask = null;
+                    try { _notice = ""; done(results); } catch (Exception ex) { SetNotice(ex.Message); }
+                    Refresh();
+                };
+                if (_shell != null) _shell.Palette.ShowKeypad(entry, title + " • " + labels[index]); else entry.BeginEdit();
             }
-            Ask();
+            Next();
         }
         private void NumericShape()
         {
             if (_sketch == null) return;
             if (_shape == SketchShape.Circle)
-                Numbers("Cerchio", new[] { "Centro X", "Centro Y", "Raggio mm" }, new[] { 0.0,0.0,10.0 }, n => AddShape(new SketchElement(_shape,new CadPoint(n[0],n[1]),default,n[2])));
-            else Numbers(_shape == SketchShape.Line ? "Linea" : "Rettangolo", new[] { "X1","Y1","X2","Y2" }, new[] { 0.0,0.0,20.0,20.0 },
+                Ask("Cerchio", new[] { "Centro X", "Centro Y", "Raggio mm" }, new[] { 0.0,0.0,10.0 }, n => AddShape(new SketchElement(_shape,new CadPoint(n[0],n[1]),default,n[2])));
+            else Ask(_shape == SketchShape.Line ? "Linea" : "Rettangolo", new[] { "X1","Y1","X2","Y2" }, new[] { 0.0,0.0,20.0,20.0 },
                 n => AddShape(new SketchElement(_shape,new CadPoint(n[0],n[1]),new CadPoint(n[2],n[3]))));
         }
         private void DimensionElement(int index, CadPoint? textPoint)
         {
             var item = _sketch.Elements[index];
-            if (item.Shape == SketchShape.Circle) Numbers("Quota raggio", new[] { "mm" }, new[] { item.Radius }, n =>
+            if (item.Shape == SketchShape.Circle) Ask("Quota raggio", new[] { "mm" }, new[] { item.Radius }, n =>
             { _sketch.Replace(index,new SketchElement(item.Shape,item.A,item.B,n[0],true,textPoint)); UpdateDraft(); });
-            else if (item.Shape == SketchShape.Rectangle) Numbers("Quote rettangolo", new[] { "Larghezza mm","Altezza mm" }, new[] { item.B.X-item.A.X,item.B.Y-item.A.Y }, n =>
+            else if (item.Shape == SketchShape.Rectangle) Ask("Quote rettangolo", new[] { "Larghezza mm","Altezza mm" }, new[] { item.B.X-item.A.X,item.B.Y-item.A.Y }, n =>
             { _sketch.Replace(index,new SketchElement(item.Shape,item.A,item.A+new CadPoint(n[0],n[1]),dimensioned:true,dimensionText:textPoint)); UpdateDraft(); });
-            else Numbers("Quota lunghezza", new[] { "mm" }, new[] { (item.B-item.A).Length }, n =>
+            else Ask("Quota lunghezza", new[] { "mm" }, new[] { (item.B-item.A).Length }, n =>
             { if (n[0] <= 0) throw new ArgumentException("Lunghezza positiva richiesta."); _sketch.Replace(index,new SketchElement(item.Shape,item.A,item.A+(item.B-item.A)*(n[0]/(item.B-item.A).Length),dimensioned:true,dimensionText:textPoint)); UpdateDraft(); });
         }
         private SketchSnapshot CurrentSketchSnapshot => _session?.Status==DesignStatus.PreviewReady
@@ -635,9 +674,10 @@ namespace InventorXrSo.Xr
         private void ShowConstraints(IEnumerable<string> constraints)
         {
             _dimensionStep=0;
-            _constraintRows=constraints.Where(s=>!string.IsNullOrEmpty(s)).GroupBy(ConstraintLabel)
+            var rows=constraints.Where(s=>!string.IsNullOrEmpty(s)).GroupBy(ConstraintLabel)
                 .Select(g=>g.Key+" × "+g.Count()).OrderBy(s=>s).ToArray();
-            Page("constraints");
+            SetNotice(rows.Length==0 ? "Nessun vincolo geometrico restituito." : "Vincoli Inventor:\n"+string.Join("\n",rows));
+            Refresh();
         }
         private static string ConstraintLabel(string type)
         {
@@ -656,32 +696,35 @@ namespace InventorXrSo.Xr
                 default: return type;
             }
         }
-        private void AddShape(SketchElement element) { _sketch.Add(element); _first = null; _snapLocked = false; UpdateDraft(); Render(); }
+        private void AddShape(SketchElement element) { _sketch.Add(element); _first = null; _snapLocked = false; UpdateDraft(); Refresh(); }
 
         private SketchFrame ExtrusionFrame => _sketch?.Frame ?? _context?.Sketches.FirstOrDefault(s => s.Reference == _existingSketch)?.Frame;
         private DesignEdge DimensionEdge => _context?.Edges.FirstOrDefault(e => _edges.Contains(e.Id));
         private bool HasDimensionTarget => _feature == "extrude" ? ExtrusionFrame != null
             : _feature == "hole" ? _context?.Faces.Any(f => f.Id == _face) == true
             : (_feature == "fillet" || _feature == "chamfer") && DimensionEdge != null;
+        private static CadPoint LengthMidpoint(IReadOnlyList<CadPoint> points)
+        {
+            if (points == null || points.Count == 0) return default;
+            double length = 0;
+            for (int i=1;i<points.Count;i++) length += (points[i]-points[i-1]).Length;
+            double remaining = length*0.5;
+            for (int i=1;i<points.Count;i++)
+            {
+                var segment = points[i]-points[i-1];
+                if (segment.Length>0 && remaining<=segment.Length)
+                    return points[i-1]+segment*(remaining/segment.Length);
+                remaining -= segment.Length;
+            }
+            return points[0];
+        }
         private CadPoint DimensionOrigin
         {
             get
             {
                 if (_feature == "extrude") return ExtrusionFrame?.OriginMm ?? default;
                 if (_feature != "fillet" && _feature != "chamfer") return _facePoint;
-                var points = DimensionEdge?.PointsMm;
-                if (points == null || points.Count == 0) return default;
-                double length = 0;
-                for (int i=1;i<points.Count;i++) length += (points[i]-points[i-1]).Length;
-                double remaining = length*0.5;
-                for (int i=1;i<points.Count;i++)
-                {
-                    var segment = points[i]-points[i-1];
-                    if (segment.Length>0 && remaining<=segment.Length)
-                        return points[i-1]+segment*(remaining/segment.Length);
-                    remaining -= segment.Length;
-                }
-                return points[0];
+                return LengthMidpoint(DimensionEdge?.PointsMm);
             }
         }
         private CadPoint DimensionAxis => _feature == "extrude"
@@ -694,13 +737,32 @@ namespace InventorXrSo.Xr
         private double DragDimension(CadPoint position) => Math.Max(0.01,_dragValue+(position-_dragStart).Dot(DimensionAxis)*(SymmetricHandle ? 2*_dragSide : 1));
         private void UpdateHandle()
         {
-            if (!HasDimensionTarget) { _handle.positionCount = 0; return; }
+            if (!HasDimensionTarget) { _handle.positionCount = 0; UpdateChip(); return; }
             _handle.positionCount = 2; _handle.SetPosition(0,CadCoordinates.ToLocal(DimensionStart));
             _handle.SetPosition(1,CadCoordinates.ToLocal(DimensionEnd));
+            UpdateChip();
         }
+
+        // Pen: the tip of the right controller when it is within 2 cm of the sheet, the ray otherwise (SketchSheetView).
+        private bool TryPenPoint(Ray ray, out CadPoint point)
+        {
+            if (_sheet != null && _sheet.State == SketchSheetState.Sheet)
+            {
+                point = default;
+                if (!_sheet.ProjectPen(_ray.Origin.position, ray, _sketch.Frame, out var mm)) return false;
+                point = new CadPoint(mm.x, mm.y);
+                return true;
+            }
+            return CadCoordinates.SketchRay(_view.transform, _sketch.Frame, ray, out point);
+        }
+
         private void Update()
         {
-            if (!Active || !_visible || _ray.Origin == null) return;
+            if (!Active) return;
+            CommitBar.Tick(Time.unscaledTimeAsDouble);
+            UpdateBar();
+            DropClosedKeypad();
+            if (!_visible || _ray == null || _ray.Origin == null) return;
             bool tracked = OVRInput.IsControllerConnected(_ray.Controller) && OVRInput.GetControllerPositionTracked(_ray.Controller)
                 && OVRInput.GetControllerOrientationTracked(_ray.Controller);
             if (!tracked) { _dimensionDrag = false; _grab = null; _first = null; _snapLocked = false; _geometry.Cursor(null,default,null,_shape); return; }
@@ -728,8 +790,8 @@ namespace InventorXrSo.Xr
                 if (_dimensionDrag)
                 {
                     _dimension = DragDimension(CadCoordinates.FromWorld(_view.transform,_ray.Origin.position));
+                    SyncDimensionEntry();
                     UpdateHandle();
-                    if (Time.unscaledTime > _nextRender) { _nextRender=Time.unscaledTime+0.15f; Render(); }
                     return;
                 }
             }
@@ -737,18 +799,17 @@ namespace InventorXrSo.Xr
             {
                 if (OVRInput.GetDown(OVRInput.Button.PrimaryHandTrigger,_ray.Controller))
                 {
-                    if (overUi && ui.CurrentHit.gameObject.transform.IsChildOf(_panel.transform)) _grab = _panel.transform;
-                    else if (!overUi && CadRaycaster.TryPick(ray,20,out _,out _,out _)) _grab = _view.transform;
+                    if (!overUi && CadRaycaster.TryPick(ray,20,out _,out _,out _)) _grab = _view.transform;
                     if (_grab != null) { _grabPosition=_ray.Origin.InverseTransformPoint(_grab.position); _grabRotation=Quaternion.Inverse(_ray.Origin.rotation)*_grab.rotation; }
                 }
                 if (_grab != null) _grab.SetPositionAndRotation(_ray.Origin.TransformPoint(_grabPosition),_ray.Origin.rotation*_grabRotation);
                 return;
             }
             _grab = null;
-            if (overUi || _screen == "numeric" || _session?.CanEdit != true || grip) return;
+            if (overUi || _ask != null || _session?.CanEdit != true || grip) return;
             if (_screen == "sketch" && _sketch?.Frame != null)
             {
-                if (!CadCoordinates.SketchRay(_view.transform,_sketch.Frame,ray,out var point)) return;
+                if (!TryPenPoint(ray,out var point)) return;
                 if (_dimensionStep != 0)
                 {
                     _geometry.Cursor(_sketch.Frame,point,null,_shape);
@@ -756,16 +817,16 @@ namespace InventorXrSo.Xr
                     if (_dimensionStep==3)
                     {
                         var selected=CurrentSketchSnapshot?.Pick(point,2);
-                        if (selected==null) { _notice="Nessuna geometria dell’anteprima vicina al raggio."; Render(); }
+                        if (selected==null) { SetNotice("Nessuna geometria dell’anteprima vicina al raggio."); Refresh(); }
                         else ShowConstraints(selected.Constraints);
                         return;
                     }
                     if (_dimensionStep == 1)
                     {
                         _dimensionIndex=_sketch.Pick(point,2);
-                        if (_dimensionIndex < 0) { _notice="Nessuna geometria vicina al raggio."; Render(); return; }
+                        if (_dimensionIndex < 0) { SetNotice("Nessuna geometria vicina al raggio."); Refresh(); return; }
                         _dimensionStep=2; _geometry.ShowDraft(_sketch,_dimensionIndex);
-                        _notice="Quota: indica dove posizionare il testo sul piano dello schizzo."; Render();
+                        SetNotice("Quota: indica dove posizionare il testo sul piano dello schizzo."); Refresh();
                     }
                     else { _dimensionStep=0; DimensionElement(_dimensionIndex,point); }
                     return;
@@ -781,7 +842,7 @@ namespace InventorXrSo.Xr
                 {
                     if (!_first.HasValue) { _first=_candidate.Point; _snapLocked=false; }
                     else try { AddShape(new SketchElement(_shape,_first.Value,_candidate.Point,(_candidate.Point-_first.Value).Length)); }
-                        catch (Exception ex) { _notice=ex.Message; Render(); }
+                        catch (Exception ex) { SetNotice(ex.Message); Refresh(); }
                 }
                 return;
             }
@@ -789,12 +850,33 @@ namespace InventorXrSo.Xr
             if (_feature == "fillet" || _feature == "chamfer")
             {
                 string edge = CadCoordinates.PickEdge(_view.transform,_context.Edges,ray,requireVisible:true);
-                if (edge != null) { if (!_edges.Add(edge)) _edges.Remove(edge); UpdateDraft(); Render(); }
+                if (edge != null) { if (!_edges.Add(edge)) _edges.Remove(edge); UpdateDraft(); Refresh(); }
+                return;
             }
-            else if (CadRaycaster.TryPick(ray,20,out var body,out int triangle,out var hit))
+            // Idle: an edge or a face opens the ring; the empty space closes it.
+            if (_feature == null && _sketch == null)
             {
-                SelectPlanarFace(body, triangle, hit);
+                string edge = CadCoordinates.PickEdge(_view.transform,_context.Edges,ray,requireVisible:true);
+                if (edge != null) { SelectEdge(edge); return; }
             }
+            if (CadRaycaster.TryPick(ray,20,out var body,out int triangle,out var hit))
+            {
+                _ringEdge = null;
+                SelectPlanarFace(body, triangle, hit);
+                if (_feature == null && _face != null) ShowRing(UiSelectionKind.PlanarFace, hit);
+            }
+            else HideRing();
+        }
+        private void SelectEdge(string edgeId)
+        {
+            var edge = _context.Edges.FirstOrDefault(e => e.Id == edgeId);
+            if (edge == null) return;
+            _face = null; _faceSelection = null; _selection.Clear();
+            _geometry.ShowEdges(new[] { edge });
+            SetNotice("Spigolo selezionato.");
+            var mid = LengthMidpoint(edge.PointsMm);
+            ShowRing(UiSelectionKind.Edge, _view.transform.TransformPoint(CadCoordinates.ToLocal(mid)));
+            _ringEdge = edgeId;
         }
         private void SelectPlanarFace(CadBody body, int triangle, Vector3 hit)
         {
@@ -811,27 +893,30 @@ namespace InventorXrSo.Xr
             if (face == null)
             {
                 _face = null; _faceSelection = null; _selection.Clear();
-                _notice = "Faccia non piana o riferimenti non aggiornati. Prova Aggiorna riferimenti.";
+                SetNotice("Faccia non piana o riferimenti non aggiornati. Prova Aggiorna riferimenti.");
                 if (_feature == "hole") UpdateDraft();
-                Render(); return;
+                Refresh(); return;
             }
             _face = face.Id;
             _facePoint = face.Project(CadCoordinates.FromWorld(_view.transform, hit));
-            _faceSelection = new Selection(SelectionKind.Face, body.Instance.OccurrenceId, range.FaceId, face.Id);
+            _faceSelection = new Selection(InventorXrSo.Core.Selection.SelectionKind.Face, body.Instance.OccurrenceId, range.FaceId, face.Id);
             _selection.Show(_faceSelection);
-            _notice = "Faccia piana selezionata.";
+            SetNotice("Faccia piana selezionata.");
             if (_feature == "hole") UpdateDraft();
-            Render();
+            Refresh();
         }
         private void OnDestroy()
         {
             _reads.Cancel(); _reads.Dispose();
             if (_session != null) { _session.Changed-=SessionChanged; _session.Dispose(); }
-            if (_cursorCanvas != null)
-            {
-                if (Application.isPlaying) Destroy(_cursorCanvas.gameObject);
-                else DestroyImmediate(_cursorCanvas.gameObject);
-            }
+            DestroyCanvas(_cursorCanvas != null ? _cursorCanvas.gameObject : null);
+            DestroyCanvas(_chip != null ? _chip.Canvas.gameObject : null);
+            DestroyCanvas(_ring != null ? _ring.Canvas.gameObject : null);
+        }
+        private static void DestroyCanvas(GameObject go)
+        {
+            if (go == null) return;
+            if (Application.isPlaying) Destroy(go); else DestroyImmediate(go);
         }
     }
 }

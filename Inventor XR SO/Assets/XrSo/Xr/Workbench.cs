@@ -41,6 +41,13 @@ namespace InventorXrSo.Xr
 
         public void Snap() => _tween.Snap();
 
+        /// <summary>Lascia la radice della scena: nessun'altra transizione la sposta (uscita dal workspace).</summary>
+        public void Release()
+        {
+            _tween.Cancel();
+            _root = null;
+        }
+
         private void Apply()
         {
             PartPose = WorkbenchLayout.Part(Frame, _extentM);

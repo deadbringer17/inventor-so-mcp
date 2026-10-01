@@ -19,6 +19,8 @@ namespace InventorXrSo.Unity.Ui
         private RectTransform _header, _grid;
         private TextMeshProUGUI _title, _chip;
         private NumericEntry _entry;
+        private string _keypadLabel;
+        private IReadOnlyList<string> _group;
         private readonly List<string> _tabs = new List<string>();
 
         public Canvas Canvas { get; private set; }
@@ -57,9 +59,9 @@ namespace InventorXrSo.Unity.Ui
         {
             _catalog = catalog;
             // Un workspace appena attivato parte dalla sua prima scheda, non da quella del precedente.
-            if (catalog.Active != _lastProvider) { _lastProvider = catalog.Active; CurrentTab = null; }
+            if (catalog.Active != _lastProvider) { _lastProvider = catalog.Active; CurrentTab = null; _group = null; }
             _tabs.Clear();
-            _tabs.AddRange(catalog.Tabs.Select(t => t.Id));
+            _tabs.AddRange(_group ?? catalog.Tabs.Select(t => t.Id).ToList());
             if (CurrentTab == null || !_tabs.Contains(CurrentTab)) CurrentTab = _tabs.FirstOrDefault();
             Rebuild();
         }
@@ -72,11 +74,45 @@ namespace InventorXrSo.Unity.Ui
             Rebuild();
         }
 
-        public void ShowKeypad(NumericEntry entry)
+        /// <summary>Mostra una scheda per id, anche nascosta (scheda di elenco dinamica del workspace).</summary>
+        public void ShowTab(string tabId)
         {
-            if (_entry != null) _entry.Changed -= Rebuild;
+            if (tabId == null || !_tabs.Contains(tabId)) return;
+            CurrentTab = tabId;
+            Rebuild();
+        }
+
+        /// <summary>
+        /// Limita la rotazione delle schede (stick sinistro) a un gruppo, p. es. le pagine di un elenco lungo, e mostra la prima.
+        /// Le schede possono essere nascoste: si risolvono dal catalogo.
+        /// </summary>
+        public void ShowTabGroup(IReadOnlyList<string> tabIds)
+        {
+            if (tabIds == null || tabIds.Count == 0) { ClearTabGroup(); return; }
+            _group = tabIds.ToList();
+            _tabs.Clear();
+            _tabs.AddRange(_group);
+            CurrentTab = _group[0];
+            Rebuild();
+        }
+
+        /// <summary>Torna alle schede visibili del catalogo.</summary>
+        public void ClearTabGroup()
+        {
+            if (_group == null) return;
+            _group = null;
+            if (_catalog != null) Render(_catalog);
+        }
+
+        public bool InTabGroup => _group != null;
+
+        public void ShowKeypad(NumericEntry entry, string label = null)
+        {
+            Detach();
             _entry = entry;
+            _keypadLabel = label;
             _entry.Changed += Rebuild;
+            _entry.Committed += OnCommitted;
             _entry.BeginEdit();
             Rebuild();
         }
@@ -84,9 +120,25 @@ namespace InventorXrSo.Unity.Ui
         public void HideKeypad()
         {
             if (_entry == null) return;
+            var entry = _entry;
+            Detach();
+            entry.CancelEdit();
+            Rebuild();
+        }
+
+        private void Detach()
+        {
+            if (_entry == null) return;
             _entry.Changed -= Rebuild;
-            _entry.CancelEdit();
+            _entry.Committed -= OnCommitted;
             _entry = null;
+        }
+
+        // Il workspace puo aprire subito un nuovo tastierino dal suo gestore: ci si stacca solo se e ancora il nostro.
+        private void OnCommitted()
+        {
+            if (_entry == null || _entry.Editing) return;
+            Detach();
             Rebuild();
         }
 
@@ -102,7 +154,7 @@ namespace InventorXrSo.Unity.Ui
                 grid.cellSize = new Vector2(49, 15);
                 _header.gameObject.SetActive(false);
                 _chip.gameObject.SetActive(true);
-                _chip.text = "Valore: " + _entry.Display;
+                _chip.text = (_keypadLabel ?? "Valore") + ": " + _entry.Display;
                 foreach (var key in Keys) { var k = key; FitLabel(UiFactory.TextButton(_grid, k, k == "OK" ? UiFactory.Accent : UiFactory.Key, TextMm, () => Press(k))); }
                 return;
             }
@@ -110,7 +162,7 @@ namespace InventorXrSo.Unity.Ui
             grid.cellSize = new Vector2(75.5f, 20);
             _header.gameObject.SetActive(true);
             _chip.gameObject.SetActive(false);
-            var tab = _catalog?.Tabs.FirstOrDefault(t => t.Id == CurrentTab);
+            var tab = _catalog?.FindTab(CurrentTab);
             _title.text = tab == null ? "" : "‹ " + tab.Label + " ›";
             if (_catalog == null || CurrentTab == null) return;
             foreach (var action in _catalog.Palette(CurrentTab))
@@ -135,7 +187,7 @@ namespace InventorXrSo.Unity.Ui
         private void Press(string key)
         {
             if (_entry == null) return;
-            if (key == "OK") { if (_entry.Commit(out _)) { _entry.Changed -= Rebuild; _entry = null; Rebuild(); } return; }
+            if (key == "OK") { _entry.Commit(out _); return; }
             if (key == "Annulla") { HideKeypad(); return; }
             if (key == "←") { _entry.Backspace(); return; }
             _entry.Type(key[0]);

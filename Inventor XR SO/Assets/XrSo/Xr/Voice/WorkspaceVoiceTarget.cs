@@ -20,6 +20,12 @@ namespace InventorXrSo.Xr.Voice
     {
         HomePanel VoicePanel { get; }
     }
+    /// <summary>Workspace senza pannello (M6): le etichette vocali vengono dalle azioni del catalogo.</summary>
+    public interface IWorkspaceActionVoiceSurface
+    {
+        System.Collections.Generic.IEnumerable<(string label, bool enabled)> VoiceActions { get; }
+        bool InvokeVoiceAction(string label);
+    }
     public interface IWorkspaceWristVoiceSurface
     {
         bool IsWristEnabled(string label);
@@ -73,6 +79,11 @@ namespace InventorXrSo.Xr.Voice
         private const string UiPrefix = "ui:";
         private const string WristPrefix = "wrist:";
         private HomePanel CurrentPanel => (Current as IWorkspacePanelVoiceSurface)?.VoicePanel;
+        private IWorkspaceActionVoiceSurface CurrentActions => Current as IWorkspaceActionVoiceSurface;
+
+        /// <summary>Etichette dei comandi a schermo: pannello uGUI se c'e, altrimenti le azioni del catalogo.</summary>
+        private System.Collections.Generic.IEnumerable<(string label, bool enabled)> LabelActions(HomePanel panel) =>
+            panel != null ? panel.VoiceActions : CurrentActions?.VoiceActions;
 
         public bool TryResolveAction(string transcript, out ContextVoiceAction action)
         {
@@ -93,8 +104,9 @@ namespace InventorXrSo.Xr.Voice
             foreach (var mode in new[] { "Ispeziona", "Esplora", "Progettazione", "Assieme", "Lamiera" })
                 if (Matches(spoken, mode) && _wrist?.IsWristEnabled(mode) == true)
                 { action = new ContextVoiceAction(WristPrefix + mode, mode, true, false); return true; }
-            if (panel == null) return false;
-            var matches = panel.VoiceActions.Where(item => Matches(spoken, item.label)).ToArray();
+            var labels = LabelActions(panel);
+            if (labels == null) return false;
+            var matches = labels.Where(item => Matches(spoken, item.label)).ToArray();
             if (matches.Length != 1) return false; // etichette omonime: serve il puntatore
             var chosen = matches[0];
             string normalized = ItalianTextNormalizer.Normalize(chosen.label);
@@ -150,7 +162,7 @@ namespace InventorXrSo.Xr.Voice
             {
                 var label = commandId.Substring(UiPrefix.Length);
                 if (ItalianTextNormalizer.Normalize(label) == "applica") return false;
-                return CurrentPanel?.VoiceActions.Any(item => item.label == label && item.enabled) == true;
+                return LabelActions(CurrentPanel)?.Any(item => item.label == label && item.enabled) == true;
             }
             return Current != null && Current.IsEnabled(commandId);
         }
@@ -166,7 +178,12 @@ namespace InventorXrSo.Xr.Voice
             if (commandId != null && commandId.StartsWith(WristPrefix, StringComparison.Ordinal))
                 return _wrist?.InvokeWrist(commandId.Substring(WristPrefix.Length)) == true;
             if (commandId != null && commandId.StartsWith(UiPrefix, StringComparison.Ordinal))
-                return IsEnabled(commandId) && CurrentPanel?.InvokeVoiceAction(commandId.Substring(UiPrefix.Length)) == true;
+            {
+                if (!IsEnabled(commandId)) return false;
+                string label = commandId.Substring(UiPrefix.Length);
+                var panel = CurrentPanel;
+                return panel != null ? panel.InvokeVoiceAction(label) : CurrentActions?.InvokeVoiceAction(label) == true;
+            }
             return Current != null && Current.Invoke(commandId);
         }
 
@@ -200,12 +217,14 @@ namespace InventorXrSo.Xr.Voice
         /// <summary>Mostra il riepilogo del piano nel workspace; il commit resta sul pulsante Applica fisico.</summary>
         public void ShowApplyConfirmation() { Current?.Invoke(CommandIds.Apply); }
 
-        private sealed class DesignSurface : IWorkspaceVoiceSurface, IWorkspacePanelVoiceSurface
+        private sealed class DesignSurface : IWorkspaceVoiceSurface, IWorkspacePanelVoiceSurface, IWorkspaceActionVoiceSurface
         {
             private readonly DesignWorkspace _ws;
             public DesignSurface(DesignWorkspace ws) { _ws = ws; }
             public bool Active => _ws != null && _ws.Active;
-            public HomePanel VoicePanel => _ws?.VoicePanel;
+            public HomePanel VoicePanel => _ws?.VoicePanel;   // null: Progettazione non ha piu il pannello
+            public System.Collections.Generic.IEnumerable<(string label, bool enabled)> VoiceActions => _ws.VoiceActions;
+            public bool InvokeVoiceAction(string label) => _ws.InvokeVoiceAction(label);
             public bool IsEnabled(string commandId) => _ws.IsEnabled(commandId);
             public bool Invoke(string commandId) => _ws.Invoke(commandId);
             public DictationField ArmedField => _ws.ArmedField;

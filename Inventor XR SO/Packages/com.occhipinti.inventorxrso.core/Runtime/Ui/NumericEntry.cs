@@ -30,6 +30,8 @@ namespace InventorXrSo.Core.Ui
         public bool Editing => Buffer != null;
         public string Buffer { get; private set; }
         public event Action Changed;
+        /// <summary>Il tastierino ha confermato un valore (non per trascinamento, passo o dettatura senza tastierino).</summary>
+        public event Action Committed;
 
         public string Display => Editing ? Buffer : Format(Value) + (Unit == QuantityUnit.Degrees ? "°" : Unit == QuantityUnit.Millimeters ? " mm" : "");
 
@@ -82,6 +84,17 @@ namespace InventorXrSo.Core.Ui
             Value = parsed.Value;
             Buffer = null;
             Changed?.Invoke();
+            Committed?.Invoke();
+            return true;
+        }
+
+        /// <summary>Dettatura su un tastierino aperto: valida come SetValue e conferma al posto del tasto OK.</summary>
+        public bool CommitValue(double value, out string reason)
+        {
+            if (!SetValue(value, out reason)) return false;
+            Buffer = null;
+            Changed?.Invoke();
+            Committed?.Invoke();
             return true;
         }
 
