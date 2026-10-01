@@ -15,6 +15,7 @@ using InventorXrSo.Core.Voice;
 using InventorXrSo.Unity.Scene;
 using InventorXrSo.Unity.Ui;
 using InventorXrSo.Xr;
+using InventorXrSo.Xr.Input;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using UnityEngine;
@@ -81,7 +82,7 @@ namespace InventorXrSo.Tests
         }
         [SetUp] public void Setup()
         {
-            _hud.Clear();
+            _hud.Clear(); _haptics.Clear(); _previousSink=Haptics.Sink; Haptics.Sink=(pulse,pen)=>_haptics.Add(pulse);
             _root=new GameObject("Design UI test");
             _material=new Material(Shader.Find("XrSo/CadSurface"));
             var eye=Child("Eye").AddComponent<Camera>();
@@ -102,6 +103,7 @@ namespace InventorXrSo.Tests
         private GameObject Child(string name) { var go=new GameObject(name); go.transform.SetParent(_root.transform); return go; }
         [TearDown] public void Cleanup()
         {
+            Haptics.Sink=_previousSink;
             // The chip and the ring are free-standing canvases (not children of the workspace).
             foreach(var name in new[]{"_chip","_ring"})
             {
@@ -658,6 +660,278 @@ namespace InventorXrSo.Tests
             Assert.IsNull(_workspace.GetComponentInChildren<HomePanel>(true));
             Assert.IsNull(typeof(DesignWorkspace).GetField("_panel",Flags));
             Assert.IsNull(typeof(DesignWorkspace).GetMethod("Render",Flags));
+        }
+        // ---------------------------------------------------------------- M6 phase 2 part B: XrInput (synthetic) drives the workspace
+
+        private XrInput _xr;
+        private XrInputFrame _frame;
+        private float _clock;
+        private readonly List<HapticPulse> _haptics = new List<HapticPulse>();
+        private Action<HapticPulse,bool> _previousSink;
+
+
+        /// <summary>Synthetic input: no OVRInput is read; the test feeds frames to the same XrInput the app uses.</summary>
+        private void UseInput(UiShell shell=null,Workbench bench=null,SketchSheetView sheet=null)
+        {
+            _xr=Child("XrInput").AddComponent<XrInput>(); _xr.Source=new SyntheticInputSource();
+            Assert.True(_xr.Synthetic,"the runner log must call this input synthetic");
+            _workspace.Attach(shell,bench,sheet,_xr);
+            _frame=new XrInputFrame{PenTracked=true,PaletteTracked=true};
+            Poll();
+        }
+        private void Poll() => _xr.Poll(_frame,_clock+=0.016f);
+        private void PressTrigger() { _frame.PenTrigger=true; Poll(); }
+        private void ReleaseTrigger() { _frame.PenTrigger=false; Poll(); }
+        private void Frame() => typeof(DesignWorkspace).GetMethod("Update",Flags).Invoke(_workspace,null);
+        private Transform Hand => _root.transform.Find("Hand");
+        private CadPoint Prop(string name) => (CadPoint)typeof(DesignWorkspace).GetProperty(name,Flags).GetValue(_workspace);
+        private Vector3 World(CadPoint p) => _view.transform.TransformPoint(CadCoordinates.ToLocal(p));
+        private double Dimension_() => Field<double>("_dimension");
+        private bool Capturing => Field<bool>("_dimensionDrag");
+
+        private void ExtrudeWithHandle() { SketchOnXy(); Do(Extrude); Do(CommitIds.Preview); }
+
+        /// <summary>Points the pen ray at the middle of the dimension handle; returns the world direction that lengthens it.</summary>
+        private Vector3 AimAtHandle()
+        {
+            var a=World(Prop("DimensionStart")); var b=World(Prop("DimensionEnd"));
+            Hand.position=(a+b)*0.5f+Vector3.up*0.3f; Hand.rotation=Quaternion.LookRotation(Vector3.down);
+            return (b-a).normalized;
+        }
+        private void AimAwayFromHandle() { Hand.position=new Vector3(5,5,5); Hand.rotation=Quaternion.LookRotation(Vector3.up); }
+        private double MmPerMetre => 1000/_view.transform.lossyScale.x;
+
+        private double DraftDistance()
+        {
+            var session=Field<DesignSession>("_session");
+            var ops=(JArray)typeof(DesignSession).GetField("_operations",Flags).GetValue(session);
+            return (double)ops.Last(o=>(string)o["command"]=="extrude")["arguments"]["distance_mm"];
+        }
+
+        [Test] public void WorkspaceWithoutAnInputNeverThrowsAndKeepsNoControllerState()
+        {
+            ExtrudeWithHandle();
+            Assert.DoesNotThrow(()=>{ Frame(); _workspace.Back(); _workspace.FitView(); _workspace.RecenterView(); _workspace.ZoomView(1,0.1f); });
+            Assert.False(Capturing);
+        }
+
+        [Test] public void TriggerHeldDragStartsOnlyOnTheHandleAndEditsOnlyTheDraft()
+        {
+            UseInput(); ExtrudeWithHandle();
+            double start=Dimension_(); int previews=_backend.Previews;
+            Assert.True(Enabled(CommitIds.Apply),"a preview is ready before the drag");
+
+            AimAwayFromHandle(); PressTrigger();
+            Assert.False(Capturing,"trigger away from the handle does not capture"); ReleaseTrigger();
+
+            var axis=AimAtHandle(); PressTrigger();
+            Assert.True(Capturing,"trigger held on the handle captures it");
+            Assert.AreEqual(DesignStatus.Draft,Field<DesignSession>("_session").Status,"the capture only touches the draft");
+            Assert.False(Enabled(CommitIds.Apply),"Apply is gone until a new preview");
+            SetField("_dragDraftAt",-10f);   // let the throttled draft sync run on the next frame
+            Hand.position+=axis*0.02f; Frame();
+            Assert.AreEqual(start+0.02*MmPerMetre,Dimension_(),1e-3);
+            Assert.AreEqual(Dimension_(),DraftDistance(),1e-9,"the session draft follows the drag");
+            Assert.AreEqual(previews,_backend.Previews,"dragging never previews"); Assert.AreEqual(0,_backend.Commits,"dragging never applies");
+        }
+
+        [Test] public void ReleaseEndsTheCaptureAndPreviewsTheFinalValueWithoutApplying()
+        {
+            UseInput(); ExtrudeWithHandle();
+            int previews=_backend.Previews;
+            var axis=AimAtHandle(); PressTrigger();
+            Hand.position+=axis*0.01f; Frame(); double dragged=Dimension_();
+            Assert.AreNotEqual(10d,dragged);
+            ReleaseTrigger();
+            Assert.False(Capturing);
+            Assert.AreEqual(previews+1,_backend.Previews,"release previews once"); Assert.AreEqual(0,_backend.Commits);
+            Assert.AreEqual(dragged,DraftDistance(),1e-9);
+            Hand.position+=axis*0.05f; Frame();
+            Assert.AreEqual(dragged,Dimension_(),1e-12,"after the release the pen no longer edits");
+            Assert.True(Enabled(CommitIds.Apply),"Apply is explicit, from the commit bar");
+        }
+
+        [Test] public void TrackingLossEndsTheCaptureKeepingTheLastValidValueWithAnErrorPulse()
+        {
+            UseInput(); ExtrudeWithHandle();
+            var axis=AimAtHandle(); PressTrigger();
+            Hand.position+=axis*0.01f; Frame(); double lastValid=Dimension_();
+            int previews=_backend.Previews; _haptics.Clear();
+            Hand.position=new Vector3(900,900,900);   // a lost controller reports garbage poses
+            _frame.PenTracked=false; Poll();           // trigger still down: tracking loss, then release
+            Assert.False(Capturing,"tracking loss closes the capture");
+            Assert.AreEqual(lastValid,Dimension_(),1e-12);
+            Assert.AreEqual(lastValid,DraftDistance(),1e-9,"the draft keeps the last valid value");
+            Assert.AreEqual(previews,_backend.Previews,"a loss is not a release: no preview");
+            CollectionAssert.Contains(_haptics,HapticPulse.Error);
+            Frame(); Assert.AreEqual(lastValid,Dimension_(),1e-12);
+            _frame.PenTracked=true; _frame.PenTrigger=false; Poll();
+            Assert.AreEqual(previews,_backend.Previews); Assert.AreEqual(0,_backend.Commits);
+        }
+
+        [Test] public void ClosingOrHidingTheWorkspaceEndsTheCapture()
+        {
+            UseInput(); ExtrudeWithHandle();
+            AimAtHandle(); PressTrigger(); Assert.True(Capturing);
+            _workspace.Close();
+            Assert.False(Capturing); Assert.AreEqual(0,_backend.Commits);
+            int closedPreviews=_backend.Previews;
+            ReleaseTrigger(); Assert.AreEqual(closedPreviews,_backend.Previews,"a release after Close does not preview");
+
+            _workspace.Open(); ExtrudeWithHandle();
+            AimAtHandle(); PressTrigger(); Assert.True(Capturing);
+            _workspace.SetVisible(false);
+            Assert.False(Capturing); Assert.False(_workspace.Active);
+        }
+
+        [Test] public void PrecisionHeldMakesTheDragTenTimesSlower()
+        {
+            UseInput(); ExtrudeWithHandle();
+            double before=Dimension_();
+            var axis=AimAtHandle(); PressTrigger();
+            Hand.position+=axis*0.02f; Frame(); double normal=Dimension_()-before;
+            ReleaseTrigger();
+
+            _frame.PaletteTrigger=true; Poll(); Assert.True(_xr.Precision);
+            before=Dimension_();
+            axis=AimAtHandle(); PressTrigger();
+            Hand.position+=axis*0.02f; Frame(); double slow=Dimension_()-before;
+            Assert.AreEqual(0.02*MmPerMetre,normal,1e-3);
+            Assert.AreEqual(normal/10,slow,1e-3);
+
+            // switching precision on mid-drag re-anchors instead of jumping
+            ReleaseTrigger(); _frame.PaletteTrigger=false; Poll();
+            before=Dimension_(); axis=AimAtHandle(); PressTrigger();
+            Hand.position+=axis*0.01f; Frame(); double afterFast=Dimension_();
+            _frame.PaletteTrigger=true; Poll(); Frame();
+            Assert.AreEqual(afterFast,Dimension_(),1e-9,"no jump when precision toggles");
+            Hand.position+=axis*0.01f; Frame();
+            Assert.AreEqual(afterFast+0.01*MmPerMetre/10,Dimension_(),1e-3);
+        }
+
+        [Test] public void GripAloneIsAViewGrabAndNeverCapturesTheHandle()
+        {
+            UseInput(); ExtrudeWithHandle();
+            double start=Dimension_();
+            AimAtHandle(); _frame.PenGrip=true; Poll(); PressTrigger();
+            Assert.False(Capturing,"Grip + Trigger no longer drags the handle");
+            Assert.AreEqual(start,Dimension_());
+            ReleaseTrigger(); _frame.PenGrip=false; Poll();
+            Assert.AreEqual(DesignStatus.PreviewReady,Field<DesignSession>("_session").Status,"the draft was never touched");
+        }
+
+        [Test] public void AToggleTheSnapLockOnTheSketchOnly()
+        {
+            UseInput();
+            _frame.A=true; Poll(); _frame.A=false; Poll();
+            Assert.False(Field<bool>("_snapLocked"),"no sketch: A does nothing"); Assert.IsEmpty(_haptics);
+            SketchOnXy(); _haptics.Clear();
+            _frame.A=true; Poll();
+            Assert.True(Field<bool>("_snapLocked")); CollectionAssert.AreEqual(new[]{HapticPulse.Tick},_haptics);
+            _frame.A=false; Poll(); _frame.A=true; Poll();
+            Assert.False(Field<bool>("_snapLocked"));
+            Assert.AreEqual(0,_backend.Commits);
+        }
+
+        [Test] public void PenPressesOnTheSheetAddFirstThenSecondPointToTheDraftOnly()
+        {
+            UseInput(); SketchOnXy();
+            var sketch=Field<SketchDraft>("_sketch");
+            // The ray hits the sketch plane (z=0 in model space) at a known point.
+            var frame=sketch.Frame;
+            var plane=World(frame.ToModel(new CadPoint(0,0)));
+            Hand.position=plane+new Vector3(0,0,-0.5f); Hand.rotation=Quaternion.LookRotation(Vector3.forward);
+            int previews=_backend.Previews;
+            PressTrigger(); ReleaseTrigger();
+            Assert.True(Field<CadPoint?>("_first").HasValue,"first point");
+            Hand.position+=new Vector3(0.02f,0,0);
+            PressTrigger(); ReleaseTrigger();
+            Assert.False(Field<CadPoint?>("_first").HasValue); Assert.AreEqual(1,sketch.Elements.Count,"second point closes the element");
+            Assert.AreEqual(previews,_backend.Previews); Assert.AreEqual(0,_backend.Commits);
+        }
+
+        [Test] public void BackClosesKeypadThenRingThenPickerThenDiscardsTheLastDraftStep()
+        {
+            var shell=AttachShell(out var bench,out var sheet); UseInput(shell,bench,sheet);
+            SketchOnXy();
+            var sketch=Field<SketchDraft>("_sketch");
+            sketch.Add(new SketchElement(SketchShape.Line,default,new CadPoint(10,4)));
+            Do(AddConstraint); Assert.True(_workspace.Tabs.Any(t=>t.Id.StartsWith(DesignWorkspace.PickTabPrefix)),"a picker is open");
+            typeof(DesignWorkspace).GetMethod("ShowRing",Flags).Invoke(_workspace,new object[]{UiSelectionKind.PlanarFace,Vector3.zero});
+            Assert.True(Field<RingView>("_ring").Visible);
+            Do("design.sketch.numeric"); Assert.True(shell.Palette.KeypadVisible); Assert.NotNull(_workspace.ActiveEntry);
+            SetField("_first",(CadPoint?)new CadPoint(3,3));
+            int previews=_backend.Previews;
+
+            void PressX() { _frame.X=true; Poll(); _frame.X=false; Poll(); }
+            PressX(); Assert.False(shell.Palette.KeypadVisible,"1: keypad"); Assert.True(Field<RingView>("_ring").Visible);
+            Assert.True(_workspace.Tabs.Any(t=>t.Id.StartsWith(DesignWorkspace.PickTabPrefix)));
+            PressX(); Assert.False(Field<RingView>("_ring").Visible,"2: ring"); Assert.True(_workspace.Tabs.Any(t=>t.Id.StartsWith(DesignWorkspace.PickTabPrefix)));
+            PressX(); Assert.False(_workspace.Tabs.Any(t=>t.Id.StartsWith(DesignWorkspace.PickTabPrefix)),"3: picker");
+            Assert.True(Field<CadPoint?>("_first").HasValue); Assert.AreEqual(1,sketch.Elements.Count);
+            PressX(); Assert.False(Field<CadPoint?>("_first").HasValue,"4: first point"); Assert.AreEqual(1,sketch.Elements.Count);
+            PressX(); Assert.AreEqual(0,sketch.Elements.Count,"5: last element");
+            PressX(); Assert.AreEqual(0,sketch.Elements.Count,"nothing left to discard");
+            Assert.AreEqual(previews,_backend.Previews,"X never previews"); Assert.AreEqual(0,_backend.Commits,"X never touches the CAD");
+        }
+
+        [Test] public void ZoomScalesTheViewAboutItsCentreAndClampsToTheLayoutLimits()
+        {
+            UseInput(); SketchOnXy();
+            var root=_view.transform; var session=Field<DesignSession>("_session"); var status=session.Status;
+            var up=new XrInputFrame{PenTracked=true,PaletteTracked=true,PaletteStick=new Vector2(0,1)};
+            float before=root.localScale.x;
+            _xr.Poll(up,_clock+=0.016f);
+            Assert.Greater(root.localScale.x,before,"stick up zooms in");
+            for(int i=0;i<3000;i++) _xr.Poll(up,_clock+=0.016f);
+            Assert.AreEqual((float)WorkbenchLayout.MaxScale,root.localScale.x,1e-6f);
+            var down=up; down.PaletteStick=new Vector2(0,-1);
+            for(int i=0;i<6000;i++) _xr.Poll(down,_clock+=0.016f);
+            Assert.AreEqual((float)WorkbenchLayout.MinScale,root.localScale.x,1e-9f);
+            Assert.AreEqual(status,session.Status,"zoom is view only"); Assert.AreEqual(0,_backend.Commits);
+        }
+
+        [Test] public void ZoomKeepsTheSheetCentreFixed()
+        {
+            var shell=AttachShell(out var bench,out var sheet); UseInput(shell,bench,sheet);
+            SketchOnXy(); sheet.Snap(); bench.Snap();
+            var sketch=Field<SketchDraft>("_sketch");
+            var root=_view.transform;
+            var centre=root.TransformPoint(CadCoordinates.ToLocal(sketch.Frame.OriginMm));
+            _workspace.ZoomView(1,0.2f);
+            Assert.Less(Vector3.Distance(centre,root.TransformPoint(CadCoordinates.ToLocal(sketch.Frame.OriginMm))),1e-4f);
+        }
+
+        [Test] public void StepNudgeTicksAndASuccessfulApplyPlaysTheSuccessPulse()
+        {
+            UseInput(); SketchOnXy(); Do(Extrude); _haptics.Clear();
+            var right=new XrInputFrame{PenTracked=true,PaletteTracked=true,PenStick=new Vector2(0.9f,0)};
+            _xr.Poll(right,_clock+=0.016f);
+            CollectionAssert.AreEqual(new[]{HapticPulse.Tick},_haptics,"a step nudge ticks");
+            Assert.AreNotEqual(10d,Dimension_(),"the chip value stepped");
+            _xr.Poll(_frame,_clock+=0.016f);
+            _haptics.Clear();
+            Do(CommitIds.Preview); Do(CommitIds.Apply);
+            CollectionAssert.Contains(_haptics,HapticPulse.Success);
+        }
+
+        [Test] public void HoveringTheHandleGivesAShortPulseOnEntryOnly()
+        {
+            UseInput(); ExtrudeWithHandle(); _haptics.Clear();
+            AimAwayFromHandle(); Frame(); Assert.IsEmpty(_haptics);
+            AimAtHandle(); Frame(); Frame();
+            CollectionAssert.AreEqual(new[]{HapticPulse.Hover},_haptics);
+        }
+
+        [Test] public void LostTrackingBlocksPenInputAndNoOvrInputIsReadByTheWorkspace()
+        {
+            UseInput(); ExtrudeWithHandle();
+            _frame.PenTracked=false; Poll();
+            AimAtHandle(); PressTrigger();
+            Assert.False(Capturing,"an untracked pen cannot start a capture");
+            var source=System.IO.File.ReadAllText(System.IO.Path.Combine(Application.dataPath,"XrSo/Xr/DesignWorkspace.cs"))
+                +System.IO.File.ReadAllText(System.IO.Path.Combine(Application.dataPath,"XrSo/Xr/DesignActions.cs"));
+            StringAssert.DoesNotContain("OVRInput",source);
         }
     }
 }

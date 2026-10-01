@@ -11,6 +11,7 @@ using InventorXrSo.Core.Ui;
 using InventorXrSo.Core.Voice;
 using InventorXrSo.Unity.Scene;
 using InventorXrSo.Unity.Ui;
+using InventorXrSo.Xr.Input;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -69,10 +70,22 @@ namespace InventorXrSo.Xr
         private Transform _grab;
         private Vector3 _grabPosition;
         private Quaternion _grabRotation;
-        private bool _dimensionDrag;
+        private bool _dimensionDrag, _gripHeld;
         private CadPoint _dragStart;
         private double _dragValue;
-        private double _dragSide=1;
+        private double _dragSide=1, _dragFactor=1;
+        private float _dragDraftAt;
+        private XrInput _input;
+        private Transform _leftHand;
+        private bool _twoHandActive;
+        private Vector3 _twoHandVector, _twoHandMid, _twoHandRootPosition;
+        private Quaternion _twoHandRootRotation;
+        private float _twoHandRootScale;
+        private int _hoverKey;
+        private string _snapKey = "";
+        /// <summary>Precision mode (left trigger held): pen drags are ten times slower.</summary>
+        public const double PrecisionFactor = 0.1;
+        private const float DraftThrottleSeconds = 0.1f, ZoomRatePerSecond = 1.5f;
         private LineRenderer _handle;
         private Text _cursorText;
         private Canvas _cursorCanvas;
@@ -107,9 +120,10 @@ namespace InventorXrSo.Xr
         /// Shell parts the workspace draws on: palette/commit bar/HUD through the catalog, plus chip and ring created here.
         /// The bench and the sheet view are optional (not present in headless tests).
         /// </summary>
-        public void Attach(UiShell shell, Workbench bench = null, SketchSheetView sheet = null)
+        public void Attach(UiShell shell, Workbench bench = null, SketchSheetView sheet = null, XrInput input = null)
         {
             _shell = shell; _catalog = shell?.Catalog; _bench = bench; _sheet = sheet;
+            AttachInput(input);
             if (shell == null || _head == null) return;
             var eye = _head.GetComponent<Camera>();
             if (_ring == null)
@@ -126,6 +140,51 @@ namespace InventorXrSo.Xr
                 _chip.Tapped += OpenDimensionKeypad;
                 _chip.Canvas.gameObject.SetActive(false);
             }
+        }
+
+        /// <summary>
+        /// All controller input arrives as semantic events of <see cref="XrInput"/>; haptics go through <see cref="Haptics"/>.
+        /// Without an input (tests, headless) the workspace simply never receives pen events and never throws.
+        /// </summary>
+        private void AttachInput(XrInput input)
+        {
+            DetachInput();
+            _input = input;
+            if (_input == null) return;
+            _leftHand = _head != null && _head.parent != null
+                ? _head.parent.Find("LeftHandAnchor/LeftControllerAnchor") ?? _head.parent.Find("LeftHandAnchor") : null;
+            _input.PenPressed += OnPenPressed;
+            _input.PenReleased += OnPenReleased;
+            _input.TrackingLost += OnTrackingLost;
+            _input.PenGrabStarted += OnGrabStarted;
+            _input.PenGrabEnded += OnGrabEnded;
+            _input.TwoHandChanged += OnTwoHandChanged;
+            _input.SnapToggled += OnSnapToggled;
+            _input.Back += Back;
+            _input.Fit += FitView;
+            _input.Recenter += RecenterView;
+            _input.StepDelta += OnStepDelta;
+            _input.StepSizeDelta += OnStepSizeDelta;
+            _input.Zoom += OnZoom;
+        }
+
+        private void DetachInput()
+        {
+            if (_input == null) return;
+            _input.PenPressed -= OnPenPressed;
+            _input.PenReleased -= OnPenReleased;
+            _input.TrackingLost -= OnTrackingLost;
+            _input.PenGrabStarted -= OnGrabStarted;
+            _input.PenGrabEnded -= OnGrabEnded;
+            _input.TwoHandChanged -= OnTwoHandChanged;
+            _input.SnapToggled -= OnSnapToggled;
+            _input.Back -= Back;
+            _input.Fit -= FitView;
+            _input.Recenter -= RecenterView;
+            _input.StepDelta -= OnStepDelta;
+            _input.StepSizeDelta -= OnStepSizeDelta;
+            _input.Zoom -= OnZoom;
+            _input = null;
         }
 
         public void Bind(IDesignWorkspaceBackend backend)
@@ -182,6 +241,7 @@ namespace InventorXrSo.Xr
         public void Close()
         {
             bool was = Active;
+            _dimensionDrag = false; _dragFactor = 1; EndViewGrabs();   // capture ends with the workspace (M5-08)
             Active = false; CancelReads();
             if (_session != null && _session.Status != DesignStatus.Committing && _session.Status != DesignStatus.RefreshRequired) _session.Cancel();
             ResetDraft(); _selection?.Clear();
@@ -202,7 +262,7 @@ namespace InventorXrSo.Xr
             _history = null;
             _sketch = null; _first = null; _feature = null; _existingSketch = null; _face = null;
             _faceSelection = null; _ringEdge = null; _ask = null; _lastErrorShown = null;
-            _edges.Clear(); _snapLocked = false; _dimensionDrag = false; _grab = null; _renderedPlan = null;
+            _edges.Clear(); _snapLocked = false; _dimensionDrag = false; _grab = null; _gripHeld = false; _twoHandActive = false; _renderedPlan = null;
             _previewView?.Clear(); _geometry?.Clear();
             if (_handle != null) _handle.positionCount = 0;
             if (_cursorCanvas != null) _cursorCanvas.gameObject.SetActive(false);
@@ -266,6 +326,7 @@ namespace InventorXrSo.Xr
             if (_session.Status != DesignStatus.Error || string.IsNullOrEmpty(_session.Error)) { _lastErrorShown = null; return; }
             if (_session.Error == _lastErrorShown) return;
             _lastErrorShown = _session.Error;
+            Haptics.Play(HapticPulse.Error);
             string detail = "Comando non completato: " + _session.Error;
             if (_geometry != null && _geometry.HasErrorContext) detail += "\nIn arancione: geometria del comando da controllare.";
             HudMessage?.Invoke(detail);
@@ -405,12 +466,27 @@ namespace InventorXrSo.Xr
             _ring?.Hide();
         }
 
-        /// <summary>X: closes the ring, otherwise the open list. Keypad closing is handled by the palette.</summary>
+        /// <summary>
+        /// X: closes the keypad, else the ring, else the open list, else discards the last draft step (pending dimension
+        /// pick, first point, last element). Local draft only: it never touches the CAD.
+        /// </summary>
         public void Back()
         {
             if (!Active) return;
+            if (_shell != null && _shell.Palette.KeypadVisible) { _shell.Palette.HideKeypad(); _ask = null; return; }
+            if (_shell == null && _ask != null) { _ask.CancelEdit(); _ask = null; return; }
             if (_ring != null && _ring.Visible) { HideRing(); return; }
-            if (_picker != null) ClosePicker();
+            if (_picker != null) { ClosePicker(); return; }
+            DiscardLastDraftStep();
+        }
+
+        private void DiscardLastDraftStep()
+        {
+            if (_screen != "sketch" || _sketch == null || _session?.CanEdit != true) return;
+            if (_dimensionStep != 0) { _dimensionStep = 0; _geometry.ShowDraft(_sketch); Refresh(); return; }
+            if (_first.HasValue) { _first = null; _snapLocked = false; Refresh(); return; }
+            if (_sketch.Elements.Count == 0) return;
+            _sketch.RemoveLast(); UpdateDraft(); Refresh();
         }
 
         // ---------------------------------------------------------------- workbench and sheet
@@ -547,7 +623,7 @@ namespace InventorXrSo.Xr
             var session=_session;
             await RunMutation(session,()=>session.ApplyAsync());
             if (this != null && session == _session && session.LastCommit != null && !session.CommitOutcomeUnknown)
-                CommitBar.MarkApplied(Time.unscaledTimeAsDouble);
+            { CommitBar.MarkApplied(Time.unscaledTimeAsDouble); Haptics.Play(HapticPulse.Success); }
         }
         private async void ApplyHistory(bool redo)
         {
@@ -734,7 +810,8 @@ namespace InventorXrSo.Xr
         private bool SymmetricHandle => _feature=="extrude" && _symmetric;
         private CadPoint DimensionStart => SymmetricHandle ? DimensionOrigin-DimensionAxis*(_dimension*0.5) : DimensionOrigin;
         private CadPoint DimensionEnd => DimensionOrigin+DimensionAxis*(_dimension*(SymmetricHandle ? 0.5 : 1));
-        private double DragDimension(CadPoint position) => Math.Max(0.01,_dragValue+(position-_dragStart).Dot(DimensionAxis)*(SymmetricHandle ? 2*_dragSide : 1));
+        private double DragDimension(CadPoint position) => Math.Min(MaxDimensionMm,Math.Max(0.01,
+            _dragValue+(position-_dragStart).Dot(DimensionAxis)*(SymmetricHandle ? 2*_dragSide : 1)*_dragFactor));
         private void UpdateHandle()
         {
             if (!HasDimensionTarget) { _handle.positionCount = 0; UpdateChip(); return; }
@@ -756,97 +833,184 @@ namespace InventorXrSo.Xr
             return CadCoordinates.SketchRay(_view.transform, _sketch.Frame, ray, out point);
         }
 
-        private void Update()
+        // ---------------------------------------------------------------- controller input (XrInput events + per-frame hover)
+
+        private bool InputTracked => _input == null || _input.PenTracked;
+
+        /// <summary>The pen ray, or false when the workspace cannot take pen input right now.</summary>
+        private bool TryPenRay(out Ray ray, out bool overUi)
+        {
+            ray = default; overUi = false;
+            if (!Active || !_visible || _ray == null || _ray.Origin == null || !InputTracked) return false;
+            ray = new Ray(_ray.Origin.position, _ray.Origin.forward);
+            var ui = EventSystem.current?.currentInputModule as ControllerUiInputModule;
+            overUi = ui != null && ui.CurrentHit.isValid;
+            return true;
+        }
+
+        private bool OverHandle(Ray ray)
+        {
+            if (_session?.CanEdit != true || !HasDimensionTarget) return false;
+            var handle = new DesignEdge("handle","line",new[] { DimensionStart,DimensionEnd });
+            return CadCoordinates.PickEdge(_view.transform,new[] { handle },ray,0.025f) != null;
+        }
+
+        /// <summary>Trigger held on the dimension handle captures it (M5-08): from here on only the local draft changes.</summary>
+        private bool TryBeginHandleDrag(Ray ray)
+        {
+            if (_dimensionDrag || !OverHandle(ray)) return false;
+            var picked = CadCoordinates.ClosestPointOnSegment(ray,_view.transform.TransformPoint(CadCoordinates.ToLocal(DimensionStart)),
+                _view.transform.TransformPoint(CadCoordinates.ToLocal(DimensionEnd)));
+            _dragSide = (CadCoordinates.FromWorld(_view.transform,picked)-DimensionOrigin).Dot(DimensionAxis) < 0 ? -1 : 1;
+            _dimensionDrag = true; _grab = null;
+            _dragStart = CadCoordinates.FromWorld(_view.transform,_ray.Origin.position); _dragValue = _dimension;
+            _dragFactor = Precision ? PrecisionFactor : 1;
+            _dragDraftAt = Time.unscaledTime;
+            UpdateDraft();
+            return true;
+        }
+
+        private bool Precision => _input != null && _input.Precision;
+
+        private static bool Finite(CadPoint p) => !(double.IsNaN(p.X) || double.IsNaN(p.Y) || double.IsNaN(p.Z)
+            || double.IsInfinity(p.X) || double.IsInfinity(p.Y) || double.IsInfinity(p.Z));
+
+        private void DragStep()
+        {
+            var position = CadCoordinates.FromWorld(_view.transform,_ray.Origin.position);
+            if (!Finite(position)) return;
+            double factor = Precision ? PrecisionFactor : 1;
+            if (factor != _dragFactor) { _dragFactor = factor; _dragStart = position; _dragValue = _dimension; }   // re-anchor: no jump
+            double value = DragDimension(position);
+            if (value == _dimension) return;
+            _dimension = value;
+            SyncDimensionEntry();
+            UpdateHandle();
+            // The session draft follows the capture (never the CAD); throttled because every change rebuilds the shell actions.
+            if (Time.unscaledTime - _dragDraftAt >= DraftThrottleSeconds) { _dragDraftAt = Time.unscaledTime; UpdateDraft(); }
+        }
+
+        /// <summary>
+        /// Ends the handle capture. <paramref name="preview"/>: trigger released, the draft is final and gets previewed.
+        /// <paramref name="error"/>: tracking lost, the draft keeps the last valid value and the controller buzzes.
+        /// </summary>
+        private void EndCapture(bool preview, bool error)
+        {
+            if (!_dimensionDrag) return;
+            _dimensionDrag = false; _dragFactor = 1;
+            if (error) Haptics.Play(HapticPulse.Error);
+            if (_session?.CanEdit != true || !Active) return;
+            if (preview) { UpdateDraft(); Preview(); }
+            else UpdateDraft();
+        }
+
+        private void EndViewGrabs() { _grab = null; _gripHeld = false; _twoHandActive = false; }
+
+        private void OnPenReleased() => EndCapture(true, false);
+
+        private void OnTrackingLost()
+        {
+            // Raised before the release of a held trigger: the capture is closed here, without preview.
+            if (!Active) return;
+            EndCapture(false, true);
+            EndViewGrabs(); _first = null; _snapLocked = false; _hoverKey = 0;
+            _geometry?.Cursor(null,default,null,_shape);
+            if (_cursorCanvas != null) _cursorCanvas.gameObject.SetActive(false);
+        }
+
+        private void OnGrabStarted()
+        {
+            if (!TryPenRay(out var ray, out bool overUi)) return;
+            _gripHeld = true;
+            if (_dimensionDrag || _twoHandActive || overUi || !CadRaycaster.TryPick(ray,20,out _,out _,out _)) return;
+            SnapPoses();
+            _grab = _view.transform;
+            _grabPosition = _ray.Origin.InverseTransformPoint(_grab.position);
+            _grabRotation = Quaternion.Inverse(_ray.Origin.rotation)*_grab.rotation;
+        }
+
+        private void OnGrabEnded() { _grab = null; _gripHeld = false; }
+
+        /// <summary>The scene root is about to be moved by hand: finish any tween so it does not fight the gesture.</summary>
+        private void SnapPoses() { _sheet?.Snap(); _bench?.Snap(); }
+
+        private bool LeftHandPose(out Vector3 position)
+        {
+            position = default;
+            if (_leftHand == null || _input == null || !_input.PaletteTracked) return false;
+            position = _leftHand.position; return true;
+        }
+
+        private void OnTwoHandChanged(bool on)
         {
             if (!Active) return;
-            CommitBar.Tick(Time.unscaledTimeAsDouble);
-            UpdateBar();
-            DropClosedKeypad();
-            if (!_visible || _ray == null || _ray.Origin == null) return;
-            bool tracked = OVRInput.IsControllerConnected(_ray.Controller) && OVRInput.GetControllerPositionTracked(_ray.Controller)
-                && OVRInput.GetControllerOrientationTracked(_ray.Controller);
-            if (!tracked) { _dimensionDrag = false; _grab = null; _first = null; _snapLocked = false; _geometry.Cursor(null,default,null,_shape); return; }
-            var ray = new Ray(_ray.Origin.position,_ray.Origin.forward);
-            var ui = EventSystem.current?.currentInputModule as ControllerUiInputModule;
-            bool overUi = ui != null && ui.CurrentHit.isValid;
-            bool grip = OVRInput.Get(OVRInput.Button.PrimaryHandTrigger,_ray.Controller);
-            bool trigger = OVRInput.Get(OVRInput.Button.PrimaryIndexTrigger,_ray.Controller);
-            if (!grip || !trigger)
-            {
-                if (_dimensionDrag) { _dimensionDrag = false; UpdateDraft(); Preview(); }
-            }
-            else if (_session?.CanEdit == true && HasDimensionTarget && !overUi)
-            {
-                if (!_dimensionDrag)
-                {
-                    var handle = new DesignEdge("handle","line",new[] { DimensionStart,DimensionEnd });
-                    if (CadCoordinates.PickEdge(_view.transform,new[] { handle },ray,0.025f) != null)
-                    {
-                        var picked=CadCoordinates.ClosestPointOnSegment(ray,_view.transform.TransformPoint(CadCoordinates.ToLocal(DimensionStart)),_view.transform.TransformPoint(CadCoordinates.ToLocal(DimensionEnd)));
-                        _dragSide=(CadCoordinates.FromWorld(_view.transform,picked)-DimensionOrigin).Dot(DimensionAxis)<0 ? -1 : 1;
-                        _dimensionDrag = true; _grab = null; _dragStart = CadCoordinates.FromWorld(_view.transform,_ray.Origin.position); _dragValue = _dimension; UpdateDraft();
-                    }
-                }
-                if (_dimensionDrag)
-                {
-                    _dimension = DragDimension(CadCoordinates.FromWorld(_view.transform,_ray.Origin.position));
-                    SyncDimensionEntry();
-                    UpdateHandle();
-                    return;
-                }
-            }
-            if (grip && !trigger)
-            {
-                if (OVRInput.GetDown(OVRInput.Button.PrimaryHandTrigger,_ray.Controller))
-                {
-                    if (!overUi && CadRaycaster.TryPick(ray,20,out _,out _,out _)) _grab = _view.transform;
-                    if (_grab != null) { _grabPosition=_ray.Origin.InverseTransformPoint(_grab.position); _grabRotation=Quaternion.Inverse(_ray.Origin.rotation)*_grab.rotation; }
-                }
-                if (_grab != null) _grab.SetPositionAndRotation(_ray.Origin.TransformPoint(_grabPosition),_ray.Origin.rotation*_grabRotation);
-                return;
-            }
-            _grab = null;
-            if (overUi || _ask != null || _session?.CanEdit != true || grip) return;
-            if (_screen == "sketch" && _sketch?.Frame != null)
-            {
-                if (!TryPenPoint(ray,out var point)) return;
-                if (_dimensionStep != 0)
-                {
-                    _geometry.Cursor(_sketch.Frame,point,null,_shape);
-                    if (!OVRInput.GetDown(OVRInput.Button.PrimaryIndexTrigger,_ray.Controller)) return;
-                    if (_dimensionStep==3)
-                    {
-                        var selected=CurrentSketchSnapshot?.Pick(point,2);
-                        if (selected==null) { SetNotice("Nessuna geometria dell’anteprima vicina al raggio."); Refresh(); }
-                        else ShowConstraints(selected.Constraints);
-                        return;
-                    }
-                    if (_dimensionStep == 1)
-                    {
-                        _dimensionIndex=_sketch.Pick(point,2);
-                        if (_dimensionIndex < 0) { SetNotice("Nessuna geometria vicina al raggio."); Refresh(); return; }
-                        _dimensionStep=2; _geometry.ShowDraft(_sketch,_dimensionIndex);
-                        SetNotice("Quota: indica dove posizionare il testo sul piano dello schizzo."); Refresh();
-                    }
-                    else { _dimensionStep=0; DimensionElement(_dimensionIndex,point); }
-                    return;
-                }
-                if (!_snapLocked) _candidate = _sketch.Snap(point,_first,1.0);
-                if (OVRInput.GetDown(OVRInput.Button.One,_ray.Controller)) _snapLocked=!_snapLocked;
-                _geometry.Cursor(_sketch.Frame,_candidate.Point,_first,_shape);
-                _cursorCanvas.gameObject.SetActive(true);
-                _cursorCanvas.transform.SetPositionAndRotation(_view.transform.TransformPoint(CadCoordinates.ToLocal(_sketch.Frame.ToModel(_candidate.Point)))+Vector3.up*0.035f,
-                    Quaternion.LookRotation(_head.forward));
-                _cursorText.text = Format(_candidate.Point.X)+", "+Format(_candidate.Point.Y)+" mm • "+_candidate.Kind+(_snapLocked ? " • bloccato" : "");
-                if (OVRInput.GetDown(OVRInput.Button.PrimaryIndexTrigger,_ray.Controller))
-                {
-                    if (!_first.HasValue) { _first=_candidate.Point; _snapLocked=false; }
-                    else try { AddShape(new SketchElement(_shape,_first.Value,_candidate.Point,(_candidate.Point-_first.Value).Length)); }
-                        catch (Exception ex) { SetNotice(ex.Message); Refresh(); }
-                }
-                return;
-            }
-            if (!OVRInput.GetDown(OVRInput.Button.PrimaryIndexTrigger,_ray.Controller) || _context == null) return;
+            if (!on) { _twoHandActive = false; return; }
+            if (_ray?.Origin == null || !LeftHandPose(out var left)) return;
+            _dimensionDrag = false; _grab = null;
+            SnapPoses();
+            var root = _view.transform; var right = _ray.Origin.position;
+            _twoHandVector = right-left; _twoHandMid = (right+left)*0.5f;
+            _twoHandRootPosition = root.position; _twoHandRootRotation = root.rotation; _twoHandRootScale = root.localScale.x;
+            _twoHandActive = _twoHandVector.sqrMagnitude > 1e-6f;
+        }
+
+        /// <summary>Two hands: rotate, scale and move the scene root. View only; the CAD data never changes.</summary>
+        private void TwoHandStep()
+        {
+            if (_ray?.Origin == null || !LeftHandPose(out var left)) return;
+            var right = _ray.Origin.position; var vector = right-left;
+            if (vector.sqrMagnitude < 1e-6f) return;
+            float scale = Mathf.Clamp(_twoHandRootScale*vector.magnitude/_twoHandVector.magnitude,(float)WorkbenchLayout.MinScale,(float)WorkbenchLayout.MaxScale);
+            var turn = Quaternion.FromToRotation(_twoHandVector,vector);
+            var root = _view.transform;
+            root.localScale = Vector3.one*scale;
+            root.rotation = turn*_twoHandRootRotation;
+            root.position = (right+left)*0.5f+turn*((_twoHandRootPosition-_twoHandMid)*(scale/_twoHandRootScale));
+        }
+
+        /// <summary>Left stick up/down: scales the sheet (or the model) about its centre. View only, clamped to the layout limits.</summary>
+        private void OnZoom(float axis)
+        {
+            if (!Active || _view == null || _dimensionDrag || _twoHandActive) return;
+            ZoomView(axis, Mathf.Clamp(Time.unscaledDeltaTime,1f/120f,1f/20f));
+        }
+
+        /// <summary>Scales the scene root about the sheet centre (sketch origin) or the model, never outside [MinScale, MaxScale].</summary>
+        public void ZoomView(float axis, float seconds)
+        {
+            var root = _view.transform;
+            SnapPoses();
+            float current = root.localScale.x;
+            float target = Mathf.Clamp(current*Mathf.Exp(axis*ZoomRatePerSecond*seconds),(float)WorkbenchLayout.MinScale,(float)WorkbenchLayout.MaxScale);
+            if (Mathf.Approximately(target,current)) return;
+            var pivot = root.position;
+            if (_sheet != null && _sheet.State == SketchSheetState.Sheet && _sketch?.Frame != null)
+                pivot = root.TransformPoint(CadCoordinates.ToLocal(_sketch.Frame.OriginMm));
+            root.localScale = Vector3.one*target;
+            root.position = pivot+(root.position-pivot)*(target/current);
+        }
+
+        private void OnSnapToggled()
+        {
+            if (!Active || _screen != "sketch" || _sketch?.Frame == null || _dimensionStep != 0 || _session?.CanEdit != true) return;
+            _snapLocked = !_snapLocked;
+            Haptics.Play(HapticPulse.Tick);
+        }
+
+        private void OnStepDelta(int direction) { if (NudgeDimension(direction)) Haptics.Play(HapticPulse.Tick); }
+        private void OnStepSizeDelta(int direction)
+        {
+            if (!Active || _screen != "feature" || !DimensionApplies) return;
+            CycleDimensionStep(direction); Haptics.Play(HapticPulse.Tick);
+        }
+
+        private void OnPenPressed()
+        {
+            if (!TryPenRay(out var ray, out bool overUi)) return;
+            if (_session?.CanEdit == true && !overUi && !_gripHeld && TryBeginHandleDrag(ray)) return;
+            if (overUi || _ask != null || _session?.CanEdit != true || _gripHeld || _dimensionDrag) return;
+            if (_screen == "sketch" && _sketch?.Frame != null) { SketchPress(ray); return; }
+            if (_context == null) return;
             if (_feature == "fillet" || _feature == "chamfer")
             {
                 string edge = CadCoordinates.PickEdge(_view.transform,_context.Edges,ray,requireVisible:true);
@@ -867,6 +1031,70 @@ namespace InventorXrSo.Xr
             }
             else HideRing();
         }
+
+        private void SketchPress(Ray ray)
+        {
+            if (!TryPenPoint(ray,out var point)) return;
+            if (_dimensionStep != 0)
+            {
+                if (_dimensionStep==3)
+                {
+                    var selected=CurrentSketchSnapshot?.Pick(point,2);
+                    if (selected==null) { SetNotice("Nessuna geometria dell’anteprima vicina al raggio."); Haptics.Play(HapticPulse.Error); Refresh(); }
+                    else ShowConstraints(selected.Constraints);
+                    return;
+                }
+                if (_dimensionStep == 1)
+                {
+                    _dimensionIndex=_sketch.Pick(point,2);
+                    if (_dimensionIndex < 0) { SetNotice("Nessuna geometria vicina al raggio."); Haptics.Play(HapticPulse.Error); Refresh(); return; }
+                    _dimensionStep=2; _geometry.ShowDraft(_sketch,_dimensionIndex);
+                    SetNotice("Quota: indica dove posizionare il testo sul piano dello schizzo."); Refresh();
+                }
+                else { _dimensionStep=0; DimensionElement(_dimensionIndex,point); }
+                return;
+            }
+            if (!_snapLocked) _candidate = _sketch.Snap(point,_first,1.0);
+            if (!_first.HasValue) { _first=_candidate.Point; _snapLocked=false; Refresh(); return; }
+            try { AddShape(new SketchElement(_shape,_first.Value,_candidate.Point,(_candidate.Point-_first.Value).Length)); }
+            catch (Exception ex) { SetNotice(ex.Message); Haptics.Play(HapticPulse.Error); Refresh(); }
+        }
+
+        private void Update()
+        {
+            if (!Active) return;
+            CommitBar.Tick(Time.unscaledTimeAsDouble);
+            UpdateBar();
+            DropClosedKeypad();
+            if (!_visible || _ray == null || _ray.Origin == null) return;
+            if (!InputTracked) { _hoverKey = 0; _geometry.Cursor(null,default,null,_shape); return; }
+            if (_dimensionDrag) { DragStep(); return; }
+            if (_twoHandActive) { TwoHandStep(); return; }
+            if (_grab != null) { _grab.SetPositionAndRotation(_ray.Origin.TransformPoint(_grabPosition),_ray.Origin.rotation*_grabRotation); return; }
+            if (!TryPenRay(out var ray, out bool overUi)) return;
+            HoverFeedback(ray, overUi);
+            if (overUi || _ask != null || _session?.CanEdit != true || _gripHeld) return;
+            if (_screen != "sketch" || _sketch?.Frame == null) return;
+            if (!TryPenPoint(ray,out var point)) return;
+            if (_dimensionStep != 0) { _geometry.Cursor(_sketch.Frame,point,null,_shape); return; }
+            if (!_snapLocked) _candidate = _sketch.Snap(point,_first,1.0);
+            string snapKey = _candidate.Kind.Length == 0 ? "" : _candidate.Kind+_candidate.Point.X.ToString("R",CultureInfo.InvariantCulture)+"/"+_candidate.Point.Y.ToString("R",CultureInfo.InvariantCulture);
+            if (snapKey != _snapKey) { if (snapKey.Length > 0) Haptics.Play(HapticPulse.Tick); _snapKey = snapKey; }
+            _geometry.Cursor(_sketch.Frame,_candidate.Point,_first,_shape);
+            _cursorCanvas.gameObject.SetActive(true);
+            _cursorCanvas.transform.SetPositionAndRotation(_view.transform.TransformPoint(CadCoordinates.ToLocal(_sketch.Frame.ToModel(_candidate.Point)))+Vector3.up*0.035f,
+                Quaternion.LookRotation(_head.forward));
+            _cursorText.text = Format(_candidate.Point.X)+", "+Format(_candidate.Point.Y)+" mm • "+_candidate.Kind+(_snapLocked ? " • bloccato" : "");
+        }
+
+        /// <summary>Best effort: a short pulse when the ray enters an interactive target (chip, ring, palette, dimension handle).</summary>
+        private void HoverFeedback(Ray ray, bool overUi)
+        {
+            int key = overUi ? 1 : OverHandle(ray) ? 2 : 0;
+            if (key != _hoverKey && key != 0) Haptics.Play(HapticPulse.Hover);
+            _hoverKey = key;
+        }
+
         private void SelectEdge(string edgeId)
         {
             var edge = _context.Edges.FirstOrDefault(e => e.Id == edgeId);
@@ -907,6 +1135,7 @@ namespace InventorXrSo.Xr
         }
         private void OnDestroy()
         {
+            DetachInput();
             _reads.Cancel(); _reads.Dispose();
             if (_session != null) { _session.Changed-=SessionChanged; _session.Dispose(); }
             DestroyCanvas(_cursorCanvas != null ? _cursorCanvas.gameObject : null);

@@ -96,7 +96,8 @@ namespace InventorXrSo.Xr
             _workbench = gameObject.AddComponent<Workbench>();
             _sheet = gameObject.AddComponent<SketchSheetView>();
             _sheet.Bind(sceneView.transform);
-            _design.Attach(_shell, _workbench, _sheet);
+            _input = gameObject.AddComponent<InventorXrSo.Xr.Input.XrInput>();
+            _design.Attach(_shell, _workbench, _sheet, _input);
             _design.HudMessage += text => _badge.Flash(text, 6f);
             _design.ActiveChanged += active =>
             {
@@ -104,13 +105,8 @@ namespace InventorXrSo.Xr
                 else if (ReferenceEquals(_catalog.Active, _design)) _catalog.SetActive(null);
             };
             _design.Closed += () => { if (_inSession) Place(); };
-            _input = gameObject.AddComponent<InventorXrSo.Xr.Input.XrInput>();
+            // Back, Fit, Recenter, step and zoom belong to the Design workspace (it subscribes through Attach); the palette owns the tabs.
             _input.TabDelta += _shell.Palette.SelectTab;
-            _input.Back += () => { if (_shell.Palette.KeypadVisible) _shell.Palette.HideKeypad(); else _design.Back(); };
-            _input.Fit += _design.FitView;
-            _input.Recenter += _design.RecenterView;
-            _input.StepDelta += direction => _design.NudgeDimension(direction);
-            _input.StepSizeDelta += _design.CycleDimensionStep;
             _inspect.DesignRequested += OpenDesign;
             _inspect.AssemblyRequested += OpenAssembly;
             _inspect.LamieraRequested += OpenLamiera;

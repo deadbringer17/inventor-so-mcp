@@ -282,7 +282,7 @@ namespace InventorXrSo.Xr
             Check(!_design.Active, "Design closed at the end of the run");
             Record("Fixture left with the join extrusion of Base_M3 COMMITTED (Undo then Redo): revision " + finalState.Revision
                 + "; Design workspace closed, no open command. Restore the fixture before rerunning.");
-            NotCovered("M3-Physical", "controller sketch, edge pick, manipulator drag, tracking and readability require physical Quest input");
+            NotCovered("M3-Physical", "controller sketch, edge pick, trigger-held handle drag (M5-08; only the EditMode synthetic XrInput tests cover the capture contract, the runner does not move the real controller), tracking and readability require physical Quest input");
             NotCovered("M6-Design-Input", "actions invoked by id through the catalog and numbers typed on the keypad entry are SYNTHETIC; palette ergonomics, ring, chip and commit bar legibility need a person with the controllers");
         }
 
