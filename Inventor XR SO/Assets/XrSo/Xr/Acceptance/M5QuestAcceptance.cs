@@ -27,7 +27,6 @@ namespace InventorXrSo.Xr
             "AppController._voiceTarget",
             "AppController._input",
             "AppController.EnterSession",
-            "AppController.OpenLamiera",
             "LamieraWorkspace._busy",
             "LamieraWorkspace.DragStep",
             "LamieraWorkspace.MoveGrab",
@@ -113,13 +112,13 @@ namespace InventorXrSo.Xr
                 "connected document is the dedicated M5 acceptance fixture");
             Record("PASS; dedicated fixture loaded: " + fixture.Graph.Root.Name);
 
-            // ---- M5-01: Lamiera is primary and opens through the app's own path
+            // ---- M5-01: Lamiera is primary and opens through the Spazi action (by id, like the palette; SYNTHETIC tap, not a hand)
             if (!ReadBoolean(App, "_inSession"))
                 Call(App, "EnterSession", EnvironmentMode.StudioVr);
             _ws = Read<LamieraWorkspace>(App, "_lamiera");
             Check(_ws != null, "AppController owns a Lamiera workspace");
             await WaitUntil(() => _ws.IsPrimary, ct);
-            if (!_ws.Active) Call(App, "OpenLamiera");
+            if (!_ws.Active) { Record("Lamiera opened by invoking the Spazi action 'spaces.lamiera' (synthetic input)"); RunAction("spaces.lamiera"); }
             Check(_ws.Active, "Lamiera workspace is open");
             // The whole run uses the synthetic pen: real controllers (held, resting or untracked) must not nudge chips or arm fields.
             BeginSyntheticInput(); _holdSynthetic = true;

@@ -27,7 +27,6 @@ namespace InventorXrSo.Xr
             "AppController._session", "AppController._inspect", "AppController._design", "AppController._selection",
             "AppController._catalog",
             "AppController.EnterSession",
-            "InspectWorkspace.DesignRequested",
             "DesignWorkspace._backend", "DesignWorkspace._session", "DesignWorkspace._previewView",
             "DesignWorkspace._view", "DesignWorkspace._context", "DesignWorkspace._history", "DesignWorkspace._busy",
             "DesignWorkspace._pendingMutations", "DesignWorkspace._operation", "DesignWorkspace._negative",
@@ -47,7 +46,7 @@ namespace InventorXrSo.Xr
         private const string Extrude = "design.extrude", HoleAction = "design.hole",
             FilletAction = "design.fillet", UndoAction = "design.history.undo", RedoAction = "design.history.redo",
             Dimension = "design.dimension", Diameter = "design.diameter", Through = "design.through",
-            Position = "design.position", ParametersAction = "design.parameters", InspectSpace = "spaces.inspect";
+            Position = "design.position", ParametersAction = "design.parameters", InspectSpace = "spaces.inspect", DesignSpace = "spaces.design";
 
         protected override string Milestone => "m3";
         protected override int TimeoutSeconds => 360;
@@ -65,12 +64,12 @@ namespace InventorXrSo.Xr
             var fixture = await WaitForFixture(ct);
             Record("Dedicated fixture loaded: " + fixture.Graph.Root.Name);
 
-            // ---- enter Design exactly like the wrist menu ("Progettazione" button raises DesignRequested)
+            // ---- enter Design exactly like the palette: the "Progettazione" action of the Spazi tab, by id
             Call(App, "EnterSession", EnvironmentMode.StudioVr);
             _inspect = Read<InspectWorkspace>(App, "_inspect");
             _design = Read<DesignWorkspace>(App, "_design");
             Check(_inspect != null && _design != null, "app exposes the Inspect and Design workspaces");
-            await OpenDesignFromWristAsync(ct);
+            await OpenDesignFromSpacesAsync(ct);
             _backend = Read<IDesignWorkspaceBackend>(_design, "_backend");
             var inspection = _backend as IInspectionBackend;
             var historyBackend = _backend as IDesignHistoryBackend;
@@ -78,7 +77,7 @@ namespace InventorXrSo.Xr
             var context = DesignCtx;
             Check(context.Sketches.Any(s => s.Name == "Base_M3"), "Design context lists the unconsumed sketch Base_M3");
             Check(context.Edges.Count > 0 && context.Faces.Count > 0, "Design context exposes edges and planar faces");
-            Pass("M3-C1", "Design opened from the wrist path; context loaded with Base_M3, "
+            Pass("M3-C1", "Design opened from the Spazi action; context loaded with Base_M3, "
                 + context.Edges.Count + " edges, " + context.Faces.Count + " planar faces");
 
             var state0 = await _backend.GetDocumentStateAsync(ct);
@@ -254,7 +253,7 @@ namespace InventorXrSo.Xr
             await PreviewAndVerifyAsync(state3, ct);
             var contextBeforeClose = DesignCtx;
             RunAction(InspectSpace);
-            Check(!_design.Active && !_inspect.DesignActive, "Design closed and Inspect is active again");
+            Check(!_design.Active && _inspect.Active && ReferenceEquals(Catalog.Active, _inspect), "Design closed and Inspect is active again (palette back on Ispeziona)");
             Check(!PreviewView.IsShowing && Read<IList>(PreviewView, "_originals").Count == 0
                 && DesignSess.Preview == null && DesignSess.Status == DesignStatus.Empty, "no ghost after leaving Design");
             Check(Read<LineRenderer>(_design, "_handle").positionCount == 0, "no dimension handle line is active");
@@ -272,7 +271,7 @@ namespace InventorXrSo.Xr
             _inspect.ClearSelection();
             Pass("M3-C15", "Torna a Inspect: ghost, handle and draft cleared; Inspect face selection works");
 
-            await OpenDesignFromWristAsync(ct, contextBeforeClose);
+            await OpenDesignFromSpacesAsync(ct, contextBeforeClose);
             Check(DesignCtx != null && !ReferenceEquals(DesignCtx, contextBeforeClose) && DesignCtx.Edges.Count > 0,
                 "reopened Design reloaded its context");
             Pass("M3-C15", "Design reopened: context reloaded (" + DesignCtx.Edges.Count + " edges)");
@@ -286,12 +285,11 @@ namespace InventorXrSo.Xr
             NotCovered("M6-Design-Input", "actions invoked by id through the catalog and numbers typed on the keypad entry are SYNTHETIC; palette ergonomics, ring, chip and commit bar legibility need a person with the controllers");
         }
 
-        private async Task OpenDesignFromWristAsync(CancellationToken ct, DesignContext previousContext = null)
+        private async Task OpenDesignFromSpacesAsync(CancellationToken ct, DesignContext previousContext = null)
         {
-            var requested = Read<Action>(_inspect, "DesignRequested");
-            Check(requested != null, "Inspect wrist menu wires DesignRequested");
-            requested();
-            Check(_design.Active, "Design workspace opened from the wrist path");
+            Record("Design opened by invoking the Spazi action '" + DesignSpace + "' (synthetic input, not a hand)");
+            RunAction(DesignSpace);
+            Check(_design.Active, "Design workspace opened from the Spazi action");
             await WaitUntil(() => !ReadBoolean(_design, "_busy") && DesignCtx != null
                 && !ReferenceEquals(DesignCtx, previousContext) && Read<DesignHistory>(_design, "_history") != null, ct);
         }

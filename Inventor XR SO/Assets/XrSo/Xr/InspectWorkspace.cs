@@ -8,30 +8,36 @@ using InventorXrSo.Core.Backend;
 using InventorXrSo.Core.Mcp;
 using InventorXrSo.Core.Selection;
 using InventorXrSo.Core.Session;
+using InventorXrSo.Core.Ui;
 using InventorXrSo.Core.Voice;
 using InventorXrSo.Unity.Scene;
 using InventorXrSo.Unity.Ui;
+using InventorXrSo.Xr.Input;
 using UnityEngine;
 using UnityEngine.EventSystems;
-using UnityEngine.UI;
 
 namespace InventorXrSo.Xr
 {
-    /// <summary>M2 controller: local inspection state and UI, with explicit guarded backend reads.</summary>
+    /// <summary>
+    /// Quest M2/M6 Ispeziona: local inspection state with explicit guarded backend reads. It is the default workspace: the action
+    /// catalog falls back to it whenever no authoring workspace is active. No floating panel, wrist menu, breadcrumb or compact
+    /// card: the actions are declared to the palette (<see cref="IActionProvider"/>, see InspectActions.cs) and context and
+    /// properties go to the HUD. Grip is view only (model, section plane, two hands); picks come from the controller ray.
+    /// </summary>
     [DefaultExecutionOrder(110)]
-    public sealed class InspectWorkspace : MonoBehaviour
+    public sealed partial class InspectWorkspace : MonoBehaviour
     {
+        private const int PinLimit = 20;
         private readonly BrowserContext _context = new BrowserContext();
         private readonly CultureInfo _culture = CultureInfo.GetCultureInfo("it-IT");
         private CadSceneView _view;
         private SelectionVisuals _visuals;
         private ControllerRay _ray;
-        private Transform _head, _hand;
+        private Transform _head, _leftHand;
         private EnvironmentModeController _environment;
-        private HomePanel _panel;
-        private Canvas _wrist, _breadcrumb, _compact;
-        private Button _lamieraTab;
-        private Text _compactText, _modeText;
+        private UiShell _shell;
+        private ActionCatalog _catalog;
+        private XrInput _input;
         private SectionPlane _section;
         private MeasurementView _measure;
         private IInspectionBackend _backend;
@@ -40,82 +46,37 @@ namespace InventorXrSo.Xr
         private LoadedScene _scene;
         private DocumentState _documentState;
         private SceneNode _selected;
-        private bool _online, _visible, _pinned, _busy;
-        private int _generation, _page;
-        private string _screen = "tools", _notice = "";
-        private string _errorDetails;
+        private NumericEntry _ask;
+        private bool _online, _visible, _busy, _showInfo;
+        private int _generation;
+        private string _notice = "";
         private InspectionInfo _info;
         private ModelScaleMode _scaleMode;
         private float _roomExtent = 2f;
         private Transform _grab;
-        private Vector3 _grabPosition;
-        private Quaternion _grabRotation;
-        private float _lastPickTime;
+        private Vector3 _grabPosition, _twoHandVector, _twoHandMid, _twoHandRootPosition;
+        private Quaternion _grabRotation, _twoHandRootRotation;
+        private float _twoHandRootScale, _lastPickTime;
+        private bool _twoHandActive;
         private string _lastOccurrence;
-        private Vector3 _compactAnchor;
         private IReadOnlyList<OpenDocument> _documents = new OpenDocument[0];
+
         public bool Measuring => _measure != null && _measure.Measuring;
-        public event Action DesignRequested;
-        public event Action AssemblyRequested;
-        public event Action LamieraRequested;
-        public void SetAssemblyActive(bool active) { SetDesignActive(active); if (active) _modeText.text = "ASSIEME"; }
-        public void SetLamieraActive(bool active) { SetDesignActive(active); if (active) _modeText.text = "LAMIERA"; }
-        /// <summary>Sheet-metal part: the Lamiera tab is highlighted as the primary mode.</summary>
-        public void SetLamieraPrimary(bool primary)
-        {
-            if (_lamieraTab == null) return;
-            var colors = _lamieraTab.colors;
-            colors.normalColor = colors.selectedColor = primary ? UiFactory.Accent : UiFactory.Key;
-            _lamieraTab.colors = colors;
-        }
-        public event Action InspectionRequested;
-        public bool DesignActive { get; private set; }
-        public void SetDesignActive(bool active)
-        {
-            DesignActive = active;
-            if (active) { _measure.Cancel(); _section.SetActive(false); _panel.gameObject.SetActive(false); _compact.gameObject.SetActive(false); }
-            _modeText.text = active ? "PROGETTAZIONE" : "ISPEZIONE";
-        }
+        /// <summary>Inspect is the workspace in use: the scene is shown and no authoring workspace is open.</summary>
+        public bool Active => _visible && !(OtherWorkspaceActive?.Invoke() ?? false);
+        /// <summary>True while Progettazione, Lamiera or Assieme is open (set by the app controller).</summary>
+        public Func<bool> OtherWorkspaceActive { get; set; }
+        /// <summary>Notices, context and properties for the HUD.</summary>
+        public event Action<string> HudMessage;
+        public string Notice => _notice;
+        /// <summary>The numeric entry currently waiting for the keypad, if any.</summary>
+        public NumericEntry ActiveEntry => _ask;
+        public SelectionService SelectionService => _selection;
+        public string InfoText => InfoBody();
 
-        public void Initialize(CadSceneView view, SelectionVisuals visuals, ControllerRay ray, Transform head,
-            Transform nonDominantHand, EnvironmentModeController environment)
+        public void Initialize(CadSceneView view, SelectionVisuals visuals, ControllerRay ray, Transform head, EnvironmentModeController environment)
         {
-            _view = view; _visuals = visuals; _ray = ray; _head = head; _hand = nonDominantHand; _environment = environment;
-            _panel = HomePanel.Create(transform);
-            _panel.name = "Inspect Browser";
-            ((RectTransform)_panel.transform).sizeDelta = new Vector2(820, 940);
-            _panel.transform.localScale = Vector3.one * 0.0008f;
-            XrUi.MakeInteractive(_panel.Canvas, head.GetComponent<Camera>());
-            _panel.gameObject.SetActive(false);
-            _wrist = UiFactory.WorldCanvas(_hand, "Polso Ispeziona", new Vector2(640, 150));
-            _wrist.transform.localPosition = new Vector3(0, 0.09f, 0.03f);
-            XrUi.MakeInteractive(_wrist, head.GetComponent<Camera>());
-            var bg = UiFactory.Panel(_wrist.transform, "Background", UiFactory.Background); UiFactory.Stretch(bg);
-            _modeText = UiFactory.Label(bg, "ISPEZIONE", 24, FontStyle.Bold);
-            Position(_modeText.rectTransform, new Vector2(0, 48), new Vector2(270, 40));
-            var tools = UiFactory.Button(bg, "Ispeziona", UiFactory.Accent, 21, () => Open("tools"));
-            Position((RectTransform)tools.transform, new Vector2(-256, -15), new Vector2(120, 65));
-            var browser = UiFactory.Button(bg, "Esplora", UiFactory.Key, 21, () => Open("browser"));
-            Position((RectTransform)browser.transform, new Vector2(-128, -15), new Vector2(120, 65));
-            var design = UiFactory.Button(bg, "Progettazione", UiFactory.Key, 21, () => DesignRequested?.Invoke());
-            Position((RectTransform)design.transform, new Vector2(0, -15), new Vector2(120, 65));
-            var assembly = UiFactory.Button(bg, "Assieme", UiFactory.Key, 20, () => AssemblyRequested?.Invoke());
-            Position((RectTransform)assembly.transform, new Vector2(128, -15), new Vector2(120, 65));
-            _lamieraTab = UiFactory.Button(bg, "Lamiera", UiFactory.Key, 21, () => LamieraRequested?.Invoke());
-            Position((RectTransform)_lamieraTab.transform, new Vector2(256, -15), new Vector2(120, 65));
-
-            _breadcrumb = UiFactory.WorldCanvas(transform, "Contesto", new Vector2(800, 50));
-            _breadcrumb.transform.localScale = Vector3.one * 0.00065f;
-            XrUi.MakeInteractive(_breadcrumb, head.GetComponent<Camera>());
-            _compact = UiFactory.WorldCanvas(transform, "Selezione", new Vector2(400, 185));
-            _compact.transform.localScale = Vector3.one * 0.0007f;
-            XrUi.MakeInteractive(_compact, head.GetComponent<Camera>());
-            var compactBg = UiFactory.Panel(_compact.transform, "Background", UiFactory.Background); UiFactory.Stretch(compactBg);
-            _compactText = UiFactory.Label(compactBg, "", 24);
-            Position(_compactText.rectTransform, new Vector2(0, 20), new Vector2(380, 115));
-            var details = UiFactory.Button(compactBg, "Dettagli", UiFactory.Accent, 23, () => Open("details"));
-            Position((RectTransform)details.transform, new Vector2(0, -62), new Vector2(370, 42));
-
+            _view = view; _visuals = visuals; _ray = ray; _head = head; _environment = environment;
             _section = new GameObject("Piano di sezione").AddComponent<SectionPlane>();
             _section.Initialize(view.transform, ray.LineMaterial);
             _view.Section = _section;
@@ -126,8 +87,43 @@ namespace InventorXrSo.Xr
             SetVisible(false);
         }
 
-        private static void Position(RectTransform rect, Vector2 at, Vector2 size)
-        { rect.anchorMin = rect.anchorMax = new Vector2(0.5f,0.5f); rect.anchoredPosition = at; rect.sizeDelta = size; }
+        /// <summary>Shell and input; both are optional (headless tests). Without an input the workspace never receives grips.</summary>
+        public void Attach(UiShell shell, XrInput input = null)
+        {
+            _shell = shell; _catalog = shell?.Catalog;
+            DetachInput();
+            _input = input;
+            if (_input == null) return;
+            _leftHand = _head != null && _head.parent != null
+                ? _head.parent.Find("LeftHandAnchor/LeftControllerAnchor") ?? _head.parent.Find("LeftHandAnchor") : null;
+            _input.PenGrabStarted += OnGrabStarted;
+            _input.PenGrabEnded += OnGrabEnded;
+            _input.TwoHandChanged += OnTwoHandChanged;
+            _input.TrackingLost += OnTrackingLost;
+            _input.Back += Back;
+            _input.Fit += FitView;
+            _input.Recenter += Recenter;
+        }
+
+        private void DetachInput()
+        {
+            if (_input == null) return;
+            _input.PenGrabStarted -= OnGrabStarted;
+            _input.PenGrabEnded -= OnGrabEnded;
+            _input.TwoHandChanged -= OnTwoHandChanged;
+            _input.TrackingLost -= OnTrackingLost;
+            _input.Back -= Back;
+            _input.Fit -= FitView;
+            _input.Recenter -= Recenter;
+            _input = null;
+        }
+
+        /// <summary>An authoring workspace opened or closed: the local tools stop (or resume) with it.</summary>
+        public void OthersChanged()
+        {
+            if (!Active) { _measure?.Cancel(); _section?.SetActive(false); EndGrabs(); CloseKeypad(); ClosePicker(false); }
+            Refresh();
+        }
 
         public void Bind(IInspectionBackend backend, SelectionService selection)
         {
@@ -136,42 +132,52 @@ namespace InventorXrSo.Xr
             _online = false;
             _selected = null; _info = null; _documents = new OpenDocument[0];
             _measure.ClearAll(); _section.SetActive(false);
-            _scene = null; _documentState = null; _context.SetGraph(null); _grab = null;
-            _compact.gameObject.SetActive(false);
+            _scene = null; _documentState = null; _context.SetGraph(null); EndGrabs();
+            CloseKeypad(); ClosePicker(false);
+            Refresh();
         }
+
         private void CancelRequests()
         {
             ++_generation; _requests.Cancel(); _requests.Dispose();
             _requests = new CancellationTokenSource(); _busy = false;
         }
+
         public void SetOnline(bool online)
         {
             if (_online == online) return;
             _online = online;
             CancelRequests();
-            _info = null;
-            _notice = online ? "" : "Offline — strumenti locali disponibili. Dati CAD non aggiornati.";
-            UpdateCompact(); Render();
+            _info = null; ClosePicker(false);
+            if (online) _notice = "";
+            else SetNotice("Offline — strumenti locali disponibili. Dati CAD non aggiornati.");
+            Refresh();
         }
+
         public void SetScene(LoadedScene scene)
         {
             bool changedDocument = _scene?.Graph.DocumentId != scene?.Graph.DocumentId;
-            CancelRequests(); _grab = null;
+            CancelRequests(); EndGrabs();
             _measure.ClearAll(); _section.SetActive(false); _selected = null; _info = null;
-            _modeText.text = "ISPEZIONE";
-            if (_screen == "numeric") _screen = "tools";
-            _scene = scene; _context.SetGraph(scene?.Graph); _page = 0;
+            CloseKeypad(); ClosePicker(false);
+            _scene = scene; _context.SetGraph(scene?.Graph);
             _documentState = scene?.Graph.State;
-            _errorDetails = null;
             if (changedDocument) { _scaleMode = ModelScaleMode.OneToOne; _view.transform.localScale = Vector3.one; }
             else if (scene != null) InspectionGeometry.ApplyScale(_view.transform, ScenePlacement.LocalBounds(_view.transform), _scaleMode, _roomExtent);
             _section.ResetPlane(ScenePlacement.LocalBounds(_view.transform));
             _notice = "";
-            if (scene != null && _scaleMode == ModelScaleMode.OneToOne && Mathf.Max(ScenePlacement.LocalBounds(_view.transform).size.x,
-                ScenePlacement.LocalBounds(_view.transform).size.y, ScenePlacement.LocalBounds(_view.transform).size.z) > _roomExtent)
-                _notice = "Modello oltre lo spazio impostato: scala 1:1 mantenuta. Scegli Scala per adattarlo.";
-            UpdateCompact(); UpdateBreadcrumb(); Render();
+            if (scene != null && TooBig()) SetNotice(OversizeNotice);
+            Refresh();
         }
+
+        private const string OversizeNotice = "Modello oltre lo spazio impostato: scala 1:1 mantenuta. Scegli Scala per adattarlo.";
+
+        private bool TooBig()
+        {
+            var size = ScenePlacement.LocalBounds(_view.transform).size;
+            return _scaleMode == ModelScaleMode.OneToOne && Mathf.Max(size.x, size.y, size.z) > _roomExtent;
+        }
+
         public void SetDocumentState(DocumentState state)
         {
             if (_documentState?.DocumentId == state?.DocumentId && _documentState?.Revision == state?.Revision
@@ -179,48 +185,78 @@ namespace InventorXrSo.Xr
             CancelRequests();
             _documentState = state;
             _info = null; _selected = null; _selection?.ResetLocal();
-            _measure.ClearAll(); _section.SetActive(false); _modeText.text = "ISPEZIONE";
-            _notice = "Documento aggiornato. Seleziona nuovamente o aggiorna le proprietà.";
-            UpdateCompact(); Render();
+            _measure.ClearAll(); _section.SetActive(false);
+            ClosePicker(false);
+            SetNotice("Documento aggiornato. Seleziona nuovamente o aggiorna le proprietà.");
+            Refresh();
         }
+
         public void SetVisible(bool visible)
         {
             _visible = visible;
-            _wrist.gameObject.SetActive(visible);
-            _breadcrumb.gameObject.SetActive(visible && _scene != null);
-            _compact.gameObject.SetActive(visible && _selected != null);
-            if (!visible) { _panel.gameObject.SetActive(false); _grab = null; _measure.Cancel(); _modeText.text = "ISPEZIONE"; }
-            else if (_notice.StartsWith("Modello oltre")) Open("scale");
+            if (!visible) { EndGrabs(); _measure?.Cancel(); CloseKeypad(); ClosePicker(false); }
+            else if (_scene != null && TooBig()) SetNotice(OversizeNotice);
+            Refresh();
         }
-        public void Open(string screen)
+
+        // ---------------------------------------------------------------- notices
+
+        private void SetNotice(string text)
         {
-            if (!_visible) return;
-            if (DesignActive) InspectionRequested?.Invoke();
-            _screen = screen; _page = 0;
-            if (!_pinned) PlacePanel();
-            _panel.gameObject.SetActive(true);
-            Render();
+            _notice = text ?? "";
+            if (_notice.Length > 0) HudMessage?.Invoke(_notice);
         }
-        private void PlacePanel()
+
+        /// <summary>Content or enablement changed: rebuild the declared actions and tell the catalog.</summary>
+        private void Refresh()
         {
-            var forward = Vector3.ProjectOnPlane(_head.forward, Vector3.up).normalized;
-            if (forward.sqrMagnitude < 0.01f) forward = Vector3.forward;
-            _panel.transform.SetPositionAndRotation(_head.position + forward * 0.9f + _head.right * 0.48f,
-                Quaternion.LookRotation(forward));
+            _actions = null;
+            _catalog?.NotifyChanged();
         }
+
+        private string ContextPath() => string.Join(" › ", _context.Path.Select(node => node.Name));
+
+        private string SelectionSummary()
+        {
+            if (_selected == null) return "Nessuna selezione.";
+            return _selected.Name + "\n" + (_online ? (_info?.Material ?? "Materiale —") : "Offline • dati non aggiornati")
+                + "  •  " + Format(_info?.MassKg, "kg") + "\nVincoli: " + (_info?.Constraints?.ToString() ?? "—");
+        }
+
+        private string Format(double? value, string unit) => value.HasValue ? value.Value.ToString("0.###", _culture) + " " + unit : "—";
+
+        private void ReportError(Exception ex)
+        {
+            string detail = (ex is McpException error ? error.Code + ": " : "") + ex.Message;
+            if (detail.Length > 400) detail = detail.Substring(0, 400) + "…";
+            string summary = ex is McpToolException tool
+                ? (tool.Code == "STALE_REVISION" || tool.Code == "DOCUMENT_CHANGED"
+                    ? "Il documento è cambiato. Attendi l'aggiornamento e riprova."
+                    : "Dati CAD non disponibili. Verifica il collegamento M2 sul PC.")
+                : UiText.Error(ex);
+            SetNotice(summary + "\n" + detail);
+        }
+
+        private string InfoBody() => (_selected?.Name ?? _context.Current?.Name ?? "Nessun documento")
+            + "\nMateriale: " + (_info?.Material ?? "—") + "   Massa: " + Format(_info?.MassKg, "kg")
+            + "\nVolume: " + Format(_info?.VolumeMm3, "mm³") + "   Area: " + Format(_info?.AreaMm2, "mm²")
+            + "\nVincoli: " + (_info?.Constraints?.ToString() ?? "—") + "   DOF: "
+            + (_info?.TranslationDof?.ToString() ?? "—") + " trasl. / " + (_info?.RotationDof?.ToString() ?? "—") + " rot.";
+
+        // ---------------------------------------------------------------- selection and context
 
         public async Task PickAsync(CadBody body, int triangle, CancellationToken ct)
         {
             if (Measuring || !_online || _busy || _scene == null) return;
             var node = _context.SelectionTarget(body.Instance.OccurrenceId);
-            if (node == null) { _notice = "Oggetto fuori dal contesto. Usa Indietro nel breadcrumb."; Render(); return; }
+            if (node == null) { SetNotice("Oggetto fuori dal contesto. Usa Indietro nella scheda Vista."); Refresh(); return; }
             bool doubleAction = node.OccurrenceId == _lastOccurrence && Time.unscaledTime - _lastPickTime < 0.4f;
             _lastPickTime = Time.unscaledTime; _lastOccurrence = node.OccurrenceId;
             if (doubleAction && _context.Current != node) { Enter(node); return; }
             _selected = node; _info = null;
             bool partContext = _context.Current.DefinitionKind == "part";
             var face = body.Primitive.FaceMap.FaceAtTriangle(triangle)?.FaceId;
-            if (partContext && face == null) { _notice = UiText.NoFaceHere; Render(); return; }
+            if (partContext && face == null) { SetNotice(UiText.NoFaceHere); Refresh(); return; }
             int generation = _generation;
             _busy = true;
             using (var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _requests.Token))
@@ -238,42 +274,50 @@ namespace InventorXrSo.Xr
                     }
                     linked.Token.ThrowIfCancellationRequested();
                     if (generation != _generation) return;
-                    UpdateCompact(); LoadInfo();
+                    SetNotice(SelectionSummary()); LoadInfo();
                 }
                 catch
                 {
-                    if (generation == _generation) { _selected = null; _info = null; UpdateCompact(); }
+                    if (generation == _generation) { _selected = null; _info = null; }
                     throw;
                 }
-                finally { if (generation == _generation) { _busy = false; Render(); } }
+                finally { if (generation == _generation) { _busy = false; Refresh(); } }
             }
         }
+
         private void ShowNodeSelection(SceneNode node)
         {
             _visuals.ShowOccurrences(BrowserContext.Descendants(node).Where(n => n.DefinitionKind == "part").Select(n => n.OccurrenceId));
         }
-        public void ClearSelection() { _selected = null; _info = null; UpdateCompact(); Render(); }
+
+        public void ClearSelection() { _selected = null; _info = null; Refresh(); }
+
         private void OnPointPicked(Vector3 point)
         {
             if (!Measuring) return;
             _measure.Pick(point);
-            _notice = _measure.Measuring ? "Seleziona il secondo punto." : "Distanza tra punti sulla mesh (approssimata).";
-            _modeText.text = _measure.Measuring ? "MISURA • punto 2" : "ISPEZIONE";
-            Render();
+            SetNotice(_measure.Measuring ? "Seleziona il secondo punto."
+                : "Distanza tra punti sulla mesh (approssimata): ≈ " + Format(_measure.DistanceMm, "mm"));
+            Refresh();
         }
+
         private void Enter(SceneNode node)
         {
             if (!_context.Enter(node)) return;
             CancelRequests();
-            _selection?.ResetLocal(); _selected = null; _info = null; _page = 0;
-            UpdateCompact(); UpdateBreadcrumb(); Render();
+            _selection?.ResetLocal(); _selected = null; _info = null; ClosePicker(false);
+            SetNotice("Contesto: " + ContextPath());
+            Refresh();
         }
-        private void Back()
+
+        private void ContextBack()
         {
             CancelRequests();
-            _context.Back(); _selection?.ResetLocal(); _selected = null; _info = null; _page = 0;
-            UpdateCompact(); UpdateBreadcrumb(); Render();
+            _context.Back(); _selection?.ResetLocal(); _selected = null; _info = null; ClosePicker(false);
+            SetNotice("Contesto: " + ContextPath());
+            Refresh();
         }
+
         private async void SelectNode(SceneNode node)
         {
             if (!_online || _busy || node.Suppressed) return;
@@ -285,12 +329,13 @@ namespace InventorXrSo.Xr
                 if (generation != _generation) return;
                 await _selection.SelectAsync("assembly", node.OccurrenceId, null, _requests.Token);
                 if (generation != _generation) return;
-                _selected = node; _info = null; ShowNodeSelection(node); UpdateCompact(); LoadInfo();
+                _selected = node; _info = null; ShowNodeSelection(node); SetNotice(SelectionSummary()); LoadInfo();
             }
             catch (OperationCanceledException) { }
             catch (Exception ex) { if (generation == _generation) ReportError(ex); }
-            finally { if (generation == _generation) { _busy = false; Render(); } }
+            finally { if (generation == _generation) { _busy = false; Refresh(); } }
         }
+
         private async void LoadInfo()
         {
             if (!_online || _backend == null || _scene == null || _documentState == null) return;
@@ -300,11 +345,18 @@ namespace InventorXrSo.Xr
             {
                 var info = await _backend.InspectAsync(_documentState, node?.OccurrenceId, _requests.Token);
                 if (generation != _generation || node != (_selected ?? _context.Current)) return;
-                _info = info; UpdateCompact(); Render();
+                _info = info;
+                if (_showInfo || _selected != null) SetNotice(_showInfo ? InfoBody() : SelectionSummary());
+                _showInfo = false;
+                Refresh();
             }
             catch (OperationCanceledException) { }
-            catch (Exception ex) { if (generation == _generation && node == (_selected ?? _context.Current)) { _info = null; ReportError(ex); UpdateCompact(); Render(); } }
+            catch (Exception ex)
+            {
+                if (generation == _generation && node == (_selected ?? _context.Current)) { _info = null; _showInfo = false; ReportError(ex); Refresh(); }
+            }
         }
+
         private async void LoadDocuments()
         {
             if (!_online || _busy) return;
@@ -314,12 +366,14 @@ namespace InventorXrSo.Xr
                 var docs = await _backend.ListOpenAsync(_requests.Token);
                 if (generation != _generation) return;
                 _documents = docs.Where(d => d.Kind == "kPartDocumentObject" || d.Kind == "kAssemblyDocumentObject").ToArray();
-                Open("documents");
+                _busy = false;
+                OpenDocumentsPicker();
             }
             catch (OperationCanceledException) { }
             catch (Exception ex) { if (generation == _generation) ReportError(ex); }
-            finally { if (generation == _generation) { _busy = false; Render(); } }
+            finally { if (generation == _generation) { _busy = false; Refresh(); } }
         }
+
         private async void Activate(OpenDocument doc)
         {
             if (!_online || _busy) return;
@@ -328,264 +382,182 @@ namespace InventorXrSo.Xr
             {
                 await _backend.ActivateOpenAsync(doc.Id, _requests.Token);
                 if (generation != _generation) return;
-                _notice = "Documento attivato. Attendo la scena da Inventor…";
+                SetNotice("Documento attivato. Attendo la scena da Inventor…");
             }
             catch (OperationCanceledException) { }
             catch (Exception ex) { if (generation == _generation) ReportError(ex); }
-            finally { if (generation == _generation) { _busy = false; Render(); } }
+            finally { if (generation == _generation) { _busy = false; Refresh(); } }
         }
 
-        private void UpdateCompact()
-        {
-            if (_compact == null) return;
-            _compact.gameObject.SetActive(_visible && _selected != null);
-            if (_selected == null) return;
-            var instance = _view.Find(_selected.OccurrenceId);
-            _compactAnchor = instance != null ? _view.transform.InverseTransformPoint(instance.transform.position)
-                : ScenePlacement.LocalBounds(_view.transform).center;
-            _compactText.text = _selected.Name + "\n" + (_online ? (_info?.Material ?? "Materiale —") : "Offline • dati non aggiornati")
-                + "  •  " + Format(_info?.MassKg, "kg") + "\nVincoli: " + (_info?.Constraints?.ToString() ?? "—");
-        }
-        private string Format(double? value, string unit) => value.HasValue ? value.Value.ToString("0.###", _culture) + " " + unit : "—";
-        private void ReportError(Exception ex)
-        {
-            _errorDetails = (ex is McpException error ? error.Code + ": " : "") + ex.Message;
-            _notice = ex is McpToolException tool
-                ? (tool.Code == "STALE_REVISION" || tool.Code == "DOCUMENT_CHANGED"
-                    ? "Il documento è cambiato. Attendi l'aggiornamento e riprova."
-                    : "Dati CAD non disponibili. Verifica il collegamento M2 sul PC o apri i dettagli.")
-                : UiText.Error(ex);
-        }
-        private string InfoBody() => (_selected?.Name ?? _context.Current?.Name ?? "Nessun documento")
-            + "\nMateriale: " + (_info?.Material ?? "—") + "   Massa: " + Format(_info?.MassKg, "kg")
-            + "\nVolume: " + Format(_info?.VolumeMm3, "mm³") + "   Area: " + Format(_info?.AreaMm2, "mm²")
-            + "\nVincoli: " + (_info?.Constraints?.ToString() ?? "—") + "   DOF: "
-            + (_info?.TranslationDof?.ToString() ?? "—") + " trasl. / " + (_info?.RotationDof?.ToString() ?? "—") + " rot.";
-
-        private void Render()
-        {
-            if (_panel == null || !_panel.gameObject.activeSelf || _screen == "numeric") return;
-            var actions = new List<(string, Action)>();
-            string body = _notice;
-            string title = "Ispeziona";
-            if (_screen == "error")
-            {
-                title = "Dettagli errore";
-                body = _errorDetails ?? _notice;
-                if (body.Length > 600) body = body.Substring(0, 600) + "…";
-                actions.Add(("Ispeziona", () => Open("tools")));
-            }
-            else if (_screen == "tools")
-            {
-                body = "Solo ispezione • presa normale = spostamento visuale\n" + _notice;
-                actions.Add(("Esplora", () => Open("browser")));
-                actions.Add(("Proprietà", () => { Open("details"); LoadInfo(); }));
-                actions.Add(("Misura", BeginMeasure)); actions.Add(("Sezione", () => Open("section")));
-                actions.Add(("Scala", () => Open("scale")));
-                actions.Add((_environment.Mode == EnvironmentMode.MixedReality ? "Studio virtuale" : "Realtà mista", () =>
-                { _environment.Set(_environment.Mode == EnvironmentMode.MixedReality ? EnvironmentMode.StudioVr : EnvironmentMode.MixedReality); Render(); }));
-            }
-            else if (_screen == "browser")
-            {
-                title = "Esplora";
-                body = (_context.Current?.Name ?? "Nessun documento") + "\nSeleziona il nome; Apri entra nel contesto.\n" + _notice;
-                var children = _context.Current?.Children ?? new SceneNode[0];
-                _page = Mathf.Clamp(_page, 0, Mathf.Max(0, (children.Count - 1) / 3));
-                foreach (var node in children.Skip(_page * 3).Take(3))
-                {
-                    var n = node;
-                    actions.Add(((node.Suppressed ? "[Soppresso] " : "") + node.Name, () => SelectNode(n)));
-                    actions.Add(("Apri ›", () => Enter(n)));
-                }
-                actions.Add(("‹ Pagina", () => { _page = Mathf.Max(0, _page - 1); Render(); }));
-                actions.Add(("Pagina ›", () => { _page++; Render(); }));
-                actions.Add(("Indietro", Back)); actions.Add(("Documenti aperti", LoadDocuments));
-            }
-            else if (_screen == "documents")
-            {
-                title = "Documenti aperti";
-                body = "Attivazione in Inventor, senza salvare o modificare il CAD.\n" + _notice;
-                _page = Mathf.Clamp(_page, 0, Mathf.Max(0, (_documents.Count - 1) / 6));
-                foreach (var doc in _documents.Skip(_page * 6).Take(6)) { var d = doc; actions.Add((doc.Name, () => Activate(d))); }
-                actions.Add(("‹ Pagina", () => { _page = Mathf.Max(0, _page - 1); Render(); }));
-                actions.Add(("Pagina ›", () => { _page++; Render(); }));
-                actions.Add(("Aggiorna", LoadDocuments)); actions.Add(("Esplora", () => Open("browser")));
-            }
-            else if (_screen == "details")
-            {
-                title = "Proprietà"; body = InfoBody() + "\n" + _notice;
-                actions.Add(("Aggiorna", LoadInfo)); actions.Add(("Misura", BeginMeasure));
-                if (_selected != null && _context.Current != _selected) actions.Add(("Apri contesto", () => Enter(_selected)));
-            }
-            else if (_screen == "measure")
-            {
-                title = "Misura";
-                body = "Distanza tra due punti sulla mesh • approssimata\n"
-                    + (_measure.DistanceMm.HasValue ? "≈ " + Format(_measure.DistanceMm, "mm") : _measure.HasFirstPoint ? "Seleziona il secondo punto." : "Seleziona il primo punto.")
-                    + "\nMisure pinnate: " + _measure.PinnedCount + "/20\n" + _notice;
-                actions.Add(("Nuova misura", BeginMeasure));
-                actions.Add(("Fissa misura", () => { _notice = _measure.Pin() ? "Misura mantenuta sul modello." : "Completa una misura (massimo 20 pin)."; Render(); }));
-                actions.Add(("Annulla misura", () => { _measure.Cancel(); _modeText.text = "ISPEZIONE"; Render(); }));
-                actions.Add(("Rimuovi tutte", () => { _measure.ClearAll(); _modeText.text = "ISPEZIONE"; Render(); }));
-            }
-            else if (_screen == "scale")
-            {
-                title = "Scala visuale";
-                body = "Scala: " + _view.transform.localScale.x.ToString("0.###", _culture) + "×\nAdatta alla stanza: spazio disponibile "
-                    + _roomExtent.ToString("0.##", _culture) + " m (impostato)\n" + _notice;
-                actions.Add(("Mantieni 1:1", () => SetScale(ModelScaleMode.OneToOne)));
-                actions.Add(("Adatta alla stanza", () => SetScale(ModelScaleMode.FitToRoom)));
-                actions.Add(("Scala da tavolo · 60 cm", () => SetScale(ModelScaleMode.Table)));
-                actions.Add(("Spazio disponibile", () => Number("Spazio disponibile (m)", _roomExtent, 0.2f, 20f, v => _roomExtent = v, "scale")));
-                actions.Add(("Porta davanti a me", Recenter));
-            }
-            else if (_screen == "section")
-            {
-                title = "Sezione visuale";
-                body = "Punta il piano e tieni Grip per spostarlo/ruotarlo.\nOffset: " + Format(_section.OffsetMm, "mm")
-                    + "   Angolo Y: " + Format(_section.AngleDegrees, "°") + "\nSezione senza chiusura delle superfici tagliate.\n" + _notice;
-                actions.Add((_section.Active ? "Disattiva sezione" : "Attiva sezione", () => { _section.SetActive(!_section.Active); Render(); }));
-                actions.Add(("Scostamento numerico", () => Number("Scostamento (mm)", _section.OffsetMm, -1000000, 1000000, _section.SetOffset, "section")));
-                actions.Add(("Angolo numerico", () => Number("Angolo Y (gradi)", _section.AngleDegrees, -360, 360, _section.SetAngle, "section")));
-                actions.Add(("Ripristina piano", () => { _section.ResetPlane(ScenePlacement.LocalBounds(_view.transform)); _section.SetActive(true); Render(); }));
-            }
-            if (!string.IsNullOrEmpty(_errorDetails) && _screen != "error") actions.Add(("Dettagli errore", () => Open("error")));
-            actions.Add((_pinned ? "Sblocca pannello" : "Blocca pannello", () => { _pinned = !_pinned; Render(); }));
-            actions.Add(("Chiudi", () => _panel.gameObject.SetActive(false)));
-            _panel.ShowMessage(title, body);
-            _panel.SetActions(actions.ToArray());
-            // Backend-dependent actions fail closed; local geometry tools remain available offline.
-            foreach (var button in _panel.GetComponentsInChildren<Button>())
-            {
-                var text = button.GetComponentInChildren<Text>()?.text;
-                if (text == "Aggiorna" || text == "Documenti aperti" || _screen == "documents" && _documents.Any(d => d.Name == text)
-                    || _screen == "browser" && (_context.Current?.Children.Any(n => text.EndsWith(n.Name)) ?? false))
-                    button.interactable = _online && !_busy;
-            }
-        }
-        /// <summary>
-        /// Voice surface: Misura mirrors the "Misura" button (always available while Inspect is shown). "Isola" has no
-        /// button or backend path yet, so it stays disabled.
-        /// </summary>
-        public bool VoiceActive => _visible && !DesignActive && _panel != null && _measure != null;
-        public HomePanel VoicePanel => _panel;
-        public bool VoiceWristEnabled(string label) => _wrist != null && _wrist.gameObject.activeInHierarchy
-            && _wrist.GetComponentsInChildren<Button>(false).Any(button => button.interactable
-                && button.GetComponentInChildren<Text>()?.text == label);
-        public bool InvokeVoiceWrist(string label)
-        {
-            if (_wrist == null || !_wrist.gameObject.activeInHierarchy) return false;
-            var button = _wrist.GetComponentsInChildren<Button>(false).FirstOrDefault(item => item.interactable
-                && item.GetComponentInChildren<Text>()?.text == label);
-            if (button == null) return false;
-            button.onClick.Invoke();
-            return true;
-        }
-
-        public bool IsEnabled(string commandId) => commandId == CommandIds.Measure && VoiceActive && _screen != "numeric";
-
-        public bool Invoke(string commandId)
-        {
-            if (!IsEnabled(commandId)) return false;
-            BeginMeasure();
-            return true;
-        }
+        // ---------------------------------------------------------------- tools
 
         private void BeginMeasure()
         {
-            _measure.Begin(); _notice = ""; _modeText.text = "MISURA • punto 1"; Open("measure");
+            CloseKeypad();
+            _measure.Begin();
+            SetNotice("Misura: seleziona il primo punto sulla mesh (distanza approssimata).");
+            Refresh();
         }
-        private void Number(string title, float value, float min, float max, Action<float> apply, string returnScreen)
+
+        private void PinMeasure()
         {
-            _screen = "numeric";
-            _panel.PromptText(title, "Valore da " + min + " a " + max + ". Separatore decimale: punto.", value.ToString(CultureInfo.InvariantCulture), text =>
-            {
-                if (float.TryParse(text.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var result)
-                    && !float.IsNaN(result) && !float.IsInfinity(result) && result >= min && result <= max) { apply(result); _notice = ""; }
-                else _notice = "Valore non valido.";
-                _screen = returnScreen; Render();
-            }, () => { _screen = returnScreen; Render(); },
-                title.Contains("(m)") ? "m" : title.Contains("gradi") ? "deg" : "mm", min, max);
+            SetNotice(_measure.Pin() ? "Misura mantenuta sul modello." : "Completa una misura (massimo " + PinLimit + " pin).");
+            Refresh();
         }
+
+        /// <summary>Opens the palette keypad on a fresh entry; the value is applied only when the keypad confirms it.</summary>
+        private void AskNumber(string id, string label, QuantityUnit unit, double min, double max, double value, Action<double> apply)
+        {
+            var entry = new NumericEntry(id, unit, value, min, max);
+            entry.Committed += () =>
+            {
+                if (_ask == entry) _ask = null;
+                apply(entry.Value);
+                SetNotice("");
+                Refresh();
+            };
+            _ask = entry;
+            if (_shell != null) _shell.Palette.ShowKeypad(entry, label); else entry.BeginEdit();
+        }
+
+        private void CloseKeypad()
+        {
+            if (_shell != null && _shell.Palette.KeypadVisible) _shell.Palette.HideKeypad();
+            else _ask?.CancelEdit();
+            _ask = null;
+        }
+
+        private void DropClosedKeypad()
+        {
+            if (_ask != null && _shell != null && !_shell.Palette.KeypadVisible) _ask = null;
+        }
+
         private void SetScale(ModelScaleMode mode)
         {
             _scaleMode = mode;
             InspectionGeometry.ApplyScale(_view.transform, ScenePlacement.LocalBounds(_view.transform), mode, _roomExtent);
-            _notice = ""; Render();
+            SetNotice(""); Refresh();
         }
-        private void Recenter()
+
+        /// <summary>Y short press: applies the current scale mode again.</summary>
+        public void FitView()
         {
+            if (!Active || _view == null) return;
+            InspectionGeometry.ApplyScale(_view.transform, ScenePlacement.LocalBounds(_view.transform), _scaleMode, _roomExtent);
+        }
+
+        /// <summary>Brings the model in front of the user (also Y long press).</summary>
+        public void Recenter()
+        {
+            if (!Active || _view == null || _head == null) return;
             var root = _view.transform;
             var bounds = ScenePlacement.LocalBounds(root);
             var scaled = new Bounds(bounds.center * root.localScale.x, bounds.size * root.localScale.x);
             var pose = ScenePlacement.InFront(scaled, _head.position, _head.forward);
-            root.SetPositionAndRotation(pose.position, pose.rotation); Render();
+            root.SetPositionAndRotation(pose.position, pose.rotation);
         }
-        private void UpdateBreadcrumb()
+
+        /// <summary>X: closes the keypad, else the open list, else the measurement, else goes up one context level. Local only.</summary>
+        public void Back()
         {
-            foreach (var child in _breadcrumb.transform.Cast<Transform>().ToArray()) Release(child.gameObject);
-            var path = _context.Path;
-            // Keep the root plus the latest three levels; Back always reaches omitted levels.
-            var indices = Enumerable.Range(0, path.Count).Where(i => i == 0 || i >= path.Count - 3).ToArray();
-            float width = 800f / Mathf.Max(1, indices.Length + 1);
-            var back = UiFactory.Button(_breadcrumb.transform, "‹", UiFactory.Key, 24, Back);
-            Position((RectTransform)back.transform, new Vector2(-400 + width / 2, 0), new Vector2(width - 5, 50));
-            for (int j = 0; j < indices.Length; j++)
-            {
-                int index = indices[j];
-                var button = UiFactory.Button(_breadcrumb.transform, path[index].Name, UiFactory.Background, 20, () =>
-                { CancelRequests(); _context.GoTo(index); _selected = null; _info = null; _selection?.ResetLocal(); _page = 0; UpdateCompact(); UpdateBreadcrumb(); Render(); });
-                Position((RectTransform)button.transform, new Vector2(-400 + width * (j + 1.5f), 0), new Vector2(width - 5, 50));
-            }
-            _breadcrumb.gameObject.SetActive(_visible && _scene != null);
+            if (!Active) return;
+            if (_ask != null || (_shell != null && _shell.Palette.KeypadVisible)) { CloseKeypad(); return; }
+            if (_picker != null) { ClosePicker(); return; }
+            if (Measuring) { _measure.Cancel(); SetNotice("Misura annullata."); Refresh(); return; }
+            if (_context.Path.Count > 1) ContextBack();
+        }
+
+        // ---------------------------------------------------------------- grip (view only)
+
+        private bool TryPenRay(out Ray ray, out bool overUi)
+        {
+            ray = default; overUi = false;
+            if (!Active || _ray == null || _ray.Origin == null || (_input != null && !_input.PenTracked)) return false;
+            ray = new Ray(_ray.Origin.position, _ray.Origin.forward);
+            var ui = EventSystem.current?.currentInputModule as ControllerUiInputModule;
+            overUi = ui != null && ui.CurrentHit.isValid;
+            return true;
+        }
+
+        private static bool Finite(Vector3 v) => !(float.IsNaN(v.x + v.y + v.z) || float.IsInfinity(v.x + v.y + v.z));
+
+        /// <summary>Grip alone: the model (or the section plane under the ray) moves and turns with the hand. Never the CAD.</summary>
+        private void OnGrabStarted()
+        {
+            if (_twoHandActive || !TryPenRay(out var ray, out bool overUi) || overUi) return;
+            _grab = null;
+            if (_section.Active && _section.HitHandle(ray, out _)) _grab = _section.transform;
+            else if (CadRaycaster.TryPick(ray, 20, out _, out _, out _)) _grab = _view.transform;
+            if (_grab == null) return;
+            _grabPosition = _ray.Origin.InverseTransformPoint(_grab.position);
+            _grabRotation = Quaternion.Inverse(_ray.Origin.rotation) * _grab.rotation;
+        }
+
+        private void OnGrabEnded() { _grab = null; Refresh(); }
+        private void OnTrackingLost() { EndGrabs(); }
+        private void EndGrabs() { _grab = null; _twoHandActive = false; }
+
+        private void MoveGrab()
+        {
+            var position = _ray.Origin.TransformPoint(_grabPosition);
+            if (!Finite(position)) return;
+            var rotation = _ray.Origin.rotation * _grabRotation;
+            if (_grab == _section.transform) _section.SetWorldPose(position, rotation);
+            else _grab.SetPositionAndRotation(position, rotation);
+        }
+
+        private bool LeftHandPose(out Vector3 position)
+        {
+            position = default;
+            if (_leftHand == null || _input == null || !_input.PaletteTracked) return false;
+            position = _leftHand.position; return true;
+        }
+
+        private void OnTwoHandChanged(bool on)
+        {
+            if (!Active) return;
+            if (!on) { _twoHandActive = false; return; }
+            if (_ray?.Origin == null || !LeftHandPose(out var left)) return;
+            _grab = null;
+            var root = _view.transform; var right = _ray.Origin.position;
+            _twoHandVector = right - left; _twoHandMid = (right + left) * 0.5f;
+            _twoHandRootPosition = root.position; _twoHandRootRotation = root.rotation; _twoHandRootScale = root.localScale.x;
+            _twoHandActive = _twoHandVector.sqrMagnitude > 1e-6f;
+        }
+
+        /// <summary>Two hands: rotate, scale and move the model. View only.</summary>
+        private void TwoHandStep()
+        {
+            if (_ray?.Origin == null || !LeftHandPose(out var left)) return;
+            var right = _ray.Origin.position; var vector = right - left;
+            if (vector.sqrMagnitude < 1e-6f) return;
+            float scale = Mathf.Clamp(_twoHandRootScale * vector.magnitude / _twoHandVector.magnitude, (float)WorkbenchLayout.MinScale, (float)WorkbenchLayout.MaxScale);
+            var turn = Quaternion.FromToRotation(_twoHandVector, vector);
+            var root = _view.transform;
+            root.localScale = Vector3.one * scale;
+            root.rotation = turn * _twoHandRootRotation;
+            root.position = (right + left) * 0.5f + turn * ((_twoHandRootPosition - _twoHandMid) * (scale / _twoHandRootScale));
         }
 
         private void Update()
         {
-            if (!_visible || DesignActive) return;
-            bool tracked = OVRInput.IsControllerConnected(_ray.Controller) && OVRInput.GetControllerPositionTracked(_ray.Controller)
-                && OVRInput.GetControllerOrientationTracked(_ray.Controller);
-            if (!tracked || !OVRInput.Get(OVRInput.Button.PrimaryHandTrigger, _ray.Controller))
-            { if (_grab != null) { _grab = null; Render(); } return; }
-            if (OVRInput.GetDown(OVRInput.Button.PrimaryHandTrigger, _ray.Controller))
-            {
-                var input = EventSystem.current?.currentInputModule as ControllerUiInputModule;
-                if (input != null && input.CurrentHit.isValid && input.CurrentHit.gameObject.transform.IsChildOf(_panel.transform)) _grab = _panel.transform;
-                else if (_screen == "section" && _section.HitHandle(new Ray(_ray.Origin.position, _ray.Origin.forward), out _)) _grab = _section.transform;
-                else if (CadRaycaster.TryPick(new Ray(_ray.Origin.position, _ray.Origin.forward), 20, out _, out _, out _)) _grab = _view.transform;
-                if (_grab != null)
-                {
-                    _grabPosition = _ray.Origin.InverseTransformPoint(_grab.position);
-                    _grabRotation = Quaternion.Inverse(_ray.Origin.rotation) * _grab.rotation;
-                }
-            }
-            if (_grab == null) return;
-            var position = _ray.Origin.TransformPoint(_grabPosition); var rotation = _ray.Origin.rotation * _grabRotation;
-            if (_grab == _section.transform) _section.SetWorldPose(position, rotation);
-            else _grab.SetPositionAndRotation(position, rotation);
-        }
-        private void LateUpdate()
-        {
             if (!_visible) return;
-            _wrist.transform.rotation = _head.rotation;
-            _breadcrumb.transform.SetPositionAndRotation(_head.position + _head.forward * 0.75f - _head.up * 0.24f, _head.rotation);
-            if (_selected != null)
-            {
-                var position = _view.transform.TransformPoint(_compactAnchor);
-                _compact.transform.SetPositionAndRotation(position + _head.right * 0.18f, _head.rotation);
-            }
+            DropClosedKeypad();
+            if (!Active || _ray == null || _ray.Origin == null) return;
+            if (_input != null && !_input.PenTracked) { EndGrabs(); return; }
+            if (_twoHandActive) { TwoHandStep(); return; }
+            if (_grab != null) MoveGrab();
         }
+
         private void OnDestroy()
         {
+            DetachInput();
             _requests.Cancel(); _requests.Dispose();
             if (_ray != null) _ray.PointPicked -= OnPointPicked;
-            if (_panel != null) Release(_panel.gameObject);
-            if (_wrist != null) Release(_wrist.gameObject);
-            if (_breadcrumb != null) Release(_breadcrumb.gameObject);
-            if (_compact != null) Release(_compact.gameObject);
             if (_section != null) Release(_section.gameObject);
             if (_measure != null) Release(_measure.gameObject);
         }
+
         private static void Release(GameObject item)
         {
             item.SetActive(false);

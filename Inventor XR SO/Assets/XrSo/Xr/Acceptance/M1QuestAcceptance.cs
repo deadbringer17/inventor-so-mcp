@@ -9,6 +9,8 @@ using InventorXrSo.Core.Backend;
 using InventorXrSo.Core.Pairing;
 using InventorXrSo.Core.Selection;
 using InventorXrSo.Core.Session;
+using ActionCatalog = InventorXrSo.Core.Ui.ActionCatalog;
+using XrAction = InventorXrSo.Core.Ui.XrAction;
 using InventorXrSo.Unity.Scene;
 using InventorXrSo.Unity.Ui;
 using UnityEngine;
@@ -26,6 +28,7 @@ namespace InventorXrSo.Xr
             "AppController._server",
             "AppController._home",
             "AppController._inspect",
+            "AppController._catalog",
             "AppController._selection",
             "AppController._selecting",
             "AppController._inSession",
@@ -37,7 +40,6 @@ namespace InventorXrSo.Xr
             "AppController.OnPicked",
             "HomePanel._title",
             "HomePanel._body",
-            "InspectWorkspace._panel",
             "InspectWorkspace._busy",
             "SelectionVisuals._tinted",
             "SelectionVisuals._overlays",
@@ -172,17 +174,17 @@ namespace InventorXrSo.Xr
             Check(overlays.Count > 0, "selection visuals draw the face overlay");
             Pass("M1-DoD6", "triangle " + triangle + " -> face " + face.FaceId + " (ordinal " + face.Ordinal + "); backend face entity " + current.EntityId + "; face overlay drawn");
 
-            // MR <-> Studio VR through the same buttons the Inspect menu shows.
-            var panel = Read<HomePanel>(inspect, "_panel");
+            // MR <-> Studio VR through the Ispeziona action (Vista tab), invoked by id. The tap is SYNTHETIC: no controller ray or hand.
             Check(environment.Mode == EnvironmentMode.MixedReality, "session started in Mixed Reality");
             var eye = Read<Camera>(environment, "eye");
             Check(eye != null && eye.backgroundColor.a < 0.01f, "Mixed Reality clears the camera to a transparent background");
-            inspect.Open("tools");
-            Click(panel, "Studio virtuale");
-            Check(environment.Mode == EnvironmentMode.StudioVr && eye.backgroundColor.a > 0.99f, "menu switched to Studio VR with an opaque studio background");
-            Click(panel, "Realtà mista");
-            Check(environment.Mode == EnvironmentMode.MixedReality && eye.backgroundColor.a < 0.01f, "menu switched back to Mixed Reality");
-            Pass("M1-MR", "Mixed Reality -> Studio VR -> Mixed Reality via the Inspect menu; camera background followed each mode");
+            Check(inspect.Active && ReferenceEquals(Read<ActionCatalog>(App, "_catalog").Active, inspect), "Ispeziona is the workspace on the palette");
+            Record("Environment switched by invoking the action '" + InspectWorkspace.IdEnvironment + "' by id (synthetic input)");
+            RunAction(InspectWorkspace.IdEnvironment);
+            Check(environment.Mode == EnvironmentMode.StudioVr && eye.backgroundColor.a > 0.99f, "action switched to Studio VR with an opaque studio background");
+            RunAction(InspectWorkspace.IdEnvironment);
+            Check(environment.Mode == EnvironmentMode.MixedReality && eye.backgroundColor.a < 0.01f, "action switched back to Mixed Reality");
+            Pass("M1-MR", "Mixed Reality -> Studio VR -> Mixed Reality via the Ispeziona action (synthetic tap); camera background followed each mode");
 
             // Leave Inventor without a highlight.
             await selection.ClearAsync(ct);
@@ -237,13 +239,13 @@ namespace InventorXrSo.Xr
             return false;
         }
 
-        private static void Click(HomePanel panel, string label)
+        /// <summary>Invokes a declared action by id through the catalog, the same path as palette, ring and voice.</summary>
+        private void RunAction(string id)
         {
-            var button = panel.GetComponentsInChildren<Button>(false)
-                .LastOrDefault(b => b.gameObject.activeInHierarchy && b.GetComponentInChildren<Text>()?.text == label);
-            Check(button != null, "menu button '" + label + "' is shown");
-            Check(button.interactable, "menu button '" + label + "' is enabled");
-            button.onClick.Invoke();
+            var action = Read<ActionCatalog>(App, "_catalog").Find(id);
+            Check(action != null, "the action catalog has no action '" + id + "'");
+            Check(action.Enabled, "action '" + id + "' is disabled: " + action.DisabledReason);
+            Check(action.TryInvoke(), "action '" + id + "' did not run");
         }
     }
 }

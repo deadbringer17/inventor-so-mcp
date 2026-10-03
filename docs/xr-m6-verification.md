@@ -105,3 +105,38 @@ Note sull'esecuzione:
 - Ogni fixture è stata chiusa senza salvare; l'APK ordinario finale è sul visore.
 
 I gate M6-02, M6-03, M6-04 e M6-05 coprono ora Progettazione **e** Lamiera nei sottocasi automatici, ma restano **aperti**: mancano la prova fisica da seduto e le Fasi 4–5 (Assieme, Ispezione, runner M6). M6-09 e M6-10 restano aperti.
+
+## Fase 4 — Assieme + Ispezione (3 ottobre 2026)
+
+Piano: [Fase 4](superpowers/plans/2026-10-03-inventor-xr-so-m6-fase4-assieme-ispezione.md). Consegnato sul branch `feat/m6-fase4`:
+
+- **`AssemblyWorkspace` migrato**: niente pannello; `IActionProvider` con schede Componenti · Vincoli · Vista (+ Spazi), id `assembly.*`, elenchi (componenti, riferimenti, vincoli, giunti, assi) come schede di scelta da massimo 8 voci. Distanza, angolo e gioco minimo con chip + tastierino; Applica solo dalla barra di conferma (la voce «Applica» non committa, M5-11). Spostamento componente: Trigger tenuto sulla maniglia/asse; rilascio → anteprima; perdita di tracking → bozza scartata e impulso di errore; chiusura → cattura chiusa (M5-08). Grip e due mani = solo vista.
+- **Assieme sollevato** (`Workbench.ApplyAssembly`, transizione ~250 ms) e **isolamento** (`ComponentIsolation`): il componente avanza a metà strada, il resto al 20 %; solo visivo, non muove l'occorrenza in Inventor. Anello sul componente: Isola · Sposta · Vincola · Apri; da isolato «Apri in Progettazione» / «Apri in Lamiera»; «Rilascia» o X riporta tutto al suo posto.
+- **`InspectWorkspace` migrato**: schede Misura · Sezione · Vista (+ Spazi), id `inspect.*`; menù polso, pannello, breadcrumb e scheda compatta rimossi (contesto e proprietà sull'HUD). Ispeziona è il workspace di default del catalogo: la tavolozza non è mai vuota. Misura, Sezione, Scala e Ambiente funzionano offline; Esplora, Proprietà e Documenti aperti no.
+- **Tavolozza** riportata nella posizione della spec (tolto lo spostamento sotto il controller; test di guardia in `UiShellTests`).
+- **Voce sul catalogo**: `WorkspaceVoiceTarget` risolve con `ActionCatalog.ResolveVoice`; ambiguità rifiutata, comando disabilitato senza mutazione, «Applica» vocale non committa.
+- **Runner M1–M5** invocano le azioni per id (input registrato come sintetico).
+
+| Prova | Esito |
+|---|---|
+| Core `XrSo.Core.Tests` | 443/443 PASS |
+| Unity EditMode | 375/375 PASS (incluso il test del Grip nello stesso frame del Trigger) |
+| Compilazione del codice dei runner (`XR_SO_ACCEPTANCE`) | PASS (controllo con `csc.rsp` temporaneo) |
+| APK ordinario (sul Quest, hash verificato) / di collaudo | build riuscite; sha256 `e6d579aa…21b3` / `9b8b111e…b252` |
+| Runner M1–M5 sul Quest 3 con Inventor 2027 (3 ottobre 2026), input **sintetico** | PASS COMPLETE ×5: M1 `artifacts/m1-verification/quest-acceptance-run-20261003-191506.json`; M2 `…m2-verification/…-20261003-191526.json`; M3 `…m3-verification/…-20261003-191048.json`; M4 `…m4-verification/…-20261003-191425.json`; M5 `…m5-verification/…-20261003-191349.json` |
+| Assieme sollevato, isolamento, anello, tavolozza sul controller visti sul Quest | NOT COVERED: prova fisica da seduto |
+
+Scostamenti dichiarati:
+
+- «Apri in Lamiera» è abilitato per qualsiasi parte isolata (il contesto assieme non dice quali sono lamiera); Lamiera segnala se la parte non lo è.
+- Ispeziona non mostra ancora l'anello contestuale: serve il punto colpito dal percorso di pick (`ControllerRay`, che legge ancora `OVRInput`; i workspace no).
+- Rimossi da Ispeziona: «Aggiorna» (Proprietà ricarica ogni volta), schermata «Dettagli errore» (vanno sull'HUD), tinta Lamiera-primaria della vecchia scheda.
+
+M6-01 e M6-06 hanno ora i sottocasi automatici (EditMode, input sintetico) ma restano **aperti**: mancano runner sul Quest e prova fisica. M6-08 ha il test sul catalogo, aperto per lo stesso motivo. M6-09 resta aperto (runner M1–M5 da rieseguire con la Fase 4 e runner M6 nella Fase 5); M6-10 resta aperto.
+
+Note sull'esecuzione:
+
+- **Bug trovato dal runner M4** (`…m4-verification/…-20261003-185955.json`, FAIL «Grip held with the Trigger is view only»): con Grip e Trigger premuti nello stesso frame, `XrInput` emetteva il Trigger prima del Grip e il workspace catturava la maniglia. Corretto: `PenGripHeld` è aggiornato prima degli eventi del Trigger e Assieme, Progettazione e Lamiera lo leggono (`GripDown`); aggiunto il test EditMode. Dopo la correzione APK ricompilati e M1–M5 rieseguiti: tutti PASS.
+- **Run non valido**: durante la ripetizione Inventor si è chiuso da solo (`E_FAIL` in M5 `…m5-verification/…-20261003-191112.json`, fixture M4 non preparata). Non è un fallimento del software: Inventor riaperto, host HTTPS riavviato (`--target 2027`, `--pair-host 192.168.1.227`), M5 e M4 ripetuti con esito PASS.
+- Primo tentativo M1 (`…-185318.json`): `TIMEOUT before_runner_start`, visore sveglio ma senza finestra in primo piano; non è un fallimento del test.
+- Ogni fixture è stata chiusa senza salvare, il documento dell'utente riattivato e l'APK ordinario reinstallato con hash verificato.

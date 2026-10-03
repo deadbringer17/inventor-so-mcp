@@ -34,6 +34,16 @@ namespace InventorXrSo.Tests
         private static XrInputFrame F() => new XrInputFrame { PenTracked = true, PaletteTracked = true };
 
         [Test]
+        public void GripPressedInTheSameFrameAsTheTriggerIsAlreadyHeldWhenThePressFires()
+        {
+            bool gripHeldAtPress = false;
+            _input.PenPressed += () => gripHeldAtPress = _input.PenGripHeld;
+            var both = F(); both.PenGrip = true; both.PenTrigger = true;
+            _input.Poll(both, 0);
+            Assert.IsTrue(gripHeldAtPress);
+        }
+
+        [Test]
         public void TriggerPressAndReleaseAreEdges()
         {
             var down = F(); down.PenTrigger = true;

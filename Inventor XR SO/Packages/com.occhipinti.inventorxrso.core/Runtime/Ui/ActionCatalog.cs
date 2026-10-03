@@ -88,7 +88,28 @@ namespace InventorXrSo.Core.Ui
 
         private IEnumerable<XrAction> All() => (_active?.Actions ?? Enumerable.Empty<XrAction>()).Concat(_spaces.Actions);
 
-        private static HashSet<string> Names(XrAction a) =>
-            new HashSet<string>(new[] { a.Label }.Concat(a.Synonyms).Select(ItalianTextNormalizer.Normalize));
+        private static HashSet<string> Names(XrAction a)
+        {
+            var names = new HashSet<string>(new[] { a.Label }.Concat(a.Synonyms).Select(ItalianTextNormalizer.Normalize));
+            foreach (var alias in LabelAliases(a.Label)) names.Add(alias);
+            return names;
+        }
+
+        /// <summary>
+        /// Etichette con un valore ("Distanza: 5 mm", "Scala da tavolo • 60 cm", "Asse 2") si dicono anche senza il valore:
+        /// il prefisso prima di ':', di '•' o della prima cifra. Resta un vocabolario finito derivato dalle azioni dichiarate.
+        /// </summary>
+        private static IEnumerable<string> LabelAliases(string label)
+        {
+            var found = new List<string>();
+            int colon = label.IndexOf(':');
+            if (colon > 0) found.Add(ItalianTextNormalizer.Normalize(label.Substring(0, colon)));
+            int detail = label.IndexOf('•');
+            if (detail > 0) found.Add(ItalianTextNormalizer.Normalize(label.Substring(0, detail)));
+            string full = ItalianTextNormalizer.Normalize(label);
+            int digit = full.IndexOfAny("0123456789".ToCharArray());
+            if (digit > 0) found.Add(full.Substring(0, digit).TrimEnd());
+            return found.Where(n => n.Length > 0);
+        }
     }
 }

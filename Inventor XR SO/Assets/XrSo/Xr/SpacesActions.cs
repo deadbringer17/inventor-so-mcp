@@ -18,10 +18,10 @@ namespace InventorXrSo.Xr
             string Blocked() => inSession() ? "Controlla prima la modifica CAD non confermata." : Offline();
             _actions = new[]
             {
-                new XrAction("spaces.inspect", "Ispeziona", ActionCatalog.SpacesTab, inSession, openInspect, Offline, new[] { "esplora" }),
-                new XrAction("spaces.design", "Progettazione", ActionCatalog.SpacesTab, () => inSession() && canDesign(), openDesign, Blocked),
+                new XrAction("spaces.inspect", "Ispeziona", ActionCatalog.SpacesTab, inSession, openInspect, Offline),
+                new XrAction("spaces.design", "Progettazione", ActionCatalog.SpacesTab, () => inSession() && canDesign(), openDesign, Blocked, new[] { "progetta" }),
                 new XrAction("spaces.lamiera", "Lamiera", ActionCatalog.SpacesTab, () => inSession() && canLamiera(), openLamiera, Blocked),
-                new XrAction("spaces.assembly", "Assieme", ActionCatalog.SpacesTab, () => inSession() && canAssembly(), openAssembly, Blocked),
+                new XrAction("spaces.assembly", "Assieme", ActionCatalog.SpacesTab, () => inSession() && canAssembly(), openAssembly, Blocked, new[] { "assemblaggio" }),
                 new XrAction("spaces.connection", "Connessione", ActionCatalog.SpacesTab, () => true, openConnection),
             };
         }
