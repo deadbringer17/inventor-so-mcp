@@ -170,4 +170,20 @@ public sealed class MeasureMinDistanceXrHandler : ExperimentalHandler
         };
     }
 }
+
+/// <summary><c>assembly_health_xr</c>: revision-bound assembly health with portable ids on failing relationships. Read-only.</summary>
+public sealed class AssemblyHealthXrHandler : ExperimentalHandler
+{
+    public override string Name => "assembly_health_xr";
+    public override bool IsReadOnly => true;
+
+    protected override JToken Run(InventorCommandContext ctx, Application app, JObject p)
+    {
+        var assembly = VerifyXr.Assembly(ctx, app, p, Name, out string documentId);
+        var result = AssemblyHealthReader.Read(ctx, assembly, p, withIds: true);
+        result["document_id"] = documentId;
+        result["revision"] = ctx.Events!.Revision(documentId);
+        return result;
+    }
+}
 #endif

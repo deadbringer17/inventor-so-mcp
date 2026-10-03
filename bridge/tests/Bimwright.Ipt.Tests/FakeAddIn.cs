@@ -201,6 +201,29 @@ public sealed class FakeAddIn : System.IAsyncDisposable
                     ["document_id"] = AssemblyId, ["revision"] = Revision, ["distance_mm"] = 30.0,
                     ["point_a"] = new JArray(0, 0, 0), ["point_b"] = new JArray(30, 0, 0), ["points_source"] = "inventor",
                 });
+            case "assembly_health_xr":
+                if ((string?)p["document_id"] != AssemblyId) return Fail(InventorErrorCodes.DOCUMENT_CHANGED, "Active document changed.");
+                if ((string?)p["expected_revision"] != Revision) return Fail(InventorErrorCodes.STALE_REVISION, "Revision changed.");
+                return Ok(new JObject
+                {
+                    ["document_id"] = AssemblyId, ["revision"] = Revision, ["healthy"] = false, ["occurrence_count"] = 3,
+                    ["unconstrained_occurrences"] = 1, ["constraint_count"] = 1, ["joint_count"] = 0,
+                    ["failing_constraints"] = new JArray(new JObject
+                        { ["name"] = "M7_Sick", ["health"] = "kInconsistentHealth", ["a_occurrence_id"] = "ent_occ_1", ["b_occurrence_id"] = "ent_occ_3" }),
+                    ["failing_joints"] = new JArray(),
+                    ["occurrences"] = new JArray(
+                        new JObject { ["name"] = "Bolt:1", ["occurrence_id"] = "ent_occ_1", ["suppressed"] = false, ["grounded"] = true, ["dof_translation"] = 0, ["dof_rotation"] = 0, ["unconstrained"] = false },
+                        new JObject { ["name"] = "Bolt:2", ["occurrence_id"] = "ent_occ_2", ["suppressed"] = false, ["grounded"] = false, ["dof_translation"] = 3, ["dof_rotation"] = 3, ["unconstrained"] = true },
+                        new JObject { ["name"] = "Plate:1", ["occurrence_id"] = "ent_occ_3", ["suppressed"] = false, ["grounded"] = true, ["dof_translation"] = 0, ["dof_rotation"] = 0, ["unconstrained"] = false }),
+                });
+            case "get_assembly_bom":
+                return Ok(new JObject
+                {
+                    ["truncated"] = false,
+                    ["bom"] = new JArray(
+                        new JObject { ["part_number"] = "", ["path"] = "C:\\fake\\Bolt.ipt", ["qty"] = 2, ["description"] = "Bolt" },
+                        new JObject { ["part_number"] = "PL-1", ["path"] = "C:\\fake\\Plate.ipt", ["qty"] = 1, ["description"] = "Plate" }),
+                });
             case "get_display_mesh":
             {
                 string id = (string?)p["document_id"] ?? AssemblyId;

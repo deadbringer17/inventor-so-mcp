@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Bimwright.Ipt.Server.Assets;
+using Bimwright.Ipt.Server.Planning;
 using Bimwright.Ipt.Shared.Contracts;
 using ModelContextProtocol.Server;
 using Newtonsoft.Json;
@@ -52,6 +53,26 @@ public sealed class XrTools
             ["document_id"] = document_id, ["expected_revision"] = expected_revision,
             ["a_occurrence_id"] = a_occurrence_id, ["b_occurrence_id"] = b_occurrence_id,
         }, ct);
+
+    [McpServerTool(Name = "inventor_assembly_health_xr"), Description("Revision-bound health of the active assembly for XR: per-occurrence DOF, grounding and an unconstrained flag, failing constraints and joints with the portable ids of the direct occurrences they bind (null when Inventor does not expose them), plus bom = the inventor_validate_bom result. Refuses with STALE_REVISION if the document changed while reading. No CAD changes. Experimental.")]
+    public async Task<string> AssemblyHealthXr(string document_id, string expected_revision, int max_occurrences = 2000, CancellationToken ct = default)
+    {
+        try
+        {
+            var health = (JObject)await _client.SendAsync("assembly_health_xr", new JObject
+            {
+                ["document_id"] = document_id, ["expected_revision"] = expected_revision, ["max_occurrences"] = max_occurrences,
+            }, ct);
+            var bom = await _client.SendAsync("get_assembly_bom", new JObject { ["max_rows"] = 2000 }, ct);
+            health["bom"] = BomAnalysis.Validate(BomAnalysis.ReadRows(bom), (bool?)bom["truncated"] ?? false);
+            var after = (JObject)await _client.SendAsync("get_visual_revision", new JObject { ["document_id"] = document_id }, ct);
+            if ((string?)after["revision"] != expected_revision)
+                return Error(InventorErrorCodes.STALE_REVISION, "The assembly changed while its health was read.");
+            return health.ToString(Formatting.None);
+        }
+        catch (InventorGatewayException ex) { return ex.ToErrorJson().ToString(Formatting.None); }
+        catch (ArgumentException ex) { return Error(InventorErrorCodes.API_ERROR, ex.Message); }
+    }
 
     /// <summary>A composed scene fetches at most this many distinct definitions.</summary>
     public const int MaxSceneDefinitions = 200;

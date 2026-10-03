@@ -130,6 +130,7 @@ public static class ToolContracts
         new() { Name = "inventor_get_assembly_context_xr", Tier = Experimental, Access = "query", RequiresRevision = true, Documents = As, Verification = Pending },
         new() { Name = "inventor_check_interference_xr", Tier = Experimental, Access = "query", RequiresRevision = true, Documents = As, Verification = Pending },
         new() { Name = "inventor_measure_min_distance_xr", Tier = Experimental, Access = "query", RequiresRevision = true, Documents = As, Verification = Pending },
+        new() { Name = "inventor_assembly_health_xr", Tier = Experimental, Access = "query", RequiresRevision = true, Documents = As, Verification = Pending },
         new() { Name = "inventor_history_xr", Tier = Experimental, Access = "write", RequiresRevision = true, Documents = PA,
             Validators = new[] { "owner", "revision", "history ticket", "native transaction identity" },
             Rollback = "none: native Undo/Redo; uncertain outcomes invalidate the history chain", Verification = Pending },
