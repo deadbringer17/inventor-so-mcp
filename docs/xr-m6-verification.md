@@ -63,7 +63,14 @@ Commit: `4462ee8`, `8e27c46`, `1582db3`, `5d57518`.
 | Core `XrSo.Core.Tests` | 439/439 PASS |
 | Unity EditMode | 279/279 PASS (input sintetico `SyntheticInputSource` per trascinamento, tracking perso, precisione, snap, catena di X, zoom, aptica) |
 | APK ordinario | build riuscita; sha256 `c61eaf71…2125` |
-| Runner M1–M5 sul Quest 3 con Inventor 2027 | NOT COVERED: il 1° ottobre il visore risultava `unauthorized` su adb (non indossato o autorizzazione USB non accettata). Da eseguire prima della chiusura di M6-09 |
+| Runner M1–M5 sul Quest 3 con Inventor 2027 (3 ottobre 2026, APK di collaudo `6d2152c0…61c0`) | PASS COMPLETE ×5, input sintetico: M1 `artifacts/m1-verification/quest-acceptance-run-20261003-134057.json`; M2 `…m2-verification/…-20261003-134133.json`; M3 `…m3-verification/…-20261003-134207.json` (Progettazione migrata: azioni per id, tastierino, barra di conferma); M4 `…m4-verification/…-20261003-134251.json`; M5 `…m5-verification/…-20261003-134321.json` |
 | Foglio, chip, anello, barra di conferma e tavolozza visti sul Quest | NOT COVERED: serve la prova fisica da seduto (leggibilità, precisione della penna, aptica, trascinamento a Trigger e rilascio) |
 
 I gate M6-02, M6-03, M6-04 e M6-05 hanno i sottocasi automatici coperti da test EditMode con input **sintetico**, ma restano **aperti**: mancano il runner sul Quest con Inventor reale e la prova fisica. Lamiera, Assieme e Ispeziona usano ancora il loro pannello (Fasi 3–4).
+
+Note sul run del 3 ottobre:
+
+- **Rete**: l'app aveva salvato l'IP `192.168.1.10`, ma il PC era a `192.168.1.227` («Cannot connect to destination host»). Host riavviato con `--pair-host 192.168.1.227` e pairing rifatto sul visore. Consigliata una riserva DHCP per il PC.
+- **Inventor** si era chiuso durante il primo tentativo di preparare la fixture (`MK_E_UNAVAILABLE`); riavviato, le fixture sono passate.
+- Ogni fixture è stata chiusa senza salvare e l'APK ordinario `01fdcf4c…30f6` è stato reinstallato dallo script.
+- M6-09 resta **aperto**: serve anche la migrazione degli altri workspace (Fasi 3–4) e il runner M6. La prova fisica da seduto (M6-02…M6-05, M6-10) resta **aperta**.
