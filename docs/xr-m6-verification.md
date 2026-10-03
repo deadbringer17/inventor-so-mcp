@@ -105,3 +105,31 @@ Note sull'esecuzione:
 - Ogni fixture è stata chiusa senza salvare; l'APK ordinario finale è sul visore.
 
 I gate M6-02, M6-03, M6-04 e M6-05 coprono ora Progettazione **e** Lamiera nei sottocasi automatici, ma restano **aperti**: mancano la prova fisica da seduto e le Fasi 4–5 (Assieme, Ispezione, runner M6). M6-09 e M6-10 restano aperti.
+
+## Fase 4 — Assieme + Ispezione (3 ottobre 2026)
+
+Piano: [Fase 4](superpowers/plans/2026-10-03-inventor-xr-so-m6-fase4-assieme-ispezione.md). Consegnato sul branch `feat/m6-fase4`:
+
+- **`AssemblyWorkspace` migrato**: niente pannello; `IActionProvider` con schede Componenti · Vincoli · Vista (+ Spazi), id `assembly.*`, elenchi (componenti, riferimenti, vincoli, giunti, assi) come schede di scelta da massimo 8 voci. Distanza, angolo e gioco minimo con chip + tastierino; Applica solo dalla barra di conferma (la voce «Applica» non committa, M5-11). Spostamento componente: Trigger tenuto sulla maniglia/asse; rilascio → anteprima; perdita di tracking → bozza scartata e impulso di errore; chiusura → cattura chiusa (M5-08). Grip e due mani = solo vista.
+- **Assieme sollevato** (`Workbench.ApplyAssembly`, transizione ~250 ms) e **isolamento** (`ComponentIsolation`): il componente avanza a metà strada, il resto al 20 %; solo visivo, non muove l'occorrenza in Inventor. Anello sul componente: Isola · Sposta · Vincola · Apri; da isolato «Apri in Progettazione» / «Apri in Lamiera»; «Rilascia» o X riporta tutto al suo posto.
+- **`InspectWorkspace` migrato**: schede Misura · Sezione · Vista (+ Spazi), id `inspect.*`; menù polso, pannello, breadcrumb e scheda compatta rimossi (contesto e proprietà sull'HUD). Ispeziona è il workspace di default del catalogo: la tavolozza non è mai vuota. Misura, Sezione, Scala e Ambiente funzionano offline; Esplora, Proprietà e Documenti aperti no.
+- **Tavolozza** riportata nella posizione della spec (tolto lo spostamento sotto il controller; test di guardia in `UiShellTests`).
+- **Voce sul catalogo**: `WorkspaceVoiceTarget` risolve con `ActionCatalog.ResolveVoice`; ambiguità rifiutata, comando disabilitato senza mutazione, «Applica» vocale non committa.
+- **Runner M1–M5** invocano le azioni per id (input registrato come sintetico).
+
+| Prova | Esito |
+|---|---|
+| Core `XrSo.Core.Tests` | 443/443 PASS |
+| Unity EditMode | 374/374 PASS |
+| Compilazione del codice dei runner (`XR_SO_ACCEPTANCE`) | PASS (controllo con `csc.rsp` temporaneo) |
+| APK ordinario / di collaudo | NOT COVERED: non rigenerati in questa sessione |
+| Runner M1–M5 sul Quest 3 con Inventor 2027 | NOT COVERED: serve il visore sveglio/indossato, host con IP corrente e fixture su Inventor; da eseguire con la persona presente |
+| Assieme sollevato, isolamento, anello, tavolozza sul controller visti sul Quest | NOT COVERED: prova fisica da seduto |
+
+Scostamenti dichiarati:
+
+- «Apri in Lamiera» è abilitato per qualsiasi parte isolata (il contesto assieme non dice quali sono lamiera); Lamiera segnala se la parte non lo è.
+- Ispeziona non mostra ancora l'anello contestuale: serve il punto colpito dal percorso di pick (`ControllerRay`, che legge ancora `OVRInput`; i workspace no).
+- Rimossi da Ispeziona: «Aggiorna» (Proprietà ricarica ogni volta), schermata «Dettagli errore» (vanno sull'HUD), tinta Lamiera-primaria della vecchia scheda.
+
+M6-01 e M6-06 hanno ora i sottocasi automatici (EditMode, input sintetico) ma restano **aperti**: mancano runner sul Quest e prova fisica. M6-08 ha il test sul catalogo, aperto per lo stesso motivo. M6-09 resta aperto (runner M1–M5 da rieseguire con la Fase 4 e runner M6 nella Fase 5); M6-10 resta aperto.
