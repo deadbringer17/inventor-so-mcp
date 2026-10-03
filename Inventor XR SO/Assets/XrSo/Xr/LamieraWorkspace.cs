@@ -7,12 +7,14 @@ using System.Threading;
 using System.Threading.Tasks;
 using InventorXrSo.Core.Backend;
 using InventorXrSo.Core.Session;
+using InventorXrSo.Core.Ui;
 using InventorXrSo.Core.Voice;
 using InventorXrSo.Unity.Scene;
 using InventorXrSo.Unity.Ui;
+using InventorXrSo.Xr.Input;
 using UnityEngine;
 using UnityEngine.EventSystems;
-using UnityEngine.UI;
+using UiSelectionKind = InventorXrSo.Core.Ui.SelectionKind;
 
 namespace InventorXrSo.Xr
 {
@@ -30,12 +32,12 @@ namespace InventorXrSo.Xr
     }
 
     /// <summary>
-    /// Quest M5 Lamiera: sheet-metal authoring on top of the shared Design draft/preview/Apply cycle.
-    /// Trigger selects (flange edges), Grip moves the view, Grip+Trigger on the knob edits the armed flange draft.
-    /// Nothing reaches CAD without a rendered, validated preview and the physical Applica button.
+    /// Quest M5/M6 Lamiera: sheet-metal authoring on top of the shared Design draft/preview/Apply cycle. No floating panel:
+    /// the actions are declared to the palette (<see cref="IActionProvider"/>, see LamieraActions.cs) and the commit bar is
+    /// the only place that applies. Nothing reaches CAD without a rendered, validated preview and the physical Applica button.
     /// </summary>
     [DefaultExecutionOrder(115)]
-    public sealed class LamieraWorkspace : MonoBehaviour
+    public sealed partial class LamieraWorkspace : MonoBehaviour, IActionProvider
     {
         public const string FieldFlangeHeight = "flange.height_mm";
         public const string FieldFlangeAngle = "flange.angle_deg";
@@ -46,7 +48,16 @@ namespace InventorXrSo.Xr
         private SelectionVisuals _selection;
         private ControllerRay _ray;
         private Transform _head;
-        private HomePanel _panel;
+        private UiShell _shell;
+        private ActionCatalog _catalog;
+        private Workbench _bench;
+        private XrInput _input;
+        private ChipView _heightChip, _angleChip, _thicknessChip;
+        private RingView _ring;
+        private NumericEntry _heightEntry, _angleEntry, _thicknessEntry, _ask;
+        private bool _syncingEntries;
+        private string _ringEdge, _lastErrorShown, _lastHeadline, _lastFlatReason;
+        private bool _statusAnnounced;
         private DesignPreviewView _previewView;
         private DesignGeometryView _geometry;
         private FlangeManipulator _manip;
@@ -69,27 +80,34 @@ namespace InventorXrSo.Xr
         private double? _thicknessMm;
         private bool _acrossBends, _pendingShowFlat, _wasPrimary;
         private string _armedField, _armedFieldScreen;
-        private bool _online, _visible, _busy, _pinned, _reviewAfterRebind, _renderPending;
-        private int _pendingMutations, _generation, _page;
+        private bool _online, _visible, _busy, _reviewAfterRebind, _renderPending;
+        private int _pendingMutations, _generation;
         private float _nextRender;
         private CancellationTokenSource _reads = new CancellationTokenSource();
         private Transform _grab;
         private bool _grabFlat;
         private Vector3 _grabPosition;
         private Quaternion _grabRotation;
-        private readonly Dictionary<string, string> _ids = new Dictionary<string, string>();
-        private readonly Dictionary<string, bool> _enabled = new Dictionary<string, bool>();
 
         public bool Active { get; private set; }
         public bool RequiresCadReview => _reviewAfterRebind || _pendingMutations > 0 || _session?.Status == DesignStatus.Committing || _session?.Status == DesignStatus.RefreshRequired;
         public Func<bool> CanEnter { get; set; }
         public event Action<bool> ActiveChanged;
+        /// <summary>Raised only when an open workspace closes: the shell restores the Inspect placement of the model.</summary>
+        public event Action Closed;
         /// <summary>Lamiera becomes (or stops being) the primary mode for the active document.</summary>
         public event Action<bool> PrimaryChanged;
         /// <summary>The user asked for Modello 3D / Schizzo (Design); the switcher decides.</summary>
         public event Action DesignRequested;
         public event Action ArmedFieldChanged;
-        public HomePanel VoicePanel => _panel;
+        /// <summary>Notices and error detail for the HUD (the commit bar only carries a short message).</summary>
+        public event Action<string> HudMessage;
+        /// <summary>Last notice, also sent to <see cref="HudMessage"/> when non-empty.</summary>
+        public string Notice => _notice;
+        /// <summary>Lamiera no longer has a floating panel: voice labels come from the declared actions.</summary>
+        public HomePanel VoicePanel => null;
+        /// <summary>The numeric entry currently waiting for the keypad (or dictation), if any.</summary>
+        public NumericEntry ActiveEntry => _ask;
         public bool IsPrimary => _mode.IsPrimary;
         public SheetMetalMode Mode => _mode;
         public FlangeDraft Flange => _flange;
@@ -103,11 +121,6 @@ namespace InventorXrSo.Xr
         public void Initialize(CadSceneView view, SelectionVisuals selection, ControllerRay ray, Transform head)
         {
             _view = view; _selection = selection; _ray = ray; _head = head;
-            _panel = HomePanel.Create(transform); _panel.name = "Lamiera";
-            ((RectTransform)_panel.transform).sizeDelta = new Vector2(820, 1150);
-            _panel.transform.localScale = Vector3.one * 0.00065f;
-            XrUi.MakeInteractive(_panel.Canvas, head.GetComponent<Camera>());
-            _panel.gameObject.SetActive(false);
             var previewHost = new GameObject("Lamiera preview"); previewHost.transform.SetParent(view.transform, false);
             _previewView = previewHost.AddComponent<DesignPreviewView>(); _previewView.Initialize(view, head);
             var geometry = new GameObject("Lamiera local geometry"); geometry.transform.SetParent(view.transform, false);
@@ -118,6 +131,61 @@ namespace InventorXrSo.Xr
             _flatDisplay = flat.AddComponent<FlatPatternDisplay>(); _flatDisplay.Initialize(view, head);
             _flange.Changed += OnFlangeChanged;
             _mode.Changed += OnModeChanged;
+        }
+
+        /// <summary>
+        /// Shell parts the workspace draws on: palette/commit bar/HUD through the catalog, plus chips and ring created here.
+        /// The bench and the input are optional (not present in headless tests). <paramref name="sheet"/> is accepted for symmetry
+        /// with Progettazione; Lamiera has no sketch sheet.
+        /// </summary>
+        public void Attach(UiShell shell, Workbench bench = null, SketchSheetView sheet = null, XrInput input = null)
+        {
+            _shell = shell; _catalog = shell?.Catalog; _bench = bench;
+            AttachInput(input);
+            if (shell == null || _head == null) return;
+            var eye = _head.GetComponent<Camera>();
+            if (_ring == null)
+            {
+                _ring = RingView.Create(null);
+                XrUi.MakeInteractive(_ring.Canvas, eye);
+            }
+            if (_heightChip == null) _heightChip = MakeChip(eye, FieldFlangeHeight, "Altezza");
+            if (_angleChip == null) _angleChip = MakeChip(eye, FieldFlangeAngle, "Angolo");
+            if (_thicknessChip == null) _thicknessChip = MakeChip(eye, FieldThickness, "Spessore");
+        }
+
+        private ChipView MakeChip(Camera eye, string fieldId, string label)
+        {
+            var chip = ChipView.Create(null);
+            XrUi.MakeInteractive(chip.Canvas, eye);
+            chip.Face(_head);
+            chip.Bind(EntryFor(fieldId), label);
+            chip.Tapped += () => AskNumber(fieldId);
+            chip.Canvas.gameObject.SetActive(false);
+            return chip;
+        }
+
+        /// <summary>
+        /// Back, Fit and Recenter arrive from <see cref="XrInput"/> (the other controller events are wired by the Part B input task).
+        /// Without an input (tests, headless) the workspace simply never receives them and never throws.
+        /// </summary>
+        private void AttachInput(XrInput input)
+        {
+            DetachInput();
+            _input = input;
+            if (_input == null) return;
+            _input.Back += Back;
+            _input.Fit += FitView;
+            _input.Recenter += RecenterView;
+        }
+
+        private void DetachInput()
+        {
+            if (_input == null) return;
+            _input.Back -= Back;
+            _input.Fit -= FitView;
+            _input.Recenter -= RecenterView;
+            _input = null;
         }
 
         /// <summary>The same backend object normally serves both interfaces (<see cref="InventorBackend"/>).</summary>
@@ -140,7 +208,7 @@ namespace InventorXrSo.Xr
             if (_flat != null) _flat.Changed += OnFlatChanged;
             if (_flatDisplay != null) _flatDisplay.Bind(_flat);
             _sheetContext = null; _designContext = null; _history = null; _state = null; _online = false;
-            ResetDraft(); RefreshMode(); Render();
+            ResetDraft(); RefreshMode(); Refresh();
         }
 
         public void SetScene(LoadedScene scene)
@@ -176,7 +244,7 @@ namespace InventorXrSo.Xr
                 if (_flat != null && _flat.State == FlatPatternState.StaleReadOnly) ShowFlat();
                 LoadContext();
             }
-            Render();
+            Refresh();
         }
 
         public void SetVisible(bool visible)
@@ -190,25 +258,27 @@ namespace InventorXrSo.Xr
         {
             if (!_visible || CanEnter?.Invoke() == false) return;
             Active = true; _ray.CanPick = false; _selection?.Clear();
-            ActiveChanged?.Invoke(true); _panel.gameObject.SetActive(true);
-            if (!_pinned)
-            {
-                var forward = Vector3.ProjectOnPlane(_head.forward, Vector3.up).normalized;
-                if (forward.sqrMagnitude < 0.01f) forward = Vector3.forward;
-                _panel.transform.SetPositionAndRotation(_head.position + forward * 0.9f + _head.right * 0.48f, Quaternion.LookRotation(forward));
-            }
-            _screen = "tools"; _flatDisplay.SetPresented(true);
-            Render(); LoadContext();
+            _screen = "tools"; _lastHeadline = null; _statusAnnounced = false;
+            ActiveChanged?.Invoke(true);
+            _flatDisplay.SetPresented(true);
+            PlaceWorkbench(); LoadContext(); Refresh();
         }
 
         public void Close()
         {
+            bool was = Active;
+            // The capture of the flange knob ends with the workspace (M5-08): only the local draft was ever touched.
+            if (_manip != null && _manip.Dragging) { _manip.EndDrag(); _flange.ReleaseManipulator(); }
             Active = false; CancelReads();
             if (_session != null && _session.Status != DesignStatus.Committing && _session.Status != DesignStatus.RefreshRequired) _session.Cancel();
-            ResetDraft(); _panel?.gameObject.SetActive(false); _selection?.Clear();
+            ResetDraft(); _selection?.Clear();
+            _shell?.Palette.HideKeypad(); _ask = null;
             _flatDisplay?.SetPresented(false);
             if (_ray != null) _ray.CanPick = _visible;
+            if (was) _bench?.Release();
+            UpdateBar();
             ActiveChanged?.Invoke(false);
+            if (was) Closed?.Invoke();
         }
 
         private void CancelReads()
@@ -232,8 +302,11 @@ namespace InventorXrSo.Xr
             _sketchName = null; _ruleName = null; _thicknessMm = null;
             _extent = "thickness"; _direction = "positive"; _acrossBends = false;
             DisarmField();
-            _grab = null; _renderedPlan = null; _screen = "tools"; _page = 0;
+            _ask = null; _lastErrorShown = null;
+            _grab = null; _renderedPlan = null; _screen = "tools";
             _previewView?.Clear(); _geometry?.Clear(); _manip?.Hide();
+            HideRing(); ClosePicker(false);
+            UpdateChips();
         }
 
         private void OnModeChanged()
@@ -243,19 +316,298 @@ namespace InventorXrSo.Xr
             RequestRender();
         }
 
-        private void OnFlatChanged() => RequestRender();
+        private void OnFlatChanged()
+        {
+            // The reason a flat pattern cannot be shown (budget, revision, missing asset) goes to the HUD once.
+            if (_flat != null && _flat.State == FlatPatternState.Unavailable && !string.IsNullOrEmpty(_flat.Reason))
+            {
+                if (_flat.Reason != _lastFlatReason) { _lastFlatReason = _flat.Reason; SetNotice("Sviluppo non disponibile: " + _flat.Reason); }
+            }
+            else _lastFlatReason = null;
+            RequestRender();
+        }
 
         private void OnFlangeChanged()
         {
             RefreshFlangeVisuals();
+            SyncEntries();
             RequestRender();
+        }
+
+        // ---------------------------------------------------------------- notices, bar, chips, ring
+
+        private void SetNotice(string text)
+        {
+            _notice = text ?? "";
+            if (_notice.Length > 0) HudMessage?.Invoke(_notice);
+        }
+
+        private void RequestRender()
+        {
+            if (_manip != null && _manip.Dragging) _renderPending = true; // per-frame draft edits must not rebuild the shell every frame
+            else Refresh();
+        }
+
+        /// <summary>Content or enablement changed: rebuild the declared actions, the bar and the chips, and tell the catalog.</summary>
+        private void Refresh()
+        {
+            _actions = null;
+            AnnounceAvailability();
+            UpdateBar();
+            UpdateChips();
+            _catalog?.NotifyChanged();
+        }
+
+        private const string ShortError = "Comando non completato. Correggi e riprova.";
+
+        /// <summary>The screens that edit a draft: Preview, Apply and Cancel live on the commit bar.</summary>
+        private bool InDraftScreen => _screen != "tools";
+
+        private void UpdateBar()
+        {
+            var s = _session;
+            bool working = s != null && (s.Status == DesignStatus.Previewing || s.Status == DesignStatus.Committing);
+            CommitBar.Update(new CommitBarInputs(
+                online: _online,
+                outcomeUnknown: s?.CommitOutcomeUnknown == true,
+                refreshRequired: s?.Status == DesignStatus.RefreshRequired,
+                busy: working || _pendingMutations > 0 || (_busy && InDraftScreen),
+                hasPreview: s != null && s.Status == DesignStatus.PreviewReady && s.CanApply && _mode.CanWrite && SceneCurrent,
+                hasDraft: s != null && InDraftScreen,
+                error: s?.Status == DesignStatus.Error ? ShortError : ""), Time.unscaledTimeAsDouble);
+        }
+
+        /// <summary>The reason Lamiera cannot be used at all goes to the HUD once (the palette actions carry it as disabled reason).</summary>
+        private string Headline()
+        {
+            if (!Active) return null;
+            if (_kind != "part") return "Lamiera richiede una parte in lamiera attiva in Inventor.";
+            if (_session == null) return "PC non collegato.";
+            if (!_online) return "Offline: Lamiera è in sola lettura. Nessuna modifica CAD.";
+            if (_busy || _session.Status == DesignStatus.RefreshRequired) return null;
+            if (!_mode.CanWrite) return _mode.Reason ?? "Lamiera non disponibile.";
+            return null;
+        }
+
+        private void AnnounceAvailability()
+        {
+            string headline = Headline();
+            if (headline != null && headline != _lastHeadline) SetNotice(headline);
+            _lastHeadline = headline;
+        }
+
+        private void AnnounceStatus()
+        {
+            if (!Active || _statusAnnounced || !_mode.CanWrite || _mode.Context == null) return;
+            _statusAnnounced = true;
+            HudMessage?.Invoke(StatusSummary());
+        }
+
+        /// <summary>Rule, thickness, bends and flat pattern of the active document, as shown on the HUD when Lamiera opens.</summary>
+        public string StatusSummary()
+        {
+            var c = _mode.Context; var sb = new StringBuilder();
+            sb.Append("Regola: ").Append(c?.Rule ?? "—")
+              .Append(" • Spessore: ").Append(c?.ThicknessMm.HasValue == true ? Fmt(c.ThicknessMm.Value) + " mm" : "—")
+              .Append(" • Pieghe: ").Append(c?.BendCount?.ToString() ?? "—");
+            sb.Append("\nSviluppo: ").Append(FlatStatus());
+            return sb.ToString();
+        }
+
+        private string FlatStatus()
+        {
+            var c = _mode.Context;
+            string measures = c != null && c.FlatPattern.Exists
+                ? Fmt(c.FlatPattern.LengthMm ?? 0) + " × " + Fmt(c.FlatPattern.WidthMm ?? 0) + " mm, " + (c.FlatPattern.BendCount ?? 0) + " pieghe" : null;
+            if (_flat == null) return "—";
+            switch (_flat.State)
+            {
+                case FlatPatternState.Loading: return "caricamento…";
+                case FlatPatternState.Ready: return "visibile" + (_flat.Detached ? " (staccato)" : "") + (measures != null ? " • " + measures : "");
+                case FlatPatternState.StaleReadOnly: return "revisione " + _flat.RevisionLabel + ", sola ispezione";
+                case FlatPatternState.Unavailable: return "non disponibile: " + _flat.Reason;
+                default:
+                    if (c == null || !c.IsComplete) return "—";
+                    return c.FlatPattern.Exists ? "presente (" + measures + "), non mostrato" : "assente";
+            }
+        }
+
+        // ---- numeric entries (chips, keypad, dictation and thumbstick share them)
+
+        private NumericEntry EntryFor(string fieldId)
+        {
+            switch (fieldId)
+            {
+                case FieldFlangeHeight: return _heightEntry ?? (_heightEntry = MakeEntry(fieldId));
+                case FieldFlangeAngle: return _angleEntry ?? (_angleEntry = MakeEntry(fieldId));
+                case FieldThickness: return _thicknessEntry ?? (_thicknessEntry = MakeEntry(fieldId));
+                default: return null;
+            }
+        }
+
+        private NumericEntry MakeEntry(string fieldId)
+        {
+            var field = Describe(fieldId);
+            var entry = new NumericEntry(fieldId, field.Unit, field.Value, field.Min, field.Max);
+            entry.Changed += () => OnEntryChanged(entry);
+            return entry;
+        }
+
+        private void SyncEntries()
+        {
+            _syncingEntries = true;
+            try { SyncEntry(_heightEntry); SyncEntry(_angleEntry); SyncEntry(_thicknessEntry); }
+            finally { _syncingEntries = false; }
+        }
+
+        private void SyncEntry(NumericEntry entry)
+        {
+            if (entry == null || entry.Editing) return;
+            var field = Describe(entry.Id);
+            if (double.IsNaN(field.Value) || double.IsInfinity(field.Value)) return;
+            entry.SetValue(Math.Max(field.Min, Math.Min(field.Max, field.Value)), out _);
+        }
+
+        // Keypad confirmation, thumbstick step and dictation arrive here; typing in the keypad does not.
+        private void OnEntryChanged(NumericEntry entry)
+        {
+            if (_syncingEntries || entry.Editing) return;
+            if (_ask == entry) _ask = null;   // confirmed or cancelled from the keypad
+            var field = Describe(entry.Id);
+            if (field == null || entry.Value == field.Value) return;
+            LastFieldError = null;
+            if (!FieldApplies(entry.Id) || !Idle)
+            {
+                LastFieldError = "Modifica non disponibile ora.";
+                SetNotice(LastFieldError);
+                SyncEntries();
+                return;
+            }
+            ApplyField(entry.Id, entry.Value);
+            RequestRender();
+        }
+
+        private bool FieldApplies(string fieldId) => fieldId == FieldThickness ? _mode.Armed == SheetMetalCommand.Rule : _mode.Armed == SheetMetalCommand.Flange;
+
+        /// <summary>The palette closed the keypad (Annulla / X): the pending prompt is gone.</summary>
+        private void DropClosedKeypad()
+        {
+            if (_ask != null && _shell != null && !_shell.Palette.KeypadVisible) _ask = null;
+        }
+
+        private void UpdateChips()
+        {
+            if (_heightChip == null) return;
+            bool editable = Active && _session?.CanEdit == true && _designContext != null && _mode.CanWrite;
+            bool flange = editable && _mode.Armed == SheetMetalCommand.Flange && _flange.EdgeIds.Count > 0 && _manip != null && _manip.Visible;
+            bool rule = editable && _mode.Armed == SheetMetalCommand.Rule && _view != null;
+            _heightChip.Canvas.gameObject.SetActive(flange);
+            _angleChip.Canvas.gameObject.SetActive(flange);
+            _thicknessChip.Canvas.gameObject.SetActive(rule);
+            bool modified = _session?.Status == DesignStatus.Draft;
+            if (flange)
+            {
+                SyncEntries();
+                _heightChip.Place(_manip.KnobWorldPosition + Vector3.up * 0.05f);
+                _angleChip.Place(_manip.OriginWorldPosition + Vector3.up * 0.05f - (_head != null ? _head.right * 0.12f : Vector3.zero));
+                _heightChip.Armed = _armedField == FieldFlangeHeight; _heightChip.SetModified(modified);
+                _angleChip.Armed = _armedField == FieldFlangeAngle; _angleChip.SetModified(modified);
+            }
+            if (rule)
+            {
+                SyncEntries();
+                var bounds = ScenePlacement.LocalBounds(_view.transform);
+                _thicknessChip.Place(_view.transform.TransformPoint(bounds.center) + Vector3.up * 0.15f);
+                _thicknessChip.Armed = _armedField == FieldThickness; _thicknessChip.SetModified(modified);
+            }
+        }
+
+        private void ShowRing(UiSelectionKind kind, Vector3 worldPoint)
+        {
+            if (_ring == null || _head == null) return;
+            var actions = ContextActions(kind).ToArray();
+            if (actions.Length == 0) { HideRing(); return; }
+            _ring.Show(worldPoint + Vector3.up * 0.01f, actions, _head);
+        }
+
+        private void HideRing()
+        {
+            _ringEdge = null;
+            _ring?.Hide();
+        }
+
+        private void SelectEdge(string edgeId)
+        {
+            var edge = _designContext?.Edges.FirstOrDefault(e => e.Id == edgeId);
+            if (edge == null) return;
+            _selection?.Clear();
+            _geometry.ShowEdges(new[] { edge });
+            SetNotice("Spigolo selezionato.");
+            ShowRing(UiSelectionKind.Edge, _view.transform.TransformPoint(CadCoordinates.ToLocal(FlangeManipulator.Midpoint(edge.PointsMm))));
+            _ringEdge = edgeId;
+        }
+
+        /// <summary>
+        /// X: closes the keypad, else the ring, else the open list. Local state only: it never touches the CAD.
+        /// </summary>
+        public void Back()
+        {
+            if (!Active) return;
+            if (_shell != null && _shell.Palette.KeypadVisible) { _shell.Palette.HideKeypad(); _ask = null; return; }
+            if (_shell == null && _ask != null) { _ask.CancelEdit(); _ask = null; return; }
+            if (_ring != null && _ring.Visible) { HideRing(); return; }
+            if (_picker != null) { ClosePicker(); return; }
+        }
+
+        // ---------------------------------------------------------------- workbench
+
+        private double ModelExtentM()
+        {
+            var size = ScenePlacement.LocalBounds(_view.transform).size;
+            return Math.Max(size.x, Math.Max(size.y, size.z));
+        }
+
+        private void PlaceWorkbench()
+        {
+            if (_bench == null || _head == null || _view == null) return;
+            var frame = _bench.Recenter(_head);
+            _bench.ApplyPart(_view.transform, ModelExtentM());
+            PlaceCommitBar(frame);
+        }
+
+        private void PlaceCommitBar(WorkbenchFrame frame)
+        {
+            if (_shell == null || frame == null) return;
+            var p = WorkbenchLayout.CommitBarPosition(frame);
+            _shell.PlaceCommitBar(new Vector3((float)p.X, (float)p.Y, (float)p.Z), Quaternion.Euler(45, (float)frame.YawDegrees, 0));
+        }
+
+        /// <summary>The model changed (new revision/scene): put it back on the work plane.</summary>
+        public void RefreshWorkbench()
+        {
+            if (!Active || _bench == null || _view == null) return;
+            _bench.ApplyPart(_view.transform, ModelExtentM());
+        }
+
+        /// <summary>Y short press: fit the model to the work plane again.</summary>
+        public void FitView()
+        {
+            if (!Active || _bench == null) return;
+            _bench.Fit();
+        }
+
+        /// <summary>Y long press: new bench frame from the head.</summary>
+        public void RecenterView()
+        {
+            if (!Active || _bench == null || _head == null) return;
+            PlaceCommitBar(_bench.Recenter(_head));
         }
 
         // ---------------------------------------------------------------- reading
 
         private async void LoadContext()
         {
-            if (!_online || _state == null || _kind != "part" || _sheet == null || _busy) { Render(); return; }
+            if (!_online || _state == null || _kind != "part" || _sheet == null || _busy) { Refresh(); return; }
             int generation = _generation; var state = _state; _busy = true;
             try
             {
@@ -267,7 +619,8 @@ namespace InventorXrSo.Xr
                     var context = await _backend.GetDesignContextAsync(state, _reads.Token);
                     if (generation != _generation) return;
                     _designContext = context;
-                    _notice = context.Truncated ? "Elenco CAD parziale: alcuni bordi superano i limiti." : "";
+                    _notice = "";
+                    if (context.Truncated) SetNotice("Elenco CAD parziale: alcuni bordi superano i limiti.");
                     if (_backend is IDesignHistoryBackend historyBackend)
                     {
                         _history = null;
@@ -283,8 +636,8 @@ namespace InventorXrSo.Xr
                 }
             }
             catch (OperationCanceledException) { }
-            catch (Exception ex) { if (generation == _generation) _notice = ex.Message; }
-            finally { if (generation == _generation) { _busy = false; Render(); } }
+            catch (Exception ex) { if (generation == _generation) SetNotice(ex.Message); }
+            finally { if (generation == _generation) { _busy = false; AnnounceStatus(); Refresh(); } }
         }
 
         private async void ShowFlat()
@@ -292,9 +645,9 @@ namespace InventorXrSo.Xr
             var flat = _flat;
             if (flat == null) return;
             try { await flat.ShowAsync(); }
-            catch (InvalidOperationException ex) { _notice = ex.Message; }
-            catch (Exception ex) { _notice = ex.Message; }
-            if (this != null) Render();
+            catch (InvalidOperationException ex) { SetNotice(ex.Message); }
+            catch (Exception ex) { SetNotice(ex.Message); }
+            if (this != null) Refresh();
         }
 
         // ---------------------------------------------------------------- session
@@ -311,11 +664,24 @@ namespace InventorXrSo.Xr
                     _session.ConfirmRendered(_renderedPlan);
                     CalibrateFlangeAxis(_session.Preview);
                 }
-                catch (Exception ex) { _notice = "Anteprima non visualizzabile: " + ex.Message; }
+                catch (Exception ex) { SetNotice("Anteprima non visualizzabile: " + ex.Message); }
             }
             if (_session.Preview == null) { _previewView.Clear(); _renderedPlan = null; }
             ShowValidationContext();
+            ShowErrorDetail();
             RequestRender();
+        }
+
+        /// <summary>The commit bar carries a short message; the detail (and the orange-geometry hint) goes to the HUD, once per error.</summary>
+        private void ShowErrorDetail()
+        {
+            if (_session.Status != DesignStatus.Error || string.IsNullOrEmpty(_session.Error)) { _lastErrorShown = null; return; }
+            if (_session.Error == _lastErrorShown) return;
+            _lastErrorShown = _session.Error;
+            Haptics.Play(HapticPulse.Error);
+            string detail = "Comando non completato: " + _session.Error + "\nLa bozza resta modificabile: correggi i parametri e riprova.";
+            if (_geometry != null && _geometry.HasErrorContext) detail += "\nIn arancione: geometria da controllare.";
+            HudMessage?.Invoke(detail);
         }
 
         private void ShowValidationContext()
@@ -386,7 +752,7 @@ namespace InventorXrSo.Xr
             && _session.Status != DesignStatus.Previewing && _mode.CanWrite && SceneCurrent;
         private bool SceneCurrent => _state != null && _sceneState != null && _state.DocumentId == _sceneState.DocumentId && _state.Revision == _sceneState.Revision;
 
-        /// <summary>Shared by the buttons and the voice layer: the same command id, the same enablement.</summary>
+        /// <summary>Shared by the palette actions, the commit bar and the voice layer: the same command id, the same enablement.</summary>
         public bool IsEnabled(string commandId)
         {
             if (!Active || _session == null) return false;
@@ -410,27 +776,20 @@ namespace InventorXrSo.Xr
         }
 
         /// <summary>
-        /// Runs the command exactly as its button would. Apply never commits from here: it only shows what will be
-        /// applied; the physical Applica button is the single commit path.
+        /// Runs the command exactly as its action would. Apply never commits from here: it only shows what will be
+        /// applied; the commit bar is the single commit path (M5-11).
         /// </summary>
         public bool Invoke(string commandId)
         {
-            if (!IsEnabled(commandId)) return false;
-            switch (commandId)
+            var id = CommandActionId(commandId);
+            if (id == null || !IsEnabled(commandId)) return false;
+            if (commandId == CommandIds.Apply)
             {
-                case CommandIds.Flange: ArmFlange(); return true;
-                case CommandIds.SheetMetalRule: OpenRule(); return true;
-                case CommandIds.SheetMetalFace: OpenSketchPick(SheetMetalCommand.Face); return true;
-                case CommandIds.SheetMetalCut: OpenSketchPick(SheetMetalCommand.Cut); return true;
-                case CommandIds.FlatPatternCreate: StartFlatPattern(); return true;
-                case CommandIds.CancelDraft: CancelCommand(); return true;
-                case CommandIds.Undo: ApplyHistory(false); return true;
-                case CommandIds.Redo: ApplyHistory(true); return true;
-                case CommandIds.Apply:
-                    _notice = "Piano pronto: " + PlanSummary() + ". Conferma premendo Applica sul pannello.";
-                    Render(); return true;
-                default: return false;
+                SetNotice("Piano pronto: " + PlanSummary() + ". Conferma premendo Applica sulla barra di conferma.");
+                Refresh();
+                return true;
             }
+            return Actions.First(a => a.Id == id).TryInvoke();
         }
 
         private string PlanSummary()
@@ -459,37 +818,57 @@ namespace InventorXrSo.Xr
         private void CancelCommand()
         {
             try { DiscardDraft(); _notice = ""; }
-            catch (Exception ex) { _notice = ex.Message; }
-            Render();
+            catch (Exception ex) { SetNotice(ex.Message); }
+            Refresh();
+        }
+
+        private void SetScreen(string screen)
+        {
+            if (_armedField != null && _armedFieldScreen != screen) DisarmField();
+            _screen = screen;
         }
 
         private void ArmFlange()
         {
             DiscardDraft();
-            if (!_mode.Arm(SheetMetalCommand.Flange, out var reason)) { _notice = reason; Render(); return; }
-            _notice = ""; _screen = "flange"; Render();
+            if (!_mode.Arm(SheetMetalCommand.Flange, out var reason)) { SetNotice(reason); Refresh(); return; }
+            _notice = ""; _screen = "flange"; Refresh();
+        }
+
+        /// <summary>Flangia from the ring of an edge takes that edge into the draft; from the palette it starts an empty selection.</summary>
+        private void StartFlange()
+        {
+            string edge = _ringEdge;
+            ArmFlange();
+            if (edge != null && _mode.Armed == SheetMetalCommand.Flange) _flange.ToggleEdge(edge);
+            HideRing();
         }
 
         private void OpenRule()
         {
-            DiscardDraft();
-            if (!_mode.Arm(SheetMetalCommand.Rule, out var reason)) { _notice = reason; Render(); return; }
-            _notice = ""; Page("rule");
+            if (!(_mode.Armed == SheetMetalCommand.Rule && _screen == "rule"))
+            {
+                DiscardDraft();
+                if (!_mode.Arm(SheetMetalCommand.Rule, out var reason)) { SetNotice(reason); Refresh(); return; }
+                _notice = ""; SetScreen("rule");
+            }
+            OpenRulePicker();
         }
 
         private void OpenSketchPick(SheetMetalCommand command)
         {
             DiscardDraft();
-            if (!_mode.Arm(command, out var reason)) { _notice = reason; Render(); return; }
-            _notice = ""; Page("sketches");
+            if (!_mode.Arm(command, out var reason)) { SetNotice(reason); Refresh(); return; }
+            _notice = ""; SetScreen("sketches");
+            OpenSketchPicker();
         }
 
         private void StartFlatPattern()
         {
             DiscardDraft();
-            if (!_mode.Arm(SheetMetalCommand.FlatPattern, out var reason)) { _notice = reason; Render(); return; }
+            if (!_mode.Arm(SheetMetalCommand.FlatPattern, out var reason)) { SetNotice(reason); Refresh(); return; }
             _notice = ""; _screen = "flat";
-            if (!_mode.SubmitFlatPattern(_session)) { _notice = _mode.LastError; Render(); return; }
+            if (!_mode.SubmitFlatPattern(_session)) { SetNotice(_mode.LastError); Refresh(); return; }
             PreviewDraft();
         }
 
@@ -500,14 +879,16 @@ namespace InventorXrSo.Xr
             string hint = ProfileHint(name);
             if (hint == "aperto" || hint == "vuoto")
             {
-                _notice = hint == "aperto" ? "Profilo aperto: chiudi lo schizzo in Inventor o scegline un altro."
-                    : "Lo schizzo non contiene geometria.";
+                SetNotice(hint == "aperto" ? "Profilo aperto: chiudi lo schizzo in Inventor o scegline un altro."
+                    : "Lo schizzo non contiene geometria.");
                 if (_session.Status != DesignStatus.Empty) _session.Cancel();
-                Render(); return;
+                Refresh();
+                OpenSketchPicker();   // the list stays on offer: the refused profile is not a dead end
+                return;
             }
             _notice = "";
-            if (_mode.Armed == SheetMetalCommand.Cut) _screen = "cut";
-            if (!RebuildDraft()) { if (!string.IsNullOrEmpty(_mode.LastError)) _notice = _mode.LastError; Render(); return; }
+            if (_mode.Armed == SheetMetalCommand.Cut) SetScreen("cut");
+            if (!RebuildDraft()) { if (!string.IsNullOrEmpty(_mode.LastError)) SetNotice(_mode.LastError); Refresh(); return; }
             PreviewDraft();
         }
 
@@ -519,7 +900,7 @@ namespace InventorXrSo.Xr
             if (rule == null && !thickness.HasValue)
             {
                 if (_session.Status != DesignStatus.Empty) _session.Cancel();
-                _notice = "Nessuna differenza rispetto alla regola attiva."; return false;
+                SetNotice("Nessuna differenza rispetto alla regola attiva."); return false;
             }
             return _mode.SubmitRule(_session, rule, null, thickness);
         }
@@ -532,10 +913,10 @@ namespace InventorXrSo.Xr
             {
                 case SheetMetalCommand.Flange: return _mode.SubmitFlange(_session, _flange);
                 case SheetMetalCommand.Face:
-                    if (_sketchName == null) { _notice = "Scegli lo schizzo della faccia base."; return false; }
+                    if (_sketchName == null) { SetNotice("Scegli lo schizzo della faccia base."); return false; }
                     return _mode.SubmitFace(_session, _sketchName);
                 case SheetMetalCommand.Cut:
-                    if (_sketchName == null) { _notice = "Scegli lo schizzo del taglio."; return false; }
+                    if (_sketchName == null) { SetNotice("Scegli lo schizzo del taglio."); return false; }
                     return _mode.SubmitCut(_session, _sketchName, _extent, _direction, _acrossBends);
                 case SheetMetalCommand.Rule: return SubmitRuleDraft();
                 case SheetMetalCommand.FlatPattern: return _mode.SubmitFlatPattern(_session);
@@ -543,14 +924,14 @@ namespace InventorXrSo.Xr
             }
         }
 
-        /// <summary>Anteprima button: rebuild from the editor state, then ask Inventor.</summary>
+        /// <summary>Anteprima: rebuild from the editor state, then ask Inventor.</summary>
         private void Preview()
         {
             if (!RebuildDraft())
             {
-                if (!string.IsNullOrEmpty(_mode.LastError)) _notice = _mode.LastError;
-                else if (string.IsNullOrEmpty(_notice)) _notice = "Nessuna bozza da calcolare.";
-                Render(); return;
+                if (!string.IsNullOrEmpty(_mode.LastError)) SetNotice(_mode.LastError);
+                else if (string.IsNullOrEmpty(_notice)) SetNotice("Nessuna bozza da calcolare.");
+                Refresh(); return;
             }
             PreviewDraft();
         }
@@ -559,7 +940,7 @@ namespace InventorXrSo.Xr
         {
             var session = _session;
             try { if (session != null && session.Status == DesignStatus.Draft) await session.PreviewAsync(); }
-            catch (Exception ex) { _notice = ex.Message; if (this != null) Render(); }
+            catch (Exception ex) { SetNotice(ex.Message); if (this != null) Refresh(); }
         }
 
         /// <summary>Manipulator release: the shared draft asks for a preview of its current version, never a commit.</summary>
@@ -567,7 +948,7 @@ namespace InventorXrSo.Xr
         {
             var session = _session;
             try { await _mode.PreviewPendingAsync(session, _flange); }
-            catch (Exception ex) { _notice = ex.Message; if (this != null) Render(); }
+            catch (Exception ex) { SetNotice(ex.Message); if (this != null) Refresh(); }
         }
 
         private async void ApplyPressed()
@@ -576,6 +957,8 @@ namespace InventorXrSo.Xr
             if (session?.CanApply != true || !_mode.CanWrite) return;
             _pendingShowFlat = _mode.Armed == SheetMetalCommand.FlatPattern;
             await RunMutation(session, () => session.ApplyAsync());
+            if (this != null && session == _session && session.LastCommit != null && !session.CommitOutcomeUnknown)
+            { CommitBar.MarkApplied(Time.unscaledTimeAsDouble); Haptics.Play(HapticPulse.Success); }
         }
 
         private async void ApplyHistory(bool redo)
@@ -588,16 +971,17 @@ namespace InventorXrSo.Xr
         {
             if (owner == null || _pendingMutations > 0) return;
             _pendingMutations++;
+            Refresh();
             try { await mutation(); }
-            catch (Exception ex) { if (owner == _session) _notice = ex.Message; }
+            catch (Exception ex) { if (owner == _session) SetNotice(ex.Message); }
             finally { _pendingMutations--; }
             if (this == null) return;
             if (owner == _session && !owner.CommitOutcomeUnknown && owner.Status == DesignStatus.RefreshRequired)
             {
                 try { await RefreshAfterApply(false); }
-                catch (Exception ex) { if (owner == _session) _notice = ex.Message; }
+                catch (Exception ex) { if (owner == _session) SetNotice(ex.Message); }
             }
-            Render();
+            Refresh();
         }
 
         private async Task RefreshAfterApply(bool reviewed)
@@ -608,14 +992,14 @@ namespace InventorXrSo.Xr
             if (this == null || backend != _backend || session != _session || generation != _generation) return;
             session.AcknowledgeRefresh(state, reviewed); _reviewAfterRebind = false; _state = state;
             StateMoved(); LoadContext();
-            _notice = "Documento aggiornato. Attendo il modello da Inventor.";
+            SetNotice("Documento aggiornato. Attendo il modello da Inventor.");
         }
 
         private async void ReviewUnknown()
         {
             try { await RefreshAfterApply(true); }
-            catch (Exception ex) { _notice = ex.Message; }
-            Render();
+            catch (Exception ex) { SetNotice(ex.Message); }
+            Refresh();
         }
 
         // ---------------------------------------------------------------- numeric fields
@@ -643,6 +1027,7 @@ namespace InventorXrSo.Xr
                 : fieldId == FieldThickness && _mode.Armed == SheetMetalCommand.Rule && Idle;
             if (!ok) { LastFieldError = "Campo non disponibile: arma prima il comando corrispondente."; return false; }
             _armedField = fieldId; _armedFieldScreen = _screen;
+            UpdateChips();
             ArmedFieldChanged?.Invoke();
             return true;
         }
@@ -651,12 +1036,14 @@ namespace InventorXrSo.Xr
         {
             if (_armedField == null) return;
             _armedField = null; _armedFieldScreen = null;
+            UpdateChips();
             ArmedFieldChanged?.Invoke();
         }
 
         /// <summary>
         /// Sets the armed field (same path as the keypad): the draft is updated and a new preview requested,
         /// Apply stays invalid until it is rendered. Any other field id, a non-finite or out-of-range value is refused.
+        /// With the keypad open on that field, dictation confirms the value like the OK key.
         /// </summary>
         public bool SetArmedField(string fieldId, double value)
         {
@@ -666,6 +1053,19 @@ namespace InventorXrSo.Xr
             if (double.IsNaN(value) || double.IsInfinity(value) || value < field.Min || value > field.Max)
             { LastFieldError = "Valore fuori intervallo (" + Fmt(field.Min) + " – " + Fmt(field.Max) + ")."; return false; }
             if (!Idle) { LastFieldError = "Modifica non disponibile ora."; return false; }
+            if (_ask != null && _ask.Id == fieldId)
+            {
+                if (!_ask.CommitValue(value, out var reason)) { LastFieldError = reason; return false; }
+                return true;   // the entry's Committed/Changed path applied it
+            }
+            ApplyField(fieldId, value);
+            SyncEntries();
+            RequestRender();
+            return true;
+        }
+
+        private void ApplyField(string fieldId, double value)
+        {
             switch (fieldId)
             {
                 case FieldFlangeHeight: _flange.SetHeight(value); PreviewDraft(); break;
@@ -675,30 +1075,16 @@ namespace InventorXrSo.Xr
                     if (SubmitRuleDraft()) PreviewDraft();
                     break;
             }
-            RequestRender();
-            return true;
         }
 
+        /// <summary>Chip tap or palette action: arms the field and opens the palette keypad on its shared entry.</summary>
         private void AskNumber(string fieldId)
         {
-            if (!TryArmField(fieldId)) { _notice = LastFieldError; Render(); return; }
-            var field = ArmedField; int generation = _generation; string back = _screen; _screen = "numeric";
-            _panel.PromptText(field.Label, "Valore da " + Fmt(field.Min) + " a " + Fmt(field.Max) + (field.Unit == QuantityUnit.Degrees ? " gradi" : " mm")
-                + ". Separatore decimale: punto.", field.Value.ToString(CultureInfo.InvariantCulture), text =>
-            {
-                if (generation != _generation) return;
-                _screen = back;
-                if (!double.TryParse(text.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
-                    || !SetArmedField(fieldId, value)) _notice = LastFieldError ?? "Valore non valido.";
-                else _notice = "";
-                Render();
-            }, () => { _screen = back; Render(); });
-        }
-
-        private void Page(string screen)
-        {
-            if (_armedField != null && _armedFieldScreen != screen) DisarmField();
-            _screen = screen; _page = 0; Render();
+            if (!TryArmField(fieldId)) { SetNotice(LastFieldError); Refresh(); return; }
+            var entry = EntryFor(fieldId);
+            SyncEntries();
+            _ask = entry;
+            if (_shell != null) _shell.Palette.ShowKeypad(entry, ArmedField.Label); else entry.BeginEdit();
         }
 
         // ---------------------------------------------------------------- sketches
@@ -730,204 +1116,9 @@ namespace InventorXrSo.Xr
             _geometry.ShowEdges(snapshot.Elements.Select((e, i) => new DesignEdge("profile:" + i, "line", e.Outline().Select(snapshot.Frame.ToModel))));
         }
 
-        // ---------------------------------------------------------------- panel
+        // ---------------------------------------------------------------- labels
 
         private static string Fmt(double value) => value.ToString("0.###", Italian);
-
-        private void RequestRender()
-        {
-            if (_manip != null && _manip.Dragging) _renderPending = true; // per-frame draft edits must not rebuild the panel every frame
-            else Render();
-        }
-
-        private void Add(List<(string, Action)> actions, string label, Action action, bool enabled = true, string id = null)
-        {
-            actions.Add((label, action)); _enabled[label] = enabled;
-            if (id != null) _ids[label] = id;
-        }
-        private void AddCommand(List<(string, Action)> actions, string id, string label, Action action) =>
-            Add(actions, label, action, IsEnabled(id), id);
-
-        private string FlatStatus()
-        {
-            var c = _mode.Context;
-            string measures = c != null && c.FlatPattern.Exists
-                ? Fmt(c.FlatPattern.LengthMm ?? 0) + " × " + Fmt(c.FlatPattern.WidthMm ?? 0) + " mm, " + (c.FlatPattern.BendCount ?? 0) + " pieghe" : null;
-            if (_flat == null) return "—";
-            switch (_flat.State)
-            {
-                case FlatPatternState.Loading: return "caricamento…";
-                case FlatPatternState.Ready: return "visibile" + (_flat.Detached ? " (staccato)" : "") + (measures != null ? " • " + measures : "");
-                case FlatPatternState.StaleReadOnly: return "revisione " + _flat.RevisionLabel + ", sola ispezione";
-                case FlatPatternState.Unavailable: return "non disponibile: " + _flat.Reason;
-                default:
-                    if (c == null || !c.IsComplete) return "—";
-                    return c.FlatPattern.Exists ? "presente (" + measures + "), non mostrato" : "assente";
-            }
-        }
-
-        private string PreviewStatus()
-        {
-            switch (_session?.Status)
-            {
-                case DesignStatus.Draft: return "bozza da calcolare";
-                case DesignStatus.Previewing: return "calcolo…";
-                case DesignStatus.PreviewReady: return _session.CanApply ? "verificata" : "in attesa di visualizzazione";
-                case DesignStatus.Committing: return "applicazione…";
-                case DesignStatus.RefreshRequired: return "documento da aggiornare";
-                case DesignStatus.Error: return "errore";
-                default: return "nessuna";
-            }
-        }
-
-        private string StatusBlock()
-        {
-            var c = _mode.Context; var sb = new StringBuilder();
-            sb.Append("Regola: ").Append(c?.Rule ?? "—")
-              .Append(" • Spessore: ").Append(c?.ThicknessMm.HasValue == true ? Fmt(c.ThicknessMm.Value) + " mm" : "—")
-              .Append(" • Pieghe: ").Append(c?.BendCount?.ToString() ?? "—");
-            sb.Append("\nSviluppo: ").Append(FlatStatus());
-            sb.Append("\nAnteprima: ").Append(PreviewStatus()).Append(" • Applica: ").Append(_session?.CanApply == true ? "disponibile" : "non disponibile");
-            return sb.ToString();
-        }
-
-        private void Render()
-        {
-            if (!Active || _screen == "numeric" || _panel == null) return;
-            _ids.Clear(); _enabled.Clear();
-            var actions = new List<(string, Action)>();
-            string title = "LAMIERA", headline = null;
-            var status = _session?.Status;
-            bool locked = status == DesignStatus.Committing || status == DesignStatus.Previewing;
-            bool interactive = false;
-            if (_kind != "part") headline = "Lamiera richiede una parte in lamiera attiva in Inventor.";
-            else if (_session == null) headline = "PC non collegato.";
-            else if (!_online) headline = "Offline: Lamiera è in sola lettura. Nessuna modifica CAD.";
-            else if (_busy) headline = "Lettura del contesto lamiera…";
-            else if (status == DesignStatus.RefreshRequired)
-            {
-                headline = _pendingMutations > 0 ? "Attendo la conclusione della richiesta CAD precedente. Nessun nuovo comando verrà inviato."
-                    : _session.CommitOutcomeUnknown ? "Esito della modifica CAD non confermato. Controlla il modello in Inventor prima di proseguire. Il comando non verrà ripetuto."
-                    : "Aggiornamento del documento necessario prima di un altro comando.";
-                if (_pendingMutations == 0) Add(actions, _session.CommitOutcomeUnknown ? "Ho controllato il CAD" : "Aggiorna documento", ReviewUnknown);
-            }
-            else if (!_mode.CanWrite)
-            {
-                headline = _mode.Reason ?? "Lamiera non disponibile.";
-                Add(actions, "Riprova", LoadContext, _online && !_busy);
-            }
-            else if (_designContext == null)
-            {
-                headline = "Riferimenti CAD non disponibili.";
-                Add(actions, "Riprova", LoadContext, !_busy);
-            }
-            else interactive = true;
-
-            string body = headline != null ? headline + "\n" : "";
-            if (interactive)
-            {
-                switch (_screen)
-                {
-                    case "flange":
-                        title = "Flangia";
-                        body += "Bordi selezionati: " + _flange.EdgeIds.Count + ". Trigger su un bordo: aggiungi o togli.\n"
-                            + "Grip + Trigger sul pomello: altezza (solo con Flangia armata). Grip semplice muove la vista.\n"
-                            + "Altezza " + Fmt(_flange.HeightMm) + " mm • Angolo " + Fmt(_flange.AngleDegrees) + "° • Riferimento " + DatumLabel(_flange.Datum) + ".\n";
-                        if (_manip != null && _manip.Visible && !_manip.AxisFromFaces && !_manip.AxisCalibrated) body += "Direzione del pomello stimata: verifica il risultato in anteprima.\n";
-                        if (_armedField != null) body += "Campo attivo: " + ArmedField?.Label + ".\n";
-                        Add(actions, "Altezza: " + Fmt(_flange.HeightMm) + " mm", () => AskNumber(FieldFlangeHeight), !locked);
-                        Add(actions, "Angolo: " + Fmt(_flange.AngleDegrees) + " °", () => AskNumber(FieldFlangeAngle), !locked);
-                        Add(actions, "Riferimento: " + DatumLabel(_flange.Datum), CycleDatum, !locked);
-                        if (_flange.EdgeIds.Count > 0) Add(actions, "Svuota bordi", () => { _flange.Clear(); Render(); }, !locked);
-                        break;
-                    case "rule":
-                        title = "Regola / Spessore";
-                        body += "Regola attiva: " + (_mode.Context.Rule ?? "—") + " • Spessore: " + Fmt(_mode.Context.ThicknessMm ?? 0) + " mm.\n"
-                            + "Scegli una regola o imposta lo spessore: è una bozza separata, poi Anteprima e Applica.\n"
-                            + (_ruleName != null ? "Regola scelta: " + _ruleName + ".\n" : "");
-                        var rules = _mode.Context.AvailableRules.ToArray();
-                        foreach (var rule in rules.Skip(_page * 6).Take(6))
-                        { var name = rule; Add(actions, (name == _mode.Context.Rule ? "● " : "") + name, () => { _ruleName = name; Preview(); }, !locked); }
-                        if (_page > 0) Add(actions, "Precedenti", () => { _page--; Render(); });
-                        if ((_page + 1) * 6 < rules.Length) Add(actions, "Successivi", () => { _page++; Render(); });
-                        Add(actions, "Spessore: " + Fmt(_thicknessMm ?? _mode.Context.ThicknessMm ?? 0) + " mm", () => AskNumber(FieldThickness), !locked);
-                        break;
-                    case "sketches":
-                        title = _mode.Armed == SheetMetalCommand.Cut ? "Taglio da schizzo" : "Faccia da schizzo";
-                        body += (_mode.Armed == SheetMetalCommand.Cut ? "Scegli lo schizzo con il profilo del taglio.\n" : "Scegli lo schizzo con il profilo chiuso della faccia base.\n")
-                            + (_sketchName != null ? "Profilo usato: " + _sketchName + " (" + ProfileHint(_sketchName) + "), in evidenza sul modello.\n" : "");
-                        var sketches = _designContext.Sketches.ToArray();
-                        foreach (var sketch in sketches.Skip(_page * 6).Take(6))
-                        { var name = sketch.Name; Add(actions, name + " • " + ProfileHint(name), () => ChooseSketch(name), !locked); }
-                        if (_page > 0) Add(actions, "Precedenti", () => { _page--; Render(); });
-                        if ((_page + 1) * 6 < sketches.Length) Add(actions, "Successivi", () => { _page++; Render(); });
-                        if (sketches.Length == 0) body += "Nessuno schizzo nel documento: crealo da Modello 3D / Schizzo.\n";
-                        break;
-                    case "cut":
-                        title = "Taglio da schizzo";
-                        body += "Profilo usato: " + _sketchName + " (" + ProfileHint(_sketchName) + "), in evidenza sul modello.\n"
-                            + "Estensione " + (_extent == "thickness" ? "spessore" : "passante") + " • Direzione " + DirectionLabel(_direction)
-                            + " • Attraverso pieghe " + (_acrossBends ? "sì" : "no") + ".\n";
-                        Add(actions, "Estensione: " + (_extent == "thickness" ? "spessore" : "passante"), () =>
-                        { _extent = _extent == "thickness" ? "through_all" : "thickness"; if (_extent == "through_all") _acrossBends = false; Preview(); }, !locked);
-                        Add(actions, "Direzione: " + DirectionLabel(_direction), () =>
-                        { var options = new[] { "positive", "negative", "symmetric" }; _direction = options[(Array.IndexOf(options, _direction) + 1) % 3]; Preview(); }, !locked);
-                        Add(actions, "Attraverso pieghe: " + (_acrossBends ? "sì" : "no"), () => { _acrossBends = !_acrossBends; Preview(); }, !locked && _extent == "thickness");
-                        Add(actions, "Cambia schizzo", () => Page("sketches"), !locked);
-                        break;
-                    case "flat":
-                        title = "Crea sviluppo";
-                        body += "Crea sviluppo modifica il CAD: calcola l'anteprima, poi Applica. Se esiste già non viene ricostruito.\n";
-                        break;
-                    default:
-                        body += "Scegli un comando. Grip muove la vista. Il CAD cambia solo con Applica dopo un'anteprima.\n";
-                        AddCommand(actions, CommandIds.SheetMetalRule, "Regola / Spessore", OpenRule);
-                        AddCommand(actions, CommandIds.SheetMetalFace, "Faccia da schizzo", () => OpenSketchPick(SheetMetalCommand.Face));
-                        AddCommand(actions, CommandIds.Flange, "Flangia", ArmFlange);
-                        AddCommand(actions, CommandIds.SheetMetalCut, "Taglio da schizzo", () => OpenSketchPick(SheetMetalCommand.Cut));
-                        AddCommand(actions, CommandIds.FlatPatternCreate, "Crea sviluppo", StartFlatPattern);
-                        if (_flat != null && _flat.IsVisible) Add(actions, "Nascondi sviluppo", () => _flat.Hide());
-                        else if (_mode.Context.FlatPattern.Exists) Add(actions, "Mostra sviluppo", ShowFlat, _online && _flat != null && _flat.State != FlatPatternState.Loading);
-                        if (_flat != null && _flat.IsVisible)
-                            Add(actions, _flat.Detached ? "Riaggancia sviluppo" : "Stacca sviluppo", () => { if (_flat.Detached) _flat.Attach(); else _flat.Detach(); });
-                        if (status == DesignStatus.Empty)
-                        {
-                            AddCommand(actions, CommandIds.Undo, "Annulla modifica XR", () => ApplyHistory(false));
-                            AddCommand(actions, CommandIds.Redo, "Ripeti modifica XR", () => ApplyHistory(true));
-                        }
-                        Add(actions, "Aggiorna", LoadContext, !_busy);
-                        break;
-                }
-                if (_screen != "tools")
-                {
-                    Add(actions, "Anteprima", Preview, !locked && _session.CanEdit && _mode.Armed != SheetMetalCommand.None);
-                    AddCommand(actions, CommandIds.Apply, "Applica", ApplyPressed);
-                    AddCommand(actions, CommandIds.CancelDraft, "Annulla comando", CancelCommand);
-                }
-            }
-            body += "\n" + StatusBlock();
-            if (!string.IsNullOrEmpty(_notice)) body += "\n" + _notice;
-            if (!string.IsNullOrEmpty(_mode.LastError) && _mode.LastError != _notice) body += "\n" + _mode.LastError;
-            if (!string.IsNullOrEmpty(_session?.Error))
-            {
-                string error = _session.Error.Length > 240 ? _session.Error.Substring(0, 240) + "…" : _session.Error;
-                body += "\nComando non completato: " + error + "\nLa bozza resta modificabile: correggi i parametri e riprova.";
-                if (_geometry != null && _geometry.HasErrorContext) body += "\nIn arancione: geometria da controllare.";
-                Add(actions, "Dettagli errore", () => { _panel.ShowMessage("Dettagli", _session.Error); _panel.SetActions(("Indietro", Render)); });
-            }
-            Add(actions, "Modello 3D / Schizzo", () => DesignRequested?.Invoke(), !locked);
-            Add(actions, "Ispeziona", Close);
-            Add(actions, _pinned ? "Sblocca pannello" : "Blocca pannello", () => { _pinned = !_pinned; Render(); });
-            _panel.ShowMessage(title, body); _panel.SetActions(actions.ToArray());
-            foreach (var button in _panel.GetComponentsInChildren<Button>())
-            {
-                string label = button.GetComponentInChildren<Text>()?.text;
-                if (label == null || !_enabled.TryGetValue(label, out bool enabled)) continue;
-                if (_ids.TryGetValue(label, out string id)) button.gameObject.name = id;
-                button.interactable = enabled;
-            }
-        }
-
         private static string DatumLabel(string datum) => datum == "inner" ? "interno" : datum == "tangent" ? "tangente" : "esterno";
         private static string DirectionLabel(string direction) => direction == "negative" ? "negativa" : direction == "symmetric" ? "simmetrica" : "positiva";
 
@@ -936,32 +1127,37 @@ namespace InventorXrSo.Xr
             var options = new[] { "outer", "inner", "tangent" };
             _flange.SetDatum(options[(Array.IndexOf(options, _flange.Datum) + 1) % 3]);
             PreviewDraft();
-            Render();
+            Refresh();
         }
 
-        // ---------------------------------------------------------------- controller
+        // ---------------------------------------------------------------- controller (OVRInput until the Part B input task)
 
         private void Update()
         {
-            if (_renderPending && Time.unscaledTime >= _nextRender) { _renderPending = false; _nextRender = Time.unscaledTime + 0.15f; Render(); }
+            if (_renderPending && Time.unscaledTime >= _nextRender) { _renderPending = false; _nextRender = Time.unscaledTime + 0.15f; Refresh(); }
+            if (Active)
+            {
+                CommitBar.Tick(Time.unscaledTimeAsDouble);
+                UpdateBar();
+                DropClosedKeypad();
+            }
             if (!Active || !_visible || _ray == null || _ray.Origin == null) return;
             bool tracked = OVRInput.IsControllerConnected(_ray.Controller) && OVRInput.GetControllerPositionTracked(_ray.Controller)
                 && OVRInput.GetControllerOrientationTracked(_ray.Controller);
             var input = EventSystem.current?.currentInputModule as ControllerUiInputModule;
             bool ui = input != null && input.CurrentHit.isValid;
-            bool uiOnPanel = ui && _panel != null && input.CurrentHit.gameObject.transform.IsChildOf(_panel.transform);
             ProcessControllerFrame(tracked,
                 OVRInput.Get(OVRInput.Button.PrimaryHandTrigger, _ray.Controller),
                 OVRInput.Get(OVRInput.Button.PrimaryIndexTrigger, _ray.Controller),
                 OVRInput.GetDown(OVRInput.Button.PrimaryHandTrigger, _ray.Controller),
                 OVRInput.GetDown(OVRInput.Button.PrimaryIndexTrigger, _ray.Controller),
-                ui, uiOnPanel);
+                ui, false);
         }
 
         /// <summary>
-        /// One controller frame. <paramref name="ui"/>: the UI ray hits something; <paramref name="uiOnPanel"/>: that hit
-        /// belongs to this workspace's panel (Grip then grabs the panel). Split from <see cref="Update"/> so tests and the
-        /// Quest acceptance runner can feed synthetic frames through the very same path.
+        /// One controller frame. <paramref name="ui"/>: the UI ray hits something (palette, chip, ring). <paramref name="uiOnPanel"/>
+        /// is unused now that there is no floating panel to grab. Split from <see cref="Update"/> so tests and the Quest
+        /// acceptance runner can feed synthetic frames through the very same path.
         /// </summary>
         private void ProcessControllerFrame(bool tracked, bool grip, bool trigger, bool gripDown, bool triggerDown, bool ui, bool uiOnPanel)
         {
@@ -970,7 +1166,7 @@ namespace InventorXrSo.Xr
             var ray = new Ray(_ray.Origin.position, _ray.Origin.forward);
             bool overUi = ui;
             bool canManipulate = _session?.CanEdit == true && _mode.CanWrite && _mode.Armed == SheetMetalCommand.Flange
-                && _flange.EdgeIds.Count > 0 && _manip.Visible && _screen != "numeric";
+                && _flange.EdgeIds.Count > 0 && _manip.Visible && _ask == null;
             if (_manip.Dragging)
             {
                 if (!grip || !trigger || !canManipulate) EndManipulation();
@@ -987,17 +1183,25 @@ namespace InventorXrSo.Xr
             }
             if (grip && !trigger)
             {
-                if (gripDown) BeginGrab(ray, overUi, uiOnPanel);
+                if (gripDown) BeginGrab(ray, overUi);
                 if (_grab != null) MoveGrab();
                 return;
             }
             _grab = null; _grabFlat = false;
-            if (overUi || _screen == "numeric" || _session?.CanEdit != true || grip) return;
+            if (overUi || _ask != null || _session?.CanEdit != true || grip) return;
             if (!triggerDown) return;
             if (_mode.Armed == SheetMetalCommand.Flange && _designContext != null && _mode.CanWrite && SceneCurrent)
             {
                 string edge = CadCoordinates.PickEdge(_view.transform, _designContext.Edges, ray, requireVisible: true);
                 if (edge != null) { _flange.ToggleEdge(edge); _notice = ""; }
+            }
+            else if (_mode.Armed == SheetMetalCommand.None && _ring != null && Idle && _designContext != null)
+            {
+                // Idle: an edge or the body opens the ring; the empty space closes it.
+                string edge = CadCoordinates.PickEdge(_view.transform, _designContext.Edges, ray, requireVisible: true);
+                if (edge != null) SelectEdge(edge);
+                else if (CadRaycaster.TryPick(ray, 20, out _, out _, out var hit)) { HideRing(); ShowRing(UiSelectionKind.PlanarFace, hit); }
+                else HideRing();
             }
         }
 
@@ -1007,17 +1211,16 @@ namespace InventorXrSo.Xr
             _manip.EndDrag();
             _flange.ReleaseManipulator();
             _renderPending = false;
-            Render();
+            Refresh();
             PreviewPending();
         }
 
-        private void BeginGrab(Ray ray, bool overUi, bool uiOnPanel)
+        private void BeginGrab(Ray ray, bool overUi)
         {
             _grab = null; _grabFlat = false;
-            if (overUi && uiOnPanel) _grab = _panel.transform;
-            else if (!overUi && _flat != null && _flat.Detached && _flat.IsVisible && _flatDisplay.HitTest(ray) && _flatDisplay.MeshRoot != null)
+            if (!overUi && _flat != null && _flat.Detached && _flat.IsVisible && _flatDisplay.HitTest(ray) && _flatDisplay.MeshRoot != null)
             { _grab = _flatDisplay.MeshRoot; _grabFlat = true; }
-            else if (!overUi && CadRaycaster.TryPick(ray, 20, out _, out _, out _)) _grab = _view.transform;
+            else if (!overUi && CadRaycaster.TryPick(ray, 20, out _, out _, out _)) { _bench?.Snap(); _grab = _view.transform; }
             if (_grab == null) return;
             _grabPosition = _ray.Origin.InverseTransformPoint(_grab.position);
             _grabRotation = Quaternion.Inverse(_ray.Origin.rotation) * _grab.rotation;
@@ -1039,15 +1242,25 @@ namespace InventorXrSo.Xr
 
         private void OnDestroy()
         {
+            DetachInput();
             _reads.Cancel(); _reads.Dispose();
             _flange.Changed -= OnFlangeChanged; _mode.Changed -= OnModeChanged;
             _flangeBinding?.Dispose();
             if (_session != null) { _session.Changed -= SessionChanged; _session.Dispose(); }
             if (_flat != null) { _flat.Changed -= OnFlatChanged; _flat.Dispose(); }
-            if (_panel != null) Release(_panel.gameObject);
+            DestroyCanvas(_heightChip != null ? _heightChip.Canvas.gameObject : null);
+            DestroyCanvas(_angleChip != null ? _angleChip.Canvas.gameObject : null);
+            DestroyCanvas(_thicknessChip != null ? _thicknessChip.Canvas.gameObject : null);
+            DestroyCanvas(_ring != null ? _ring.Canvas.gameObject : null);
             if (_previewView != null) Release(_previewView.gameObject);
             if (_geometry != null) Release(_geometry.gameObject);
             if (_manip != null) Release(_manip.gameObject);
+        }
+
+        private static void DestroyCanvas(GameObject go)
+        {
+            if (go == null) return;
+            if (Application.isPlaying) Destroy(go); else DestroyImmediate(go);
         }
 
         private static void Release(GameObject item)
