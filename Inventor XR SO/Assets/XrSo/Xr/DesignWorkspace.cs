@@ -71,6 +71,7 @@ namespace InventorXrSo.Xr
         private Vector3 _grabPosition;
         private Quaternion _grabRotation;
         private bool _dimensionDrag, _gripHeld;
+        private bool GripDown => _gripHeld || (_input != null && _input.PenGripHeld);
         private CadPoint _dragStart;
         private double _dragValue;
         private double _dragSide=1, _dragFactor=1;
@@ -1007,7 +1008,7 @@ namespace InventorXrSo.Xr
         private void OnPenPressed()
         {
             if (!TryPenRay(out var ray, out bool overUi)) return;
-            if (_session?.CanEdit == true && !overUi && !_gripHeld && TryBeginHandleDrag(ray)) return;
+            if (_session?.CanEdit == true && !overUi && !GripDown && TryBeginHandleDrag(ray)) return;
             if (overUi || _ask != null || _session?.CanEdit != true || _gripHeld || _dimensionDrag) return;
             if (_screen == "sketch" && _sketch?.Frame != null) { SketchPress(ray); return; }
             if (_context == null) return;

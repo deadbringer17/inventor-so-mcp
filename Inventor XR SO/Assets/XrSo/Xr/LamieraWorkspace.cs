@@ -86,6 +86,7 @@ namespace InventorXrSo.Xr
         private CancellationTokenSource _reads = new CancellationTokenSource();
         private Transform _grab;
         private bool _grabFlat, _gripHeld, _twoHandActive;
+        private bool GripDown => _gripHeld || (_input != null && _input.PenGripHeld);
         private Vector3 _grabPosition;
         private Quaternion _grabRotation;
         private Transform _leftHand;
@@ -1241,10 +1242,10 @@ namespace InventorXrSo.Xr
         private void OnPenPressed()
         {
             if (!TryPenRay(out var ray, out bool overUi)) return;
-            if (!overUi && !_gripHeld && CanManipulate
+            if (!overUi && !GripDown && CanManipulate
                 && _manip.TryBeginDrag(ray, CadCoordinates.FromWorld(_view.transform, _ray.Origin.position), Precision ? FlangeManipulator.PrecisionFactor : 1))
             { _grab = null; _grabFlat = false; return; }
-            if (overUi || _ask != null || _session?.CanEdit != true || _gripHeld || _manip.Dragging) return;
+            if (overUi || _ask != null || _session?.CanEdit != true || GripDown || _manip.Dragging) return;
             if (_mode.Armed == SheetMetalCommand.Flange && _designContext != null && _mode.CanWrite && SceneCurrent)
             {
                 string edge = CadCoordinates.PickEdge(_view.transform, _designContext.Edges, ray, requireVisible: true);

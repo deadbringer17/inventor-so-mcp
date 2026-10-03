@@ -43,13 +43,13 @@ namespace InventorXrSo.Xr.Input
         {
             if (_last.PenTracked && !f.PenTracked) TrackingLost?.Invoke();
             PenTracked = f.PenTracked; PaletteTracked = f.PaletteTracked;
+            bool grip = f.PenGrip && f.PenTracked;
+            PenGripHeld = grip;   // before the Trigger event: a Grip pressed in the same frame already makes the Trigger view-only
             bool trigger = f.PenTrigger && f.PenTracked;
             if (trigger && !PenHeld) { PenHeld = true; PenPressed?.Invoke(); }
             else if (!trigger && PenHeld) { PenHeld = false; PenReleased?.Invoke(); }
 
-            bool grip = f.PenGrip && f.PenTracked;
             bool lastGrip = _last.PenGrip && _last.PenTracked;
-            PenGripHeld = grip;
             if (grip && !lastGrip) PenGrabStarted?.Invoke();
             else if (!grip && lastGrip) PenGrabEnded?.Invoke();
 

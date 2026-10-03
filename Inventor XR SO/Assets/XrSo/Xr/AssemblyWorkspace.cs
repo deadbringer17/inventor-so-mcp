@@ -81,6 +81,7 @@ namespace InventorXrSo.Xr
         private float _dragFactor = 1f;
         private Transform _grab, _leftHand;
         private bool _gripHeld, _twoHandActive;
+        private bool GripDown => _gripHeld || (_input != null && _input.PenGripHeld);
         private Vector3 _grabPosition, _twoHandVector, _twoHandMid, _twoHandRootPosition;
         private Quaternion _grabRotation, _twoHandRootRotation;
         private float _twoHandRootScale;
@@ -990,7 +991,7 @@ namespace InventorXrSo.Xr
         private void OnPenPressed()
         {
             if (!TryPenRay(out var ray, out bool overUi)) return;
-            if (overUi || _gripHeld || _dragging || _twoHandActive) return;
+            if (overUi || GripDown || _dragging || _twoHandActive) return;
             if (CanCapture && HitMoveTarget(ray)) { BeginDrag(); return; }
             if (!Editable || _ask != null) return;
             if (CadRaycaster.TryPick(ray, 20, out var body, out int triangle, out var hit)) PickBody(body, triangle, hit);

@@ -120,10 +120,10 @@ Piano: [Fase 4](superpowers/plans/2026-10-03-inventor-xr-so-m6-fase4-assieme-isp
 | Prova | Esito |
 |---|---|
 | Core `XrSo.Core.Tests` | 443/443 PASS |
-| Unity EditMode | 374/374 PASS |
+| Unity EditMode | 375/375 PASS (incluso il test del Grip nello stesso frame del Trigger) |
 | Compilazione del codice dei runner (`XR_SO_ACCEPTANCE`) | PASS (controllo con `csc.rsp` temporaneo) |
-| APK ordinario / di collaudo | NOT COVERED: non rigenerati in questa sessione |
-| Runner M1–M5 sul Quest 3 con Inventor 2027 | NOT COVERED: serve il visore sveglio/indossato, host con IP corrente e fixture su Inventor; da eseguire con la persona presente |
+| APK ordinario (sul Quest, hash verificato) / di collaudo | build riuscite; sha256 `e6d579aa…21b3` / `9b8b111e…b252` |
+| Runner M1–M5 sul Quest 3 con Inventor 2027 (3 ottobre 2026), input **sintetico** | PASS COMPLETE ×5: M1 `artifacts/m1-verification/quest-acceptance-run-20261003-191506.json`; M2 `…m2-verification/…-20261003-191526.json`; M3 `…m3-verification/…-20261003-191048.json`; M4 `…m4-verification/…-20261003-191425.json`; M5 `…m5-verification/…-20261003-191349.json` |
 | Assieme sollevato, isolamento, anello, tavolozza sul controller visti sul Quest | NOT COVERED: prova fisica da seduto |
 
 Scostamenti dichiarati:
@@ -133,3 +133,10 @@ Scostamenti dichiarati:
 - Rimossi da Ispeziona: «Aggiorna» (Proprietà ricarica ogni volta), schermata «Dettagli errore» (vanno sull'HUD), tinta Lamiera-primaria della vecchia scheda.
 
 M6-01 e M6-06 hanno ora i sottocasi automatici (EditMode, input sintetico) ma restano **aperti**: mancano runner sul Quest e prova fisica. M6-08 ha il test sul catalogo, aperto per lo stesso motivo. M6-09 resta aperto (runner M1–M5 da rieseguire con la Fase 4 e runner M6 nella Fase 5); M6-10 resta aperto.
+
+Note sull'esecuzione:
+
+- **Bug trovato dal runner M4** (`…m4-verification/…-20261003-185955.json`, FAIL «Grip held with the Trigger is view only»): con Grip e Trigger premuti nello stesso frame, `XrInput` emetteva il Trigger prima del Grip e il workspace catturava la maniglia. Corretto: `PenGripHeld` è aggiornato prima degli eventi del Trigger e Assieme, Progettazione e Lamiera lo leggono (`GripDown`); aggiunto il test EditMode. Dopo la correzione APK ricompilati e M1–M5 rieseguiti: tutti PASS.
+- **Run non valido**: durante la ripetizione Inventor si è chiuso da solo (`E_FAIL` in M5 `…m5-verification/…-20261003-191112.json`, fixture M4 non preparata). Non è un fallimento del software: Inventor riaperto, host HTTPS riavviato (`--target 2027`, `--pair-host 192.168.1.227`), M5 e M4 ripetuti con esito PASS.
+- Primo tentativo M1 (`…-185318.json`): `TIMEOUT before_runner_start`, visore sveglio ma senza finestra in primo piano; non è un fallimento del test.
+- Ogni fixture è stata chiusa senza salvare, il documento dell'utente riattivato e l'APK ordinario reinstallato con hash verificato.
