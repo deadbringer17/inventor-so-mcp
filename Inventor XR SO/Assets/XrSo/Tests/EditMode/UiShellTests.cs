@@ -67,6 +67,19 @@ namespace InventorXrSo.Tests
         }
 
         [Test]
+        public void PaletteSitsAboveTheControllerFaceInTheSpecPose()
+        {
+            var shell = Shell(Catalog(out _));
+            var t = shell.Palette.Canvas.transform;
+            // Spec position (M6, Tavolozza): on the controller face, tilted 45 degrees toward the eyes. The wrist menu that used to
+            // force it below the controller is gone, so nothing may move it from here (see AppController).
+            Assert.AreEqual(new Vector3(0, 0.05f, 0.02f), t.localPosition);
+            Assert.AreEqual(45f, t.localEulerAngles.x, 1e-3f);
+            var source = System.IO.File.ReadAllText(System.IO.Path.Combine(Application.dataPath, "XrSo/Xr/AppController.cs"));
+            StringAssert.DoesNotContain("Palette.Canvas.transform.localPosition", source, "AppController must not override the palette pose");
+        }
+
+        [Test]
         public void TabsCycleAndButtonsInvokeActions()
         {
             var catalog = Catalog(out _);

@@ -134,6 +134,11 @@ namespace InventorXrSo.Tests
             if (_material != null) Object.DestroyImmediate(_material);
         }
 
+        private ActionCatalog CatalogFor()
+        {
+            var catalog = new ActionCatalog(new SpacesActions(() => { }, () => { }, () => { }, () => { }, () => { }, () => true, () => true, () => true, () => true));
+            catalog.SetActive(_workspace); return catalog;
+        }
         private XrAction Act(string id) => _workspace.Actions.Single(a => a.Id == id);
         private bool Enabled(string id) => _workspace.Actions.Any(a => a.Id == id && a.Enabled);
         private bool Has(string id) => _workspace.Actions.Any(a => a.Id == id);
@@ -405,7 +410,7 @@ namespace InventorXrSo.Tests
             StringAssert.Contains("Applica", AllHud());
             Assert.False(_workspace.InvokeVoiceAction("Applica"), "Applica is never run by voice");
             Assert.AreEqual(0, _backend.Commits);
-            var target = WorkspaceVoiceTarget.ForWorkspaces(null, null, _workspace, null); target.InSession = true;
+            var target = WorkspaceVoiceTarget.ForWorkspaces(null, null, _workspace, null, CatalogFor()); target.InSession = true;
             Assert.False(target.TryResolveAction("applica", out _), "Applica is never resolved by voice");
             Do(Apply); Assert.AreEqual(1, _backend.Commits);
         }
@@ -762,7 +767,7 @@ namespace InventorXrSo.Tests
 
         [Test] public async Task VoiceResolvesIsolateOnTheCatalogLabelsAndRunsTheSameAction()
         {
-            var target = WorkspaceVoiceTarget.ForWorkspaces(null, null, _workspace, null); target.InSession = true;
+            var target = WorkspaceVoiceTarget.ForWorkspaces(null, null, _workspace, null, CatalogFor()); target.InSession = true;
             Assert.False(target.TryResolveAction("isola", out var none) && none.Enabled, "no component selected: disabled");
             await Select();
             Assert.True(target.TryResolveAction("isola", out var action)); Assert.True(action.Enabled);

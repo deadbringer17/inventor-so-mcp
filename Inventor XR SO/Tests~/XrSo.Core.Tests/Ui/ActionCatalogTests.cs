@@ -120,6 +120,33 @@ namespace XrSo.Core.Tests.Ui
             if (kind == VoiceMatchKind.Disabled) Assert.Equal("spento", m.Reason);
         }
 
+        [Theory]
+        [InlineData("distanza", "Distanza: 5 mm")]
+        [InlineData("scala da tavolo", "Scala da tavolo • 60 cm")]
+        [InlineData("asse", "Asse 2")]
+        public void ResolveVoice_accepts_a_label_without_its_value(string phrase, string label)
+        {
+            var p = new Provider();
+            p.All.Add(A("v", label, "t"));
+            var c = new ActionCatalog(Spaces());
+            c.SetActive(p);
+            var m = c.ResolveVoice(phrase);
+            Assert.Equal(VoiceMatchKind.Ok, m.Kind);
+            Assert.Equal("v", m.Action.Id);
+        }
+
+        [Fact]
+        public void ResolveVoice_value_aliases_stay_ambiguous_between_two_enabled_labels()
+        {
+            var p = new Provider();
+            p.All.Add(A("a1", "Asse 1", "t"));
+            p.All.Add(A("a2", "Asse 2", "t"));
+            var c = new ActionCatalog(Spaces());
+            c.SetActive(p);
+            Assert.Equal(VoiceMatchKind.Ambiguous, c.ResolveVoice("asse").Kind);
+            Assert.Equal("a2", c.ResolveVoice("asse 2").Action.Id);
+        }
+
         [Fact]
         public void ResolveVoice_rejects_two_enabled_actions_with_the_same_name()
         {

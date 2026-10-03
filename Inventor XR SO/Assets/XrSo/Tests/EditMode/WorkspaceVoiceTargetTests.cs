@@ -1,14 +1,17 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using InventorXrSo.Core.Ui;
 using InventorXrSo.Core.Voice;
+using InventorXrSo.Xr;
 using InventorXrSo.Xr.Voice;
-using InventorXrSo.Unity.Ui;
 using NUnit.Framework;
-using UnityEngine;
 
 namespace InventorXrSo.Tests
 {
     public class WorkspaceVoiceTargetTests
     {
-        private sealed class Surface : IWorkspaceVoiceSurface, IWorkspacePanelVoiceSurface, IWorkspaceWristVoiceSurface
+        private sealed class Surface : IWorkspaceVoiceSurface
         {
             public bool Active { get; set; }
             public bool Enabled { get; set; } = true;
@@ -17,42 +20,115 @@ namespace InventorXrSo.Tests
             public bool Invoke(string id) { LastInvoked = id; return true; }
             public DictationField ArmedField { get; set; }
             public bool SetArmedField(string id, double v) { LastField = id; LastValue = v; return true; }
-            public HomePanel VoicePanel { get; set; }
-            public string LastWrist;
-            public bool IsWristEnabled(string label) => Active && label == "Progettazione";
-            public bool InvokeWrist(string label) { LastWrist = label; return IsWristEnabled(label); }
         }
 
-        // Workspace M6 senza pannello: VoicePanel null, le etichette vengono dalle azioni dichiarate.
-        private sealed class ActionSurface : IWorkspaceVoiceSurface, IWorkspacePanelVoiceSurface, IWorkspaceActionVoiceSurface
+        /// <summary>Workspace M6: declares its actions to the catalog; voice labels come from there.</summary>
+        private sealed class Provider : IActionProvider
         {
-            public bool Active { get; set; } = true;
-            public bool IsEnabled(string id) => true;
-            public bool Invoke(string id) => true;
-            public DictationField ArmedField => null;
-            public bool SetArmedField(string id, double v) => false;
-            public HomePanel VoicePanel => null;
-            public readonly System.Collections.Generic.List<string> Invoked = new System.Collections.Generic.List<string>();
-            public System.Collections.Generic.IEnumerable<(string label, bool enabled)> VoiceActions { get; set; } =
-                new[] { ("Estrusione", true), ("Foro", true), ("Applica", true), ("Raccordo", false), ("Linea", true), ("Linea", true) };
-            public bool InvokeVoiceAction(string label) { Invoked.Add(label); return true; }
+            public readonly List<XrAction> All = new List<XrAction>();
+            public readonly List<string> Invoked = new List<string>();
+            public IReadOnlyList<XrTab> Tabs { get; } = new[] { new XrTab("t", "T") };
+            public IEnumerable<XrAction> Actions => All;
+            public IEnumerable<XrAction> ContextActions(SelectionKind selection) => Enumerable.Empty<XrAction>();
+            public CommitBarState CommitBar => null;
+            public XrAction Add(string id, string label, bool enabled = true, string[] synonyms = null, bool voice = true, string reason = "spento")
+            {
+                var action = new XrAction(id, label, "t", () => enabled, () => Invoked.Add(id), () => reason, synonyms, voiceInvokes: voice);
+                All.Add(action);
+                return action;
+            }
+        }
+
+        private static ActionCatalog CatalogWith(Provider provider, Action<string> openSpace = null, bool inSession = true)
+        {
+            Action open(string name) => () => openSpace?.Invoke(name);
+            var spaces = new SpacesActions(open("inspect"), open("design"), open("lamiera"), open("assembly"), open("connection"),
+                () => inSession, () => true, () => true, () => true);
+            var catalog = new ActionCatalog(spaces);
+            catalog.SetActive(provider);
+            return catalog;
         }
 
         [Test]
-        public void Panelless_workspace_resolves_labels_from_its_actions_and_never_voices_apply()
+        public void Catalog_actions_resolve_by_label_and_synonym_and_apply_is_never_voiced()
         {
-            var surface = new ActionSurface();
-            var target = new WorkspaceVoiceTarget(null, surface) { InSession = true };
+            var provider = new Provider();
+            provider.Add("design.extrude", "Estrusione", synonyms: new[] { "estrudi", "crea estrusione" });
+            provider.Add("design.hole", "Foro", synonyms: new[] { "crea foro" });
+            provider.Add(CommitIds.Apply, "Applica", voice: false);
+            provider.Add("design.fillet", "Raccordo", enabled: false, reason: "Scegli prima uno spigolo.");
+            provider.Add("a", "Linea"); provider.Add("b", "Linea");
+            var target = new WorkspaceVoiceTarget(null) { InSession = true, Catalog = CatalogWith(provider) };
             Assert.IsTrue(target.TryResolveAction("estrudi", out var extrude));
+            Assert.AreEqual("act:design.extrude", extrude.Id);
             Assert.IsTrue(target.IsEnabled(extrude.Id));
             Assert.IsTrue(target.Invoke(extrude.Id));
-            Assert.AreEqual("Estrusione", surface.Invoked[0]);
+            CollectionAssert.AreEqual(new[] { "design.extrude" }, provider.Invoked);
             Assert.IsTrue(target.TryResolveAction("crea foro", out _));
             Assert.IsFalse(target.TryResolveAction("applica", out _), "M5-11: Apply is physical only");
             Assert.IsFalse(target.TryResolveAction("linea", out _), "homonymous labels need the pointer");
+            Assert.IsFalse(target.TryResolveAction("flangia", out _), "finite vocabulary: unknown labels are refused");
             Assert.IsTrue(target.TryResolveAction("raccordo", out var disabled));
             Assert.IsFalse(disabled.Enabled);
-            Assert.IsFalse(target.Invoke(disabled.Id));
+            Assert.IsFalse(target.Invoke(disabled.Id), "disabled means no mutation");
+            Assert.AreEqual("Scegli prima uno spigolo.", target.DisabledReason(disabled.Id));
+        }
+
+        [Test]
+        public void Prefixes_and_values_in_labels_are_understood_without_scanning_any_panel()
+        {
+            var provider = new Provider();
+            provider.Add("inspect.section.offset", "Scostamento: 25 mm");
+            provider.Add("inspect.scale.table", "Scala da tavolo • 60 cm");
+            provider.Add("inspect.context.enter", "Apri contesto");
+            var target = new WorkspaceVoiceTarget(null) { InSession = true, Catalog = CatalogWith(provider) };
+            Assert.IsTrue(target.TryResolveAction("premi scostamento", out var offset));
+            Assert.AreEqual("act:inspect.section.offset", offset.Id);
+            Assert.IsTrue(target.TryResolveAction("scala da tavolo", out _));
+            Assert.IsTrue(target.TryResolveAction("apri contesto", out var enter));
+            Assert.AreEqual("act:inspect.context.enter", enter.Id);
+        }
+
+        [Test]
+        public void Workspace_spaces_are_selected_through_the_catalog_actions()
+        {
+            var opened = new List<string>();
+            var target = new WorkspaceVoiceTarget(null) { InSession = true, Catalog = CatalogWith(new Provider(), opened.Add) };
+            Assert.IsTrue(target.TryResolveAction("progettazione", out var action));
+            Assert.AreEqual("act:spaces.design", action.Id);
+            Assert.IsTrue(target.Invoke(action.Id));
+            Assert.IsTrue(target.TryResolveAction("assemblaggio", out var assembly));
+            Assert.IsTrue(target.Invoke(assembly.Id));
+            Assert.IsTrue(target.TryResolveAction("ispeziona", out var inspect));
+            Assert.IsTrue(target.Invoke(inspect.Id));
+            CollectionAssert.AreEqual(new[] { "design", "assembly", "inspect" }, opened);
+        }
+
+        [Test]
+        public void Catalog_actions_are_refused_outside_a_session_or_without_a_catalog()
+        {
+            var provider = new Provider();
+            provider.Add("design.hole", "Foro");
+            var target = new WorkspaceVoiceTarget(null) { InSession = false, Catalog = CatalogWith(provider) };
+            Assert.IsFalse(target.IsEnabled("act:design.hole"));
+            Assert.IsFalse(target.Invoke("act:design.hole"));
+            Assert.IsEmpty(provider.Invoked);
+            target.InSession = true;
+            Assert.IsTrue(target.Invoke("act:design.hole"));
+            target.Catalog = null;
+            Assert.IsFalse(target.TryResolveAction("foro", out _));
+            Assert.IsFalse(target.Invoke("act:design.hole"));
+        }
+
+        [Test]
+        public void Undo_redo_and_recovery_labels_need_a_spoken_confirmation()
+        {
+            var provider = new Provider();
+            provider.Add("u", "Annulla modifica XR"); provider.Add("r", "Ho controllato il CAD"); provider.Add("h", "Foro");
+            var target = new WorkspaceVoiceTarget(null) { InSession = true, Catalog = CatalogWith(provider) };
+            Assert.IsTrue(target.TryResolveAction("annulla modifica xr", out var undo)); Assert.IsTrue(undo.RequiresConfirmation);
+            Assert.IsTrue(target.TryResolveAction("ho controllato il cad", out var checkedCad)); Assert.IsTrue(checkedCad.RequiresConfirmation);
+            Assert.IsTrue(target.TryResolveAction("foro", out var hole)); Assert.IsFalse(hole.RequiresConfirmation);
         }
 
         [Test]
@@ -151,89 +227,6 @@ namespace InventorXrSo.Tests
             Assert.IsFalse(t.IsEnabled(CommandIds.Isolate));
             Assert.AreEqual(WorkspaceVoiceTarget.IsolateUnavailableReason, t.DisabledReason(CommandIds.Isolate));
             Assert.AreEqual(WorkspaceVoiceTarget.UnavailableReason, t.DisabledReason(CommandIds.Fillet));
-        }
-
-        [Test]
-        public void Visible_panel_actions_are_contextual_and_ambiguous_or_apply_actions_are_refused()
-        {
-            var root = new GameObject("voice-test");
-            try
-            {
-                var panel = HomePanel.Create(root.transform);
-                int invoked = 0;
-                panel.ShowMessage("Assembly", "");
-                panel.SetActions(("Componenti", () => invoked++), ("Applica", () => invoked += 100),
-                    ("Apri ›", () => invoked += 10), ("Apri ›", () => invoked += 10));
-                var target = new WorkspaceVoiceTarget(new Surface { Active = true, VoicePanel = panel }) { InSession = true };
-                Assert.IsTrue(target.TryResolveAction("componenti", out var action));
-                Assert.IsTrue(action.Enabled);
-                Assert.IsTrue(target.Invoke(action.Id));
-                Assert.AreEqual(1, invoked);
-                Assert.IsFalse(target.TryResolveAction("applica", out _));
-                Assert.IsFalse(target.TryResolveAction("apri", out _));
-            }
-            finally { Object.DestroyImmediate(root); }
-        }
-
-        [Test]
-        public void Numeric_prompt_uses_the_same_submit_path_after_a_physical_voice_confirmation()
-        {
-            var root = new GameObject("number-test");
-            try
-            {
-                var panel = HomePanel.Create(root.transform);
-                string submitted = null;
-                panel.PromptText("Gradi", "", "0", value => submitted = value, () => { }, "deg", -360, 360);
-                var target = new WorkspaceVoiceTarget(new Surface { Active = true, VoicePanel = panel }) { InSession = true };
-                var field = target.ArmedField;
-                Assert.AreEqual(QuantityUnit.Degrees, field.Unit);
-                target.SetField(field.Id, 12.5);
-                Assert.AreEqual("12.5", submitted);
-                Assert.IsNull(target.ArmedField);
-            }
-            finally { Object.DestroyImmediate(root); }
-        }
-
-        [Test]
-        public void Workspace_mode_can_be_selected_through_the_existing_wrist_action()
-        {
-            var inspect = new Surface { Active = true };
-            var target = new WorkspaceVoiceTarget(null, null, null, inspect) { InSession = true };
-            Assert.IsTrue(target.TryResolveAction("progettazione", out var action));
-            Assert.AreEqual("wrist:Progettazione", action.Id);
-            Assert.IsTrue(target.Invoke(action.Id));
-            Assert.AreEqual("Progettazione", inspect.LastWrist);
-        }
-
-        [Test]
-        public void Extrude_synonyms_use_the_current_visible_button()
-        {
-            var root = new GameObject("extrude-voice-test");
-            try
-            {
-                var panel = HomePanel.Create(root.transform);
-                int opened = 0;
-                panel.ShowMessage("Progettazione", "");
-                panel.SetActions(("Estrusione", () => opened++));
-                var target = new WorkspaceVoiceTarget(new Surface { Active = true, VoicePanel = panel }) { InSession = true };
-                Assert.IsTrue(target.TryResolveAction("estrudi", out var verb));
-                Assert.IsTrue(target.TryResolveAction("estrusione", out var noun));
-                Assert.AreEqual(verb.Id, noun.Id);
-                Assert.IsTrue(target.Invoke(verb.Id));
-                Assert.AreEqual(1, opened);
-                panel.SetActions(("Estrudi schizzo", () => opened++));
-                Assert.IsTrue(target.TryResolveAction("estrudi", out var sketch));
-                Assert.IsTrue(target.Invoke(sketch.Id));
-                Assert.AreEqual(2, opened);
-                panel.SetActions(("Foro", () => opened++));
-                Assert.IsFalse(target.TryResolveAction("estrudi", out _));
-                Assert.IsTrue(target.TryResolveAction("crea foro", out _));
-                panel.SetActions(("Mostra sviluppo", () => opened++));
-                Assert.IsTrue(target.TryResolveAction("mostra sviluppo", out var show));
-                Assert.IsTrue(target.Invoke(show.Id));
-                Assert.AreEqual(3, opened);
-            }
-            finally { Object.DestroyImmediate(root); }
         }
     }
 }

@@ -1408,7 +1408,7 @@ namespace InventorXrSo.Tests
 
         [Test] public void LamieraVoiceTargetWorksWithoutAPanel()
         {
-            var target = InventorXrSo.Xr.Voice.WorkspaceVoiceTarget.ForLamiera(_workspace);
+            var target = InventorXrSo.Xr.Voice.WorkspaceVoiceTarget.ForLamiera(_workspace, CatalogFor());
             target.InSession = true;
             Assert.True(target.TryResolveAction("flangia", out var action));
             Assert.True(target.IsEnabled(action.Id));

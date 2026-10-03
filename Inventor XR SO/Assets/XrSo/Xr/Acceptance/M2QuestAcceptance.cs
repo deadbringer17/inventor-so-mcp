@@ -8,10 +8,11 @@ using System.Threading.Tasks;
 using InventorXrSo.Core.Backend;
 using InventorXrSo.Core.Selection;
 using InventorXrSo.Core.Session;
+using ActionCatalog = InventorXrSo.Core.Ui.ActionCatalog;
+using XrAction = InventorXrSo.Core.Ui.XrAction;
 using InventorXrSo.Unity.Scene;
 using InventorXrSo.Unity.Ui;
 using UnityEngine;
-using UnityEngine.UI;
 
 namespace InventorXrSo.Xr
 {
@@ -21,6 +22,7 @@ namespace InventorXrSo.Xr
         internal static readonly string[] ReflectedMembers =
         {
             "AppController._inspect",
+            "AppController._catalog",
             "AppController._selection",
             "AppController._selecting",
             "AppController.sceneView",
@@ -28,10 +30,6 @@ namespace InventorXrSo.Xr
             "AppController.environment",
             "AppController.EnterSession",
             "AppController.OnPicked",
-            "HomePanel._entry",
-            "InspectWorkspace._panel",
-            "InspectWorkspace._wrist",
-            "InspectWorkspace._breadcrumb",
             "InspectWorkspace._context",
             "InspectWorkspace._section",
             "InspectWorkspace._measure",
@@ -41,8 +39,6 @@ namespace InventorXrSo.Xr
             "InspectWorkspace._selected",
             "InspectWorkspace._info",
             "InspectWorkspace._busy",
-            "InspectWorkspace._screen",
-            "InspectWorkspace._page",
             "InspectWorkspace._scaleMode",
             "InspectWorkspace._roomExtent",
             "InspectWorkspace.OnPointPicked",
@@ -78,53 +74,49 @@ namespace InventorXrSo.Xr
             var environment = Read<EnvironmentModeController>(App, "environment");
             var inspect = Read<InspectWorkspace>(App, "_inspect");
             var selection = Read<SelectionService>(App, "_selection");
-            var panel = Read<HomePanel>(inspect, "_panel");
-            var wrist = Read<Canvas>(inspect, "_wrist");
-            var breadcrumb = Read<Canvas>(inspect, "_breadcrumb");
             var context = Read<BrowserContext>(inspect, "_context");
             var section = Read<SectionPlane>(inspect, "_section");
             var measure = Read<MeasurementView>(inspect, "_measure");
             var inspection = Read<IInspectionBackend>(inspect, "_backend");
-            Check(view != null && visuals != null && environment != null && inspect != null && selection != null && panel != null
-                && wrist != null && breadcrumb != null && context != null && section != null && measure != null && inspection != null,
-                "app exposes the Inspect workspace, its panels, context, section, measurement and backend");
+            Check(view != null && visuals != null && environment != null && inspect != null && selection != null
+                && context != null && section != null && measure != null && inspection != null,
+                "app exposes the Inspect workspace, its context, section, measurement and backend");
             Check(view.Instances.Count == 2, "CadSceneView shows the 2 fixture occurrences, found " + view.Instances.Count);
             Check(Mathf.Abs(view.transform.lossyScale.x - 1f) < 1e-4f, "scene starts at 1:1");
             var assemblyDocumentId = fixture.Graph.DocumentId;
 
-            // M2-Inspect: the wrist menu opens the Inspect tools.
-            Check(AllText(wrist).Contains("ISPEZIONE"), "wrist menu shows the INSPECT mode");
-            Click(wrist, "Ispeziona");
-            Check(panel.gameObject.activeSelf && Read<string>(inspect, "_screen") == "tools", "wrist 'Ispeziona' opened the tools page");
-            var tools = AllText(panel);
-            Check(tools.Contains("Solo ispezione") && HasButton(panel, "Esplora") && HasButton(panel, "Misura")
-                && HasButton(panel, "Sezione") && HasButton(panel, "Scala"), "tools page lists Browser, Misura, Sezione and Scala");
-            Pass("M2-Inspect", "Inspect opened from the wrist menu; tools page shows Browser, Proprieta, Misura, Sezione, Scala and the environment switch");
+            // M2-Inspect: Ispeziona is on the palette by default; its tabs and actions are declared, no panel or wrist menu exists.
+            // Every tap below is an action invoked by id: SYNTHETIC input, never a hand or a controller ray.
+            Record("Actions are invoked by id through the catalog and numbers typed on the keypad entry (synthetic input)");
+            Check(inspect.Active && ReferenceEquals(Catalog.Active, inspect), "Ispeziona is the active workspace of the palette");
+            var tabs = Catalog.Tabs.Select(t => t.Label).ToList();
+            Check(tabs.SequenceEqual(new[] { "Misura", "Sezione", "Vista", "Spazi" }), "palette tabs are " + string.Join(" / ", tabs));
+            foreach (var id in new[] { InspectWorkspace.IdBrowse, InspectWorkspace.IdProperties, InspectWorkspace.IdMeasure, InspectWorkspace.IdSection,
+                InspectWorkspace.IdScale, InspectWorkspace.IdEnvironment, InspectWorkspace.IdDocuments })
+                Check(Catalog.Find(id) != null, "the catalog declares '" + id + "'");
+            Pass("M2-Inspect", "Ispeziona on the palette with tabs Misura, Sezione, Vista; Esplora, Proprieta, Misura, Sezione, Scala and the environment switch are declared actions");
 
-            // M2-Browser: fixture hierarchy.
-            Click(wrist, "Esplora");
-            Check(Read<string>(inspect, "_screen") == "browser", "wrist 'Browser' opened the browser page");
+            // M2-Browser: fixture hierarchy as a picker list of the Vista tab.
+            RunAction(InspectWorkspace.IdBrowse);
             Check(context.Current != null && context.Current.Name.StartsWith(FixturePrefix, StringComparison.Ordinal) && context.Path.Count == 1,
                 "browser starts at the fixture assembly root");
             var children = context.Current.Children.ToList();
             Check(children.Count == 2 && children.All(c => !c.Suppressed && c.DefinitionKind == "part"), "root has exactly 2 unsuppressed part occurrences");
-            foreach (var child in children) Check(HasButton(panel, child.Name), "browser lists occurrence '" + child.Name + "'");
-            Check(AllText(panel).Contains(context.Current.Name), "browser header shows the root name");
+            foreach (var child in children) Check(FindPick(child.Name) != null, "browser lists occurrence '" + child.Name + "'");
+            Check((inspect.Notice ?? "").Contains(context.Current.Name), "the HUD shows the root context");
             Pass("M2-Browser", "browser lists " + context.Current.Name + " > " + string.Join(", ", children.Select(c => c.Name)));
 
             // M2-Properties: unknown values first, then a real occurrence.
             var node = children[0];
             inspect.ClearSelection();
-            inspect.Open("details");
-            var unknown = AllText(panel);
+            var unknown = inspect.InfoText;
             Check(unknown.Contains("Materiale: " + Dash) && unknown.Contains("Massa: " + Dash) && unknown.Contains("Volume: " + Dash)
                 && unknown.Contains("Area: " + Dash), "without loaded properties every value is shown as " + Dash + ", none invented");
-            inspect.Open("browser");
             await WaitUntil(() => !ReadBoolean(inspect, "_busy"), ct);
-            Click(panel, node.Name);
+            PickItem(node.Name);
             var info = await WaitFor(() => Read<InspectionInfo>(inspect, "_info"), ct);
             await WaitUntil(() => !ReadBoolean(inspect, "_busy"), ct);
-            Check(Read<SceneNode>(inspect, "_selected") == node, "browser click selected occurrence " + node.Name);
+            Check(Read<SceneNode>(inspect, "_selected") == node, "browser entry selected occurrence " + node.Name);
             Check(selection.Current.Kind == SelectionKind.Occurrence && selection.Current.OccurrenceId == node.OccurrenceId,
                 "SelectionService holds the browser-selected occurrence");
             var state = Read<DocumentState>(inspect, "_documentState");
@@ -133,9 +125,11 @@ namespace InventorXrSo.Xr
             Check(direct.VolumeMm3.HasValue && Math.Abs(direct.VolumeMm3.Value - info.VolumeMm3.Value) < 1e-6
                 && direct.MassKg == info.MassKg && direct.AreaMm2 == info.AreaMm2 && direct.Material == info.Material,
                 "properties shown by the workspace equal a direct InspectionInfo read from the backend");
-            inspect.Open("details");
-            var details = AllText(panel);
-            Check(details.Contains(node.Name) && details.Contains("Volume: " + F(info.VolumeMm3.Value)), "details page shows the volume " + F(info.VolumeMm3.Value) + " mm3");
+            RunAction(InspectWorkspace.IdProperties);
+            await WaitUntil(() => !ReadBoolean(inspect, "_busy") && inspect.Notice.Contains("Volume: "), ct);
+            var details = inspect.InfoText;
+            Check(details.Contains(node.Name) && details.Contains("Volume: " + F(info.VolumeMm3.Value)), "properties on the HUD show the volume " + F(info.VolumeMm3.Value) + " mm3");
+            Check(inspect.Notice.Contains("Volume: " + F(info.VolumeMm3.Value)), "the HUD message carries the properties");
             CheckShown(details, "Massa: ", info.MassKg.HasValue);
             CheckShown(details, "Area: ", info.AreaMm2.HasValue);
             CheckShown(details, "Vincoli: ", info.Constraints.HasValue);
@@ -147,24 +141,23 @@ namespace InventorXrSo.Xr
                 + (info.MassKg.HasValue ? F(info.MassKg.Value) + " kg" : Dash) + ", area " + (info.AreaMm2.HasValue ? F(info.AreaMm2.Value) + " mm2" : Dash)
                 + "; unknown values render as " + Dash);
 
-            // M2-Breadcrumb: enter the occurrence context, go back with the breadcrumb.
-            Click(panel, "Apri contesto");
+            // M2-Breadcrumb: enter the occurrence context and go back (the context path now lives on the HUD).
+            RunAction(InspectWorkspace.IdEnter);
             Check(context.Path.Count == 2 && context.Current == node, "'Apri contesto' entered " + node.Name);
-            var crumbs = AllText(breadcrumb);
-            Check(crumbs.Contains(context.Path[0].Name) && crumbs.Contains(node.Name), "breadcrumb shows root and occurrence");
+            Check(inspect.Notice.Contains(context.Path[0].Name) && inspect.Notice.Contains(node.Name), "the HUD shows root and occurrence in the context path");
             Check(selection.Current.Kind == SelectionKind.None && Read<SceneNode>(inspect, "_selected") == null, "entering a context clears the local selection");
-            Click(breadcrumb, "‹");
-            Check(context.Path.Count == 1 && context.Current.OccurrenceId == fixture.Graph.Root.OccurrenceId, "breadcrumb Back returned to the assembly root");
+            RunAction(InspectWorkspace.IdBack);
+            Check(context.Path.Count == 1 && context.Current.OccurrenceId == fixture.Graph.Root.OccurrenceId, "'Indietro' returned to the assembly root");
+            Check(!Catalog.Find(InspectWorkspace.IdBack).Enabled, "'Indietro' is disabled at the root");
             Call(inspect, "Enter", node);
-            Check(context.Path.Count == 2, "occurrence context entered again");
-            Click(breadcrumb, context.Path[0].Name);
-            Check(context.Path.Count == 1, "breadcrumb root button returned to the assembly root");
-            Pass("M2-Breadcrumb", "entered " + node.Name + " (path depth 2) and returned to the root with Back and with the root crumb");
+            Check(context.Path.Count == 2, "occurrence context entered again (double-pick path)");
+            RunAction(InspectWorkspace.IdBack);
+            Check(context.Path.Count == 1, "'Indietro' returned to the assembly root again");
+            Pass("M2-Breadcrumb", "entered " + node.Name + " (path depth 2, shown on the HUD) and returned to the root with Indietro");
 
-            // M2-Measure: point-to-point between the two occurrence centers, then pin.
-            inspect.Open("tools");
-            Click(panel, "Misura");
-            Check(inspect.Measuring && Read<string>(inspect, "_screen") == "measure", "'Misura' started a measurement");
+            // M2-Measure: point-to-point between the two occurrence centers, then pin. The two points are SYNTHETIC (no ray).
+            RunAction(InspectWorkspace.IdMeasure);
+            Check(inspect.Measuring, "'Misura' started a measurement");
             var pointA = view.transform.TransformPoint(InstanceBounds(view.transform, view.Instances[0]).center);
             var pointB = view.transform.TransformPoint(InstanceBounds(view.transform, view.Instances[1]).center);
             Call(inspect, "OnPointPicked", pointA);
@@ -175,87 +168,86 @@ namespace InventorXrSo.Xr
             var geometric = InspectionGeometry.DistanceMm(view.transform, pointA, pointB);
             Check(Math.Abs(distance - 150.0) <= 0.5, "distance between the occurrence centers is 150 mm +/- 0.5, measured " + F(distance) + " mm");
             Check(Math.Abs(distance - geometric) <= 0.01, "measurement equals InspectionGeometry.DistanceMm, " + F(geometric) + " mm");
-            Click(panel, "Fissa misura");
+            RunAction(InspectWorkspace.IdMeasurePin);
             Check(measure.PinnedCount == 1 && !measure.DistanceMm.HasValue, "measurement pinned on the model");
             Pass("M2-Measure", "point-to-point between occurrence centers " + F(distance) + " mm (expected 150), pinned (" + measure.PinnedCount + "/20)");
 
-            // M2-Section: enable, numeric offset through the keypad, plane visible.
-            inspect.Open("tools");
-            Click(panel, "Sezione");
-            Check(Read<string>(inspect, "_screen") == "section", "'Sezione' opened the section page");
-            Click(panel, "Attiva sezione");
+            // M2-Section: enable, numeric offset through the keypad entry, plane visible.
+            RunAction(InspectWorkspace.IdSection);
             Check(section.Active, "section plane activated");
-            Click(panel, "Scostamento numerico");
-            Check(Read<string>(inspect, "_screen") == "numeric", "'Offset numerico' opened the numeric keypad");
-            SubmitNumber(panel, "25");
-            Check(Read<string>(inspect, "_screen") == "section", "keypad returned to the section page");
+            RunAction(InspectWorkspace.IdSectionOffset);
+            Check(inspect.ActiveEntry != null && inspect.ActiveEntry.Editing, "'Scostamento' opened the numeric keypad");
+            TypeNumber(inspect, "25");
+            Check(inspect.ActiveEntry == null, "keypad closed after confirming");
             Check(Math.Abs(section.OffsetMm - 25f) < 0.01f, "section offset is 25 mm, found " + F(section.OffsetMm));
-            Check(AllText(panel).Contains("Offset: 25"), "section page shows the numeric offset");
+            Check(Catalog.Find(InspectWorkspace.IdSectionOffset).Label.Contains("25"), "the declared action shows the numeric offset");
             var outline = Read<LineRenderer>(section, "_outline");
             Check(section.gameObject.activeInHierarchy && outline != null && outline.enabled, "section plane outline is visible");
             Check(Shader.GetGlobalFloat("_XrSectionEnabled") > 0.5f, "section clipping is published to the shaders");
             await CaptureScreenshot("section", ct);
             Pass("M2-Section", "section active with numeric offset " + F(section.OffsetMm) + " mm; plane outline visible; clipping enabled");
-            Click(panel, "Disattiva sezione");
+            RunAction(InspectWorkspace.IdSection);
             Check(!section.Active, "section deactivated before continuing");
 
-            // M2-Scale: Table (<= 0.60 m) and a real shrink, then back to 1:1.
-            inspect.Open("tools");
-            Click(panel, "Scala");
+            // M2-Scale: Table (<= 0.60 m) and a real shrink, then back to 1:1 (the Scala list is a picker tab of the Vista tab).
             var localExtent = Mathf.Max(ScenePlacement.LocalBounds(view.transform).size.x, ScenePlacement.LocalBounds(view.transform).size.y,
                 ScenePlacement.LocalBounds(view.transform).size.z);
-            ClickStartingWith(panel, "Scala da tavolo");
+            RunAction(InspectWorkspace.IdScale);
+            RunAction(InspectWorkspace.IdScaleTable);
             var tableExtent = localExtent * view.transform.lossyScale.x;
-            Check(Read<string>(inspect, "_screen") == "scale" && tableExtent <= 0.6f + 1e-3f, "Table scale keeps the model within 0.60 m, extent " + F(tableExtent) + " m");
+            Check(ReadValue<ModelScaleMode>(inspect, "_scaleMode") == ModelScaleMode.Table && tableExtent <= 0.6f + 1e-3f, "Table scale keeps the model within 0.60 m, extent " + F(tableExtent) + " m");
             var tableScale = view.transform.lossyScale.x;
-            Click(panel, "Spazio disponibile");
-            SubmitNumber(panel, "0.2");
+            RunAction(InspectWorkspace.IdScale);
+            RunAction(InspectWorkspace.IdScaleRoom);
+            TypeNumber(inspect, "0.2");
             Check(Mathf.Abs(ReadValue<float>(inspect, "_roomExtent") - 0.2f) < 1e-4f, "available space set to 0.2 m through the keypad");
-            Click(panel, "Adatta alla stanza");
+            RunAction(InspectWorkspace.IdScale);
+            RunAction(InspectWorkspace.IdScaleFit);
             var expected = Mathf.Min(1f, 0.2f / localExtent);
             var fitExtent = localExtent * view.transform.lossyScale.x;
             Check(Mathf.Abs(view.transform.lossyScale.x - expected) < 0.005f && fitExtent <= 0.2f + 1e-3f,
                 "Fit to room scaled the model to " + F(expected) + " (extent " + F(fitExtent) + " m), found scale " + F(view.transform.lossyScale.x));
-            Click(panel, "Spazio disponibile");
-            SubmitNumber(panel, "2");
-            Click(panel, "Mantieni 1:1");
+            RunAction(InspectWorkspace.IdScale);
+            RunAction(InspectWorkspace.IdScaleRoom);
+            TypeNumber(inspect, "2");
+            RunAction(InspectWorkspace.IdScale);
+            RunAction(InspectWorkspace.IdScaleOne);
             Check(Mathf.Abs(view.transform.lossyScale.x - 1f) < 1e-4f && ReadValue<ModelScaleMode>(inspect, "_scaleMode") == ModelScaleMode.OneToOne
                 && Mathf.Abs(ReadValue<float>(inspect, "_roomExtent") - 2f) < 1e-4f, "scale is back to 1:1 and the room extent is restored");
             Pass("M2-Scale", "Table scale factor " + F(tableScale) + " (extent " + F(tableExtent) + " m <= 0.60; model is " + F(localExtent) + " m); Fit to room 0.2 m -> factor "
                 + F(expected) + "; back to 1:1");
 
-            // M2-MR: environment switch from the tools page.
+            // M2-MR: environment switch from the Vista tab.
             var eye = Read<Camera>(environment, "eye");
             Check(environment.Mode == EnvironmentMode.MixedReality && eye != null && eye.backgroundColor.a < 0.01f, "environment is Mixed Reality");
-            inspect.Open("tools");
-            Click(panel, "Studio virtuale");
+            RunAction(InspectWorkspace.IdEnvironment);
             Check(environment.Mode == EnvironmentMode.StudioVr && eye.backgroundColor.a > 0.99f, "switched to Studio VR");
-            Click(panel, "Realtà mista");
+            RunAction(InspectWorkspace.IdEnvironment);
             Check(environment.Mode == EnvironmentMode.MixedReality && eye.backgroundColor.a < 0.01f, "switched back to Mixed Reality");
-            Pass("M2-MR", "Mixed Reality -> Studio VR -> Mixed Reality from the Inspect tools page");
+            Pass("M2-MR", "Mixed Reality -> Studio VR -> Mixed Reality from the Ispeziona action");
 
             // M2-Activate: documents list, activate the fixture part, verify part context, reactivate the assembly.
-            inspect.Open("browser");
+            RunAction(InspectWorkspace.IdBrowse);
             await WaitUntil(() => !ReadBoolean(inspect, "_busy"), ct);
-            Click(panel, node.Name);
+            PickItem(node.Name);
             await WaitFor(() => Read<InspectionInfo>(inspect, "_info"), ct);
             await WaitUntil(() => !ReadBoolean(inspect, "_busy"), ct);
             Check(selection.Current.Kind == SelectionKind.Occurrence && measure.PinnedCount == 1,
                 "before the document switch: occurrence selected and one measurement pinned");
-            Click(panel, "Documenti aperti");
+            RunAction(InspectWorkspace.IdDocuments);
             var documents = await WaitDocuments(inspect, ct);
             var fixtureDocs = documents.Where(d => d.Name != null && d.Name.StartsWith(FixturePrefix, StringComparison.Ordinal)).ToList();
             var partDoc = fixtureDocs.FirstOrDefault(d => d.Kind == DocPart && d.Name.StartsWith(FixturePrefix + "_Block", StringComparison.Ordinal));
             var assemblyDoc = fixtureDocs.FirstOrDefault(d => d.Kind == DocAssembly);
             Check(fixtureDocs.Count >= 2 && partDoc != null && assemblyDoc != null,
                 "open documents contain the fixture assembly and part, found: " + string.Join(", ", documents.Select(d => d.Name + "/" + d.Kind)));
-            Check(AllText(panel).Contains("Attivazione in Inventor"), "documents page is shown");
+            Check(inspect.Notice.Contains("Attivazione in Inventor"), "the HUD explains that activation does not touch the CAD");
             Pass("M2-Activate", "open documents list contains " + assemblyDoc.Name + " (assembly) and " + partDoc.Name + " (part)");
 
             RequireFixture();
             Check(partDoc.Name.StartsWith(FixturePrefix, StringComparison.Ordinal), "only a fixture document is activated");
             await WaitUntil(() => !ReadBoolean(inspect, "_busy"), ct);
-            await ClickDocument(inspect, panel, partDoc.Name, ct);
+            await PickDocument(inspect, partDoc.Name, ct);
             var partScene = await WaitFor<LoadedScene>(() => Session.Scene != null && Session.Scene.Graph.Kind == "part"
                 && Session.Scene.Graph.DocumentId != assemblyDocumentId && Session.Scene.Graph.Root.Name.StartsWith(FixturePrefix, StringComparison.Ordinal)
                 ? Session.Scene : null, ct);
@@ -289,14 +281,13 @@ namespace InventorXrSo.Xr
 
             // Reactivate the assembly through the Browser.
             RequireFixture();
-            inspect.Open("browser");
             await WaitUntil(() => !ReadBoolean(inspect, "_busy"), ct);
-            Click(panel, "Documenti aperti");
+            RunAction(InspectWorkspace.IdDocuments);
             documents = await WaitDocuments(inspect, ct);
             var assemblyAgain = documents.FirstOrDefault(d => d.Kind == DocAssembly && d.Name != null && d.Name.StartsWith(FixturePrefix, StringComparison.Ordinal)
                 && !d.Name.StartsWith(FixturePrefix + "_Block", StringComparison.Ordinal));
             Check(assemblyAgain != null, "fixture assembly is still listed");
-            await ClickDocument(inspect, panel, assemblyAgain.Name, ct);
+            await PickDocument(inspect, assemblyAgain.Name, ct);
             var backScene = await WaitFor<LoadedScene>(() => Session.Scene != null && Session.Scene.Graph.Kind == "assembly"
                 && Session.Scene.Graph.DocumentId != partScene.Graph.DocumentId && Session.Scene.Graph.Root.Name.StartsWith(FixturePrefix, StringComparison.Ordinal)
                 ? Session.Scene : null, ct);
@@ -307,31 +298,39 @@ namespace InventorXrSo.Xr
             Pass("M2-Activate", "assembly " + backScene.Graph.Root.Name + " reactivated through the Browser; 2 occurrences shown again");
 
             Record("NOT COVERED [M2-Stale] a revision change of the same document (an edit) is not induced; only the document switch was verified");
-            Record("NOT COVERED [M2-Physical] controller ray, grip grab of the panel and section plane, and wrist tracking are not exercised");
+            Record("NOT COVERED [M2-Physical] controller ray, grip grab of the model and section plane, palette ergonomics and HUD legibility are not exercised: every action here is invoked by id (synthetic input)");
         }
 
-        private static string AllText(Component root) => string.Join("\n", root.GetComponentsInChildren<Text>(false)
-            .Where(t => t.gameObject.activeInHierarchy).Select(t => t.text));
+        private ActionCatalog Catalog => Read<ActionCatalog>(App, "_catalog");
 
-        private static Button FindButton(Component root, Func<string, bool> match) => root.GetComponentsInChildren<Button>(false)
-            .LastOrDefault(b => b.gameObject.activeInHierarchy && match(b.GetComponentInChildren<Text>()?.text ?? ""));
-
-        private static bool HasButton(Component root, string label) => FindButton(root, t => t == label || t.EndsWith(label, StringComparison.Ordinal)) != null;
-
-        private static void Click(Component root, string label)
+        /// <summary>Invokes a declared action by id through the catalog, the same path as palette, ring and voice (synthetic tap).</summary>
+        private void RunAction(string id)
         {
-            var button = FindButton(root, t => t == label);
-            Check(button != null, "button '" + label + "' is shown");
-            Check(button.interactable, "button '" + label + "' is enabled");
-            button.onClick.Invoke();
+            var action = Catalog.Find(id);
+            Check(action != null, "the action catalog has no action '" + id + "'");
+            Check(action.Enabled, "action '" + id + "' is disabled: " + action.DisabledReason);
+            Check(action.TryInvoke(), "action '" + id + "' did not run");
         }
 
-        private static void ClickStartingWith(Component root, string prefix)
+        /// <summary>An entry of the open picker list (components, documents) by label, any page.</summary>
+        private XrAction FindPick(string label) => Read<InspectWorkspace>(App, "_inspect").Actions
+            .FirstOrDefault(a => a.Id.StartsWith(InspectWorkspace.IdPickPrefix, StringComparison.Ordinal) && a.Label.EndsWith(label, StringComparison.Ordinal));
+
+        private void PickItem(string label)
         {
-            var button = FindButton(root, t => t.StartsWith(prefix, StringComparison.Ordinal));
-            Check(button != null, "button starting with '" + prefix + "' is shown");
-            Check(button.interactable, "button '" + prefix + "' is enabled");
-            button.onClick.Invoke();
+            var action = FindPick(label);
+            Check(action != null, "the open list has no entry '" + label + "'");
+            Check(action.Enabled, "list entry '" + label + "' is enabled: " + action.DisabledReason);
+            Check(action.TryInvoke(), "list entry '" + label + "' did not run");
+        }
+
+        /// <summary>Types a value on the open keypad entry and confirms it (synthetic keypad input).</summary>
+        private static void TypeNumber(InspectWorkspace inspect, string value)
+        {
+            var entry = inspect.ActiveEntry;
+            Check(entry != null && entry.Editing, "numeric keypad is open");
+            foreach (var ch in value) entry.Type(ch);
+            Check(entry.Commit(out var reason), "keypad accepted " + value + ": " + reason);
         }
 
         private static void CheckShown(string text, string label, bool known)
@@ -339,39 +338,18 @@ namespace InventorXrSo.Xr
             Check(text.Contains(label + Dash) == !known, "'" + label.Trim() + "' is " + (known ? "a value" : Dash) + " exactly as the backend reported");
         }
 
-        private static void SubmitNumber(HomePanel panel, string value)
-        {
-            while (Read<string>(panel, "_entry").Length > 0) panel.Press(UiText.KeyBack);
-            foreach (var ch in value) panel.Press(ch.ToString());
-            panel.Press(UiText.KeyOk);
-        }
-
         private async Task<IReadOnlyList<OpenDocument>> WaitDocuments(InspectWorkspace inspect, CancellationToken ct)
         {
-            await WaitUntil(() => Read<string>(inspect, "_screen") == "documents" && !ReadBoolean(inspect, "_busy")
-                && Read<IReadOnlyList<OpenDocument>>(inspect, "_documents").Count > 0, ct);
+            await WaitUntil(() => !ReadBoolean(inspect, "_busy") && Read<IReadOnlyList<OpenDocument>>(inspect, "_documents").Count > 0
+                && FindPick(Read<IReadOnlyList<OpenDocument>>(inspect, "_documents")[0].Name) != null, ct);
             return Read<IReadOnlyList<OpenDocument>>(inspect, "_documents");
         }
 
-        private async Task ClickDocument(InspectWorkspace inspect, HomePanel panel, string name, CancellationToken ct)
+        private async Task PickDocument(InspectWorkspace inspect, string name, CancellationToken ct)
         {
             Check(name.StartsWith(FixturePrefix, StringComparison.Ordinal), "refusing to activate a document outside the fixture: " + name);
             await WaitUntil(() => !ReadBoolean(inspect, "_busy"), ct);
-            var documentCount = Read<IReadOnlyList<OpenDocument>>(inspect, "_documents").Count;
-            var pageCount = Math.Max(1, (documentCount + 5) / 6);
-            for (int page = 0; page < pageCount; page++)
-            {
-                var button = FindButton(panel, t => t == name);
-                if (button != null)
-                {
-                    Check(button.interactable, "document button '" + name + "' is enabled");
-                    button.onClick.Invoke();
-                    return;
-                }
-                Click(panel, "Pagina ›");
-            }
-            Check(false, "document '" + name + "' is not on any page of the documents list (" + documentCount
-                + " documents, page " + ReadValue<int>(inspect, "_page") + "; visible: " + AllText(panel) + ")");
+            PickItem(name);
         }
 
         private static Bounds InstanceBounds(Transform root, CadInstance instance)

@@ -72,7 +72,7 @@ namespace InventorXrSo.Xr
             XrUi.MakeInteractive(_home.Canvas, head.GetComponent<Camera>());
             _inspect = gameObject.AddComponent<InspectWorkspace>();
             var left = head.parent.Find("LeftHandAnchor/LeftControllerAnchor") ?? head.parent.Find("LeftHandAnchor");
-            _inspect.Initialize(sceneView, selectionVisuals, ray, head, left, environment);
+            _inspect.Initialize(sceneView, selectionVisuals, ray, head, environment);
             _design = gameObject.AddComponent<DesignWorkspace>();
             _design.Initialize(sceneView, selectionVisuals, ray, head);
             _assembly = gameObject.AddComponent<AssemblyWorkspace>();
@@ -86,8 +86,6 @@ namespace InventorXrSo.Xr
             _catalog = new ActionCatalog(new SpacesActions(OpenInspection, OpenDesign, OpenLamiera, OpenAssembly, LeaveSession,
                 () => _inSession, () => _design.CanEnter(), () => _lamiera.CanEnter(), () => _assembly.CanEnter()));
             _shell = UiShell.Create(left, head, _catalog);
-            // Below the controller so it does not overlap the wrist menu; phase 4 moves it back when the wrist menu is removed.
-            _shell.Palette.Canvas.transform.localPosition = new Vector3(0, -0.07f, 0.02f);
             XrUi.MakeInteractive(_shell.Palette.Canvas, head.GetComponent<Camera>());
             XrUi.MakeInteractive(_shell.CommitBar.Canvas, head.GetComponent<Camera>());
             _badge = _shell.Hud;
@@ -100,18 +98,23 @@ namespace InventorXrSo.Xr
             _design.Attach(_shell, _workbench, _sheet, _input);
             _lamiera.Attach(_shell, _workbench, _sheet, _input);
             _assembly.Attach(_shell, _workbench, _sheet, _input);
+            // Ispeziona is the default workspace: it draws on the palette whenever no authoring workspace is active.
+            _inspect.Attach(_shell, _input);
+            _inspect.OtherWorkspaceActive = () => _design.Active || _assembly.Active || _lamiera.Active;
+            _inspect.HudMessage += text => _badge.Flash(text, 6f);
+            _catalog.SetActive(_inspect);
             _design.HudMessage += text => _badge.Flash(text, 6f);
             _design.ActiveChanged += active =>
             {
                 if (active) _catalog.SetActive(_design);
-                else if (ReferenceEquals(_catalog.Active, _design)) _catalog.SetActive(null);
+                else if (ReferenceEquals(_catalog.Active, _design)) _catalog.SetActive(_inspect);
             };
             _design.Closed += () => { if (_inSession) Place(); };
             _assembly.HudMessage += text => _badge.Flash(text, 6f);
             _assembly.ActiveChanged += active =>
             {
                 if (active) _catalog.SetActive(_assembly);
-                else if (ReferenceEquals(_catalog.Active, _assembly)) _catalog.SetActive(null);
+                else if (ReferenceEquals(_catalog.Active, _assembly)) _catalog.SetActive(_inspect);
             };
             _assembly.Closed += () => { if (_inSession) Place(); };
             // From the isolated component: its document is already active, the switch only changes workspace.
@@ -121,22 +124,17 @@ namespace InventorXrSo.Xr
             _lamiera.ActiveChanged += active =>
             {
                 if (active) _catalog.SetActive(_lamiera);
-                else if (ReferenceEquals(_catalog.Active, _lamiera)) _catalog.SetActive(null);
+                else if (ReferenceEquals(_catalog.Active, _lamiera)) _catalog.SetActive(_inspect);
             };
             _lamiera.Closed += () => { if (_inSession) Place(); };
             // Back, Fit, Recenter, step and zoom belong to the active authoring workspace (it subscribes through Attach); the palette owns the tabs.
             _input.TabDelta += _shell.Palette.SelectTab;
-            _inspect.DesignRequested += OpenDesign;
-            _inspect.AssemblyRequested += OpenAssembly;
-            _inspect.LamieraRequested += OpenLamiera;
             _lamiera.DesignRequested += () => { if (!_assembly.RequiresCadReview && !_lamiera.RequiresCadReview) { _lamiera.Close(); _design.Open(); } };
             _lamiera.PrimaryChanged += OnLamieraPrimaryChanged;
-            _inspect.InspectionRequested += _design.Close;
-            _inspect.InspectionRequested += _assembly.Close;
-            _inspect.InspectionRequested += _lamiera.Close;
-            _design.ActiveChanged += _inspect.SetDesignActive;
-            _assembly.ActiveChanged += _inspect.SetAssemblyActive;
-            _lamiera.ActiveChanged += _inspect.SetLamieraActive;
+            // Ispeziona stops its local tools while an authoring workspace is open and resumes when it closes.
+            _design.ActiveChanged += _ => _inspect.OthersChanged();
+            _assembly.ActiveChanged += _ => _inspect.OthersChanged();
+            _lamiera.ActiveChanged += _ => _inspect.OthersChanged();
             // Voice enablement follows the active workspace: re-evaluate whenever the mode changes.
             _design.ActiveChanged += _ => NotifyVoiceModeChanged();
             _design.ActiveChanged += _ => _catalog.NotifyChanged();
@@ -144,7 +142,6 @@ namespace InventorXrSo.Xr
             _lamiera.ActiveChanged += _ => _catalog.NotifyChanged();
             _assembly.ActiveChanged += _ => NotifyVoiceModeChanged();
             _lamiera.ActiveChanged += _ => NotifyVoiceModeChanged();
-            _inspect.InspectionRequested += NotifyVoiceModeChanged;
             ray.Picked += OnPicked;
             ray.PickedNothing += OnPickedNothing;
             ray.CanPick = false;
@@ -306,7 +303,7 @@ namespace InventorXrSo.Xr
             _assembly.Bind(backend);
             _lamiera.Bind(backend, backend);
             // Voice reuses the backend's transport and the paired server; every workspace exposes its command surface.
-            _voiceTarget = WorkspaceVoiceTarget.ForWorkspaces(_lamiera, _design, _assembly, _inspect);
+            _voiceTarget = WorkspaceVoiceTarget.ForWorkspaces(_lamiera, _design, _assembly, _inspect, _catalog);
             _voiceTarget.InSession = _inSession;
             _voice = VoiceRig.Create(head.parent, head, head.GetComponent<Camera>(), transport, _server,
                 _voiceTarget, ray.Controller);
@@ -429,7 +426,6 @@ namespace InventorXrSo.Xr
 
         private void OnLamieraPrimaryChanged(bool primary)
         {
-            _inspect.SetLamieraPrimary(primary);
             // Auto-open only on the transition to primary and only from plain inspection: never over an authoring workspace.
             if (primary && _inSession && !_design.Active && !_assembly.Active && !_lamiera.Active) OpenLamiera();
         }
