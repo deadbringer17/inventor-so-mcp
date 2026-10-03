@@ -29,6 +29,11 @@ namespace InventorXrSo.Xr
             "AppController.EnterSession",
             "AppController.OpenLamiera",
             "LamieraWorkspace._busy",
+            "LamieraWorkspace.DragStep",
+            "LamieraWorkspace.MoveGrab",
+            "LamieraWorkspace.TwoHandStep",
+            "LamieraWorkspace._grab",
+            "LamieraWorkspace._twoHandActive",
             "LamieraWorkspace._designContext",
             "LamieraWorkspace._backend",
             "LamieraWorkspace._sheet",
@@ -116,6 +121,8 @@ namespace InventorXrSo.Xr
             await WaitUntil(() => _ws.IsPrimary, ct);
             if (!_ws.Active) Call(App, "OpenLamiera");
             Check(_ws.Active, "Lamiera workspace is open");
+            // The whole run uses the synthetic pen: real controllers (held, resting or untracked) must not nudge chips or arm fields.
+            BeginSyntheticInput(); _holdSynthetic = true;
             _design = _ws.Session;
             _backend = Read<IDesignWorkspaceBackend>(_ws, "_backend");
             _sheet = Read<ISheetMetalBackend>(_ws, "_sheet");
@@ -419,6 +426,10 @@ namespace InventorXrSo.Xr
         /// The workspace listens to a synthetic <see cref="XrInput"/> for the duration of the gesture checks (the application's
         /// real input is detached, then restored): the same semantic events the controllers raise, SYNTHETIC in every log.
         /// </summary>
+        private bool _holdSynthetic;
+
+        private void OnDestroy() { _holdSynthetic = false; EndSyntheticInput(); }
+
         private void BeginSyntheticInput()
         {
             if (_syntheticInput != null) return;
@@ -433,9 +444,10 @@ namespace InventorXrSo.Xr
 
         private void EndSyntheticInput()
         {
-            if (_syntheticInput == null) return;
+            if (_syntheticInput == null || _holdSynthetic) return;
             Frame(true, false, false, false, false, false);
             Call(_ws, "AttachInput", _appInput);
+            _ws.UiHitOverride = null;
             Destroy(_syntheticInput);
             _syntheticInput = null; _syntheticSource = null;
         }
@@ -447,8 +459,13 @@ namespace InventorXrSo.Xr
         private void Frame(bool tracked, bool grip, bool trigger, bool gripDown, bool triggerDown, bool ui)
         {
             var frame = new XrInputFrame { PenTracked = tracked, PenGrip = grip, PenTrigger = trigger, PaletteTracked = true };
+            _ws.UiHitOverride = () => ui;   // deterministic UI hit: the real controller's ray must not decide the gesture
             _syntheticSource.Next = frame;   // the component's own Update polls the same state: no phantom release between frames
             _syntheticInput.Poll(frame, _syntheticClock += 0.016f);
+            // The workspace advances a held drag in its own Update; step it now so the runner reads the height of THIS frame (no real-controller pose in between).
+            if (Read<FlangeManipulator>(_ws, "_manip").Dragging) Call(_ws, "DragStep");
+            else if (ReadBoolean(_ws, "_twoHandActive")) Call(_ws, "TwoHandStep");
+            else if (Read<Transform>(_ws, "_grab") != null) Call(_ws, "MoveGrab");
         }
 
         private static Vector3 AxisWorld(FlangeManipulator manip, Transform model)
@@ -499,8 +516,10 @@ namespace InventorXrSo.Xr
                     model.localScale = Vector3.one * scales[i];
                     Check(await TryFlangePreview(edgeId, FlangeHeightMm, ct), "flange preview before the " + label + " synthetic gesture: " + _design.Error);
                     Check(manip.Visible, "flange knob is visible at " + label);
+                    Record("diag " + "before drag" + ": angle " + F(_ws.Flange.AngleDegrees) + " height " + F(_ws.Flange.HeightMm) + " v" + _ws.Flange.Version + " armed " + _ws.ArmedField?.Id);
                     AimAtKnob(manip, model, hand);
                     Frame(true, false, true, false, true, false);
+                    Record("diag " + "after press" + ": angle " + F(_ws.Flange.AngleDegrees) + " height " + F(_ws.Flange.HeightMm) + " v" + _ws.Flange.Version + " armed " + _ws.ArmedField?.Id);
                     Check(manip.Dragging, "synthetic Trigger held on the knob starts a drag at " + label);
                     MoveAlongAxis(manip, model, hand, DragMm);
                     Frame(true, false, true, false, false, false);
@@ -508,7 +527,9 @@ namespace InventorXrSo.Xr
                     Check(Math.Abs(reached[i] - (FlangeHeightMm + DragMm)) < 0.05,
                         "synthetic controller displacement at " + label + " converts to +" + F(DragMm) + " mm, height " + F(reached[i]));
                     Check(!_design.CanApply, "Apply is disabled while the knob edits the draft");
+                    Record("diag " + "before release" + ": angle " + F(_ws.Flange.AngleDegrees) + " height " + F(_ws.Flange.HeightMm) + " v" + _ws.Flange.Version + " armed " + _ws.ArmedField?.Id);
                     Frame(true, false, false, false, false, false);
+                    Record("diag " + "after release" + ": angle " + F(_ws.Flange.AngleDegrees) + " height " + F(_ws.Flange.HeightMm) + " v" + _ws.Flange.Version + " armed " + _ws.ArmedField?.Id);
                     Check(!manip.Dragging, "releasing the Trigger ends the drag");
                     await WaitPreviewReady(ct);
                     CheckFlangePreviewShown(FlangeHeightMm + DragMm);
@@ -529,6 +550,7 @@ namespace InventorXrSo.Xr
                 Check(await TryFlangePreview(edgeId, FlangeHeightMm, ct), "flange preview before the synthetic plain Grip: " + _design.Error);
                 string plan = _design.Preview.PlanId; int version = _ws.Flange.Version;
                 AimAtKnob(manip, model, hand);
+                Frame(true, false, false, false, false, false);   // release first: grab starts are edge based
                 Frame(true, true, false, true, false, false);
                 MoveAlongAxis(manip, model, hand, DragMm);
                 Frame(true, true, false, false, false, false);
@@ -580,7 +602,8 @@ namespace InventorXrSo.Xr
                 Check(!manip.Dragging, "no drag can start while untracked");
                 Frame(true, false, false, false, false, false);
                 Check(_design.Status == DesignStatus.Draft && !_design.CanApply && !_previewView.IsShowing,
-                    "a tracking loss is not a release: the draft keeps the last valid height and no preview was requested");
+                    "a tracking loss is not a release: the draft keeps the last valid height and no preview was requested (status "
+                    + _design.Status + ", CanApply " + _design.CanApply + ", showing " + _previewView.IsShowing + ", height " + F(_ws.Flange.HeightMm) + ")");
                 await AssertUnchanged(baseline, "synthetic tracking loss", ct);
                 Pass("M5-03-programmatic", "synthetic tracking loss closed the drag at the last valid " + F(FlangeHeightMm + 7)
                     + " mm, requested no preview (Apply stays off) and made no CAD mutation (revision " + baseline.Revision + ")");
@@ -598,10 +621,24 @@ namespace InventorXrSo.Xr
                     var point = model.TransformPoint(CadCoordinates.ToLocal(origin));
                     var away = model.TransformDirection(CadCoordinates.ToLocal(normal)).normalized;
                     hand.SetPositionAndRotation(point + away * 0.3f, Quaternion.LookRotation(-away));
+                    Frame(true, false, false, false, false, false);   // a press needs a release before it: the events are edge based
                     Frame(true, false, true, false, true, false);
+                    Frame(true, false, false, false, false, false);
+                    Record("diag edge pick: " + _ws.Flange.EdgeIds.Count + " edge(s) after the first Trigger ray, armed " + _ws.Mode.Armed + ", dragging " + manip.Dragging);
                     if (_ws.Flange.EdgeIds.Count == 1 && _ws.Flange.EdgeIds[0] == edgeId)
                     {
+                        // The knob now takes a Trigger aimed within its pick radius (M6): aim the second press at a point of the same edge outside it.
+                        var points = edge.PointsMm; bool aimed = false;
+                        for (int k = 1; k <= 9 && !aimed; k++)
+                        {
+                            var spot = points[0] + (points[points.Count - 1] - points[0]) * (k / 10.0);
+                            hand.SetPositionAndRotation(model.TransformPoint(CadCoordinates.ToLocal(spot)) + away * 0.3f, Quaternion.LookRotation(-away));
+                            var probe = new Ray(hand.position, hand.forward);
+                            aimed = !manip.IsOverKnob(probe) && CadCoordinates.PickEdge(model, design.Edges, probe, requireVisible: true) == edgeId;
+                        }
+                        if (!aimed) { Record("NOT COVERED [M5-03-programmatic] second Trigger ray off the knob: no point of edge " + edgeId + " lies outside the knob pick radius"); await CancelFlangeDraft(ct); return; }
                         Frame(true, false, true, false, true, false);
+                        Frame(true, false, false, false, false, false);
                         Check(_ws.Flange.EdgeIds.Count == 0, "a second synthetic Trigger ray on the same edge deselects it");
                         await AssertUnchanged(baseline, "synthetic Trigger edge pick", ct);
                         Pass("M5-03-programmatic", "synthetic Trigger ray on real edge " + edgeId + " toggled it in the flange draft (selected, then deselected); revision unchanged");
@@ -641,29 +678,35 @@ namespace InventorXrSo.Xr
                     var center = model.TransformPoint(display.LocalBounds.center);
                     hand.SetPositionAndRotation(center + Vector3.back * 0.5f, Quaternion.identity);
                     Check(display.HitTest(new Ray(hand.position, hand.forward)), "the synthetic ray hits the flat pattern");
-                    var rootBefore = display.MeshRoot.localPosition;
+                    display.Snap();
+                    var rootBefore = display.MeshRoot.position;   // world: on the work plane the mesh root no longer lives in the model frame
                     var delta = new Vector3(0.05f, 0.02f, 0f);
+                    Frame(true, false, false, false, false, false);   // release first: grab starts are edge based
                     Frame(true, true, false, true, false, false);
                     hand.position += delta;
                     Frame(true, true, false, false, false, false);
-                    var expected = rootBefore + model.InverseTransformVector(delta);
-                    Check(Vector3.Distance(display.MeshRoot.localPosition, expected) < 1e-3f,
+                    display.Snap();   // the plane placement eases in over ~250 ms: read the settled pose
+                    var expected = rootBefore + delta;
+                    Check(Vector3.Distance(display.MeshRoot.position, expected) < 1e-3f,
                         "synthetic Grip moved the flat mesh root by the hand displacement");
                     Check(Vector3.Distance(model.position, savedPosition) < 1e-5f && Quaternion.Angle(model.rotation, savedRotation) < 1e-3f
                         && Vector3.Distance(model.localScale, savedScale) < 1e-6f, "the model view transform is unchanged");
                     Frame(true, false, false, false, false, false);
-                    var moved = display.MeshRoot.localPosition;
+                    var moved = display.MeshRoot.position;
                     hand.position += delta; Frame(true, false, false, false, false, false);
-                    Check(Vector3.Distance(display.MeshRoot.localPosition, moved) < 1e-6f, "releasing Grip stops the flat movement");
+                    display.Snap();
+                    Check(Vector3.Distance(display.MeshRoot.position, moved) < 1e-6f, "releasing Grip stops the flat movement");
 
-                    flat.Attach();
-                    var attached = display.MeshRoot.localPosition;
+                    flat.Attach(); display.Snap();
+                    var attached = display.MeshRoot.position;
                     hand.SetPositionAndRotation(model.TransformPoint(display.LocalBounds.center) + Vector3.back * 0.5f, Quaternion.identity);
+                    Frame(true, false, false, false, false, false);   // release first: grab starts are edge based
                     Frame(true, true, false, true, false, false);
                     hand.position += delta;
                     Frame(true, true, false, false, false, false);
                     Frame(true, false, false, false, false, false);
-                    Check(Vector3.Distance(display.MeshRoot.localPosition, attached) < 1e-6f && flat.OffsetX == 0,
+                    display.Snap();
+                    Check(Vector3.Distance(display.MeshRoot.position, attached) < 1e-6f && flat.OffsetX == 0,
                         "an attached flat pattern is not grabbed");
                 }
                 finally { flat.Changed -= watch; }
@@ -767,7 +810,7 @@ namespace InventorXrSo.Xr
 
         private async Task<bool> TryFlangePreview(string edgeId, double heightMm, CancellationToken ct)
         {
-            await WaitUntil(() => _ws.IsEnabled(CommandIds.Flange), ct);
+            await StepWait("flange enabled", () => _ws.IsEnabled(CommandIds.Flange), ct);
             RunAction(LamieraWorkspace.IdFlange);
             Check(_ws.Mode.Armed == SheetMetalCommand.Flange, "flange command is armed");
             _ws.Flange.ToggleEdge(edgeId);
@@ -775,8 +818,27 @@ namespace InventorXrSo.Xr
             RunAction(LamieraWorkspace.IdFlangeHeight);
             Check(_ws.ArmedField?.Id == LamieraWorkspace.FieldFlangeHeight, "flange height field is armed on the keypad");
             TypeValue(heightMm);
-            await WaitUntil(() => _design.Status == DesignStatus.PreviewReady || _design.Status == DesignStatus.Error, ct);
+            await StepWait("flange preview", () => _design.Status == DesignStatus.PreviewReady || _design.Status == DesignStatus.Error, ct);
             return _design.Status == DesignStatus.PreviewReady;
+        }
+
+        /// <summary>WaitUntil that records the workspace state once if the condition takes more than 8 s (diagnostic for stalls).</summary>
+        private async Task StepWait(string what, Func<bool> condition, CancellationToken ct)
+        {
+            var started = DateTime.UtcNow; bool logged = false;
+            while (true)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (condition()) return;
+                if (!logged && (DateTime.UtcNow - started).TotalSeconds > 8)
+                {
+                    logged = true;
+                    Record("diag stall waiting for " + what + ": status " + _design.Status + " armed " + _ws.Mode.Armed + " field " + _ws.ArmedField?.Id
+                        + " active " + _ws.Active + " busy " + ReadBoolean(_ws, "_busy")
+                        + " error " + _design.Error);
+                }
+                await Task.Delay(100, ct);
+            }
         }
 
         private void CheckFlangePreviewShown(double heightMm)
@@ -787,7 +849,8 @@ namespace InventorXrSo.Xr
             Check(operations != null && operations.Count == 1 && (string)operations[0]["command"] == "sheet_metal_flange"
                 && Math.Abs((double)operations[0]["arguments"]["height_mm"] - heightMm) < 1e-9
                 && Math.Abs((double)operations[0]["arguments"]["angle_degrees"] - 90) < 1e-9,
-                "previewed draft is one flange of " + F(heightMm) + " mm at 90 degrees");
+                "previewed draft is one flange of " + F(heightMm) + " mm at 90 degrees (found "
+                    + (operations == null ? "no operations" : operations.Count + " op(s): " + operations.ToString(Newtonsoft.Json.Formatting.None)) + ")");
         }
 
         private async Task AssertUnchanged(DocumentState baseline, string what, CancellationToken ct)

@@ -242,6 +242,16 @@ namespace InventorXrSo.Tests
             Assert.AreEqual(CommitBarPhase.Applied, _workspace.CommitBar.Phase, "MarkApplied after a successful apply");
         }
 
+        [Test] public void ConfirmingTheSameValueStillPreviewsADraftWithoutPreview()
+        {
+            ArmFlangeWithEdge();
+            Assert.AreEqual(DesignStatus.Draft, _workspace.Session.Status); Assert.AreEqual(0, _backend.Previews);
+            Do(LamieraWorkspace.IdFlangeHeight);
+            Commit(_workspace.Flange.HeightMm);   // the keypad confirms the value the draft already has
+            Assert.AreEqual(1, _backend.Previews, "an unchanged value still asks for the missing preview");
+            Assert.AreEqual(0, _backend.Commits);
+        }
+
         [UnityTest] public IEnumerator NumericFieldEditsTheSharedDraftAndInvalidatesApplyUntilNewPreview()
         {
             ArmFlangeWithEdge(); Do(CommitIds.Preview);

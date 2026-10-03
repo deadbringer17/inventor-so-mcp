@@ -477,6 +477,8 @@ namespace InventorXrSo.Xr
             var field = Describe(fieldId);
             var entry = new NumericEntry(fieldId, field.Unit, field.Value, field.Min, field.Max);
             entry.Changed += () => OnEntryChanged(entry);
+            // Confirming the value the draft already has changes nothing, but a draft without a preview still deserves one (PreviewDraft only acts on a Draft).
+            entry.Committed += () => { if (!_syncingEntries && FieldApplies(entry.Id) && Idle) PreviewDraft(); };
             return entry;
         }
 
@@ -714,7 +716,8 @@ namespace InventorXrSo.Xr
                 }
                 catch (Exception ex) { SetNotice("Anteprima non visualizzabile: " + ex.Message); }
             }
-            if (_session.Preview == null) { _previewView.Clear(); _renderedPlan = null; }
+            // The blue ghost belongs to the Ready state only: an edited draft (Bozza) must not keep showing the stale result.
+            if (_session.Preview == null || _session.Status == DesignStatus.Draft) { _previewView.Clear(); _renderedPlan = null; }
             ShowValidationContext();
             ShowErrorDetail();
             RequestRender();
@@ -1191,13 +1194,16 @@ namespace InventorXrSo.Xr
         private bool Precision => _input != null && _input.Precision;
 
         /// <summary>The pen ray, or false when the workspace cannot take pen input right now.</summary>
+        /// <summary>Runners with a synthetic pen set this so the real controller's UI hit cannot swallow the gesture (the old runner passed the UI flag per frame).</summary>
+        public Func<bool> UiHitOverride { get; set; }
+
         private bool TryPenRay(out Ray ray, out bool overUi)
         {
             ray = default; overUi = false;
             if (!Active || !_visible || _ray == null || _ray.Origin == null || !InputTracked) return false;
             ray = new Ray(_ray.Origin.position, _ray.Origin.forward);
             var ui = EventSystem.current?.currentInputModule as ControllerUiInputModule;
-            overUi = ui != null && ui.CurrentHit.isValid;
+            overUi = UiHitOverride != null ? UiHitOverride() : ui != null && ui.CurrentHit.isValid;
             return true;
         }
 
