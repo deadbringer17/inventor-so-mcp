@@ -245,7 +245,7 @@ namespace InventorXrSo.Xr
         private Transform LeftAnchor() => _head.parent == null ? null
             : _head.parent.Find("LeftHandAnchor/LeftControllerAnchor") ?? _head.parent.Find("LeftHandAnchor");
 
-        private void SnapPoses() { _sheet.Snap(); _bench.Snap(); }
+        private void SnapPoses() { _bench.Snap(); _sheet.Snap(); }
 
         // ----------------------------------------------------------------------------------------------- synthetic input
 
@@ -758,7 +758,7 @@ namespace InventorXrSo.Xr
             SnapPoses();
             var root = _view.transform; var bench = _bench.Frame; var frame = sketch.Frame;
             var normalWorld = root.TransformDirection(CadCoordinates.ToLocal(frame.Normal)).normalized;
-            Check(Mathf.Abs(Vector3.Dot(normalWorld, Vector3.up)) > 0.999f, "the sketch plane lies horizontal on the table");
+            Check(Mathf.Abs(Vector3.Dot(normalWorld, Vector3.up)) > 0.999f, "the sketch plane lies horizontal on the table (normal dot up " + F(Vector3.Dot(normalWorld, Vector3.up)) + ", sheet state " + _sheet.State + ", tweening " + _sheet.Tweening + ")");
             Vector3 World(CadPoint sketchMm) => root.TransformPoint(CadCoordinates.ToLocal(frame.ToModel(sketchMm)));
             Check(Near(World(new CadPoint(0, 0)).y, bench.DeskY, 2e-3), "the sheet is at the height of the work plane (" + F(World(new CadPoint(0, 0)).y) + " vs " + F(bench.DeskY) + " m)");
             Check(Near(frame.Normal.X, plane.Frame.Normal.X, 1e-9) && Near(frame.Normal.Y, plane.Frame.Normal.Y, 1e-9) && Near(frame.Normal.Z, plane.Frame.Normal.Z, 1e-9),
