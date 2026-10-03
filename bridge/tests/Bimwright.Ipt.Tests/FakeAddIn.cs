@@ -179,6 +179,19 @@ public sealed class FakeAddIn : System.IAsyncDisposable
                     ["name"] = p["occurrence_id"]?.Type == JTokenType.String ? "Bolt:1" : "Fake.iam", ["material"] = "Steel",
                     ["mass_kg"] = 1.28, ["volume_mm3"] = 160000, ["area_mm2"] = 20000,
                     ["constraints"] = 3, ["dof_translation"] = 1, ["dof_rotation"] = 0 });
+            case "check_interference_xr":
+                if ((string?)p["document_id"] != AssemblyId) return Fail(InventorErrorCodes.DOCUMENT_CHANGED, "Active document changed.");
+                if ((string?)p["expected_revision"] != Revision) return Fail(InventorErrorCodes.STALE_REVISION, "Revision changed.");
+                return Ok(new JObject
+                {
+                    ["document_id"] = AssemblyId, ["revision"] = Revision, ["analyzed"] = 3, ["count"] = 1, ["total_volume_mm3"] = 2000.0, ["elapsed_ms"] = 12,
+                    ["pairs"] = new JArray(new JObject
+                    {
+                        ["a_occurrence_id"] = "ent_occ_1", ["b_occurrence_id"] = "ent_occ_3", ["a_name"] = "Bolt:1", ["b_name"] = "Plate:1",
+                        ["volume_mm3"] = 2000.0,
+                        ["boxes"] = new JArray(new JObject { ["min_mm"] = new JArray(15, 0, 0), ["max_mm"] = new JArray(20, 20, 20) }),
+                    }),
+                });
             case "get_display_mesh":
             {
                 string id = (string?)p["document_id"] ?? AssemblyId;

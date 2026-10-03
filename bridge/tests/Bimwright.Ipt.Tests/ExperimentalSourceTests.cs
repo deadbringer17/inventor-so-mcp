@@ -93,6 +93,7 @@ public sealed class ExperimentalSourceTests
     [InlineData("inventor_get_design_context_xr", "get_design_context_xr")]
     [InlineData("inventor_get_assembly_context_xr", "get_assembly_context_xr")]
     [InlineData("inventor_activate_open_document_xr", "activate_open_document_xr")]
+    [InlineData("inventor_check_interference_xr", "check_interference_xr")]
     [InlineData("inventor_get_sketch_info", "get_sketch_info")]
     [InlineData("inventor_get_dependencies", "get_dependencies")]
     [InlineData("inventor_trace_dependency", "get_dependencies")]

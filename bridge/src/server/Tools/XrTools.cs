@@ -37,6 +37,14 @@ public sealed class XrTools
     public Task<string> ActivateOpen(string document_id, CancellationToken ct = default)
         => Call("activate_open_document_xr", new JObject { ["document_id"] = document_id }, ct);
 
+    [McpServerTool(Name = "inventor_check_interference_xr"), Description("Revision-bound Inventor interference analysis of the active assembly's direct occurrences for XR. Without occurrence_ids every unsuppressed direct occurrence is analysed; with occurrence_ids (portable ids of direct occurrences) those are analysed against all the others. Returns analyzed, count, total_volume_mm3, elapsed_ms and pairs with portable a/b occurrence ids, names, volume_mm3 and the range box (min_mm/max_mm, assembly millimetres) of each interference body. A subassembly counts as one unit. No CAD changes. Experimental.")]
+    public Task<string> CheckInterferenceXr(string document_id, string expected_revision, string[]? occurrence_ids = null, CancellationToken ct = default)
+        => Call("check_interference_xr", new JObject
+        {
+            ["document_id"] = document_id, ["expected_revision"] = expected_revision,
+            ["occurrence_ids"] = occurrence_ids is null ? null : new JArray(occurrence_ids),
+        }, ct);
+
     /// <summary>A composed scene fetches at most this many distinct definitions.</summary>
     public const int MaxSceneDefinitions = 200;
 
