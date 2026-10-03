@@ -192,6 +192,15 @@ public sealed class FakeAddIn : System.IAsyncDisposable
                         ["boxes"] = new JArray(new JObject { ["min_mm"] = new JArray(15, 0, 0), ["max_mm"] = new JArray(20, 20, 20) }),
                     }),
                 });
+            case "measure_min_distance_xr":
+                if ((string?)p["document_id"] != AssemblyId) return Fail(InventorErrorCodes.DOCUMENT_CHANGED, "Active document changed.");
+                if ((string?)p["expected_revision"] != Revision) return Fail(InventorErrorCodes.STALE_REVISION, "Revision changed.");
+                if ((string?)p["a_occurrence_id"] == (string?)p["b_occurrence_id"]) return Fail(InventorErrorCodes.INVALID_ARGUMENT, "Choose two different occurrences.");
+                return Ok(new JObject
+                {
+                    ["document_id"] = AssemblyId, ["revision"] = Revision, ["distance_mm"] = 30.0,
+                    ["point_a"] = new JArray(0, 0, 0), ["point_b"] = new JArray(30, 0, 0), ["points_source"] = "inventor",
+                });
             case "get_display_mesh":
             {
                 string id = (string?)p["document_id"] ?? AssemblyId;

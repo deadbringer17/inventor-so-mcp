@@ -36,6 +36,7 @@ public static partial class InventorCommandRegistry
         add(new XrHistoryHandler());
         add(new ActivateOpenDocumentXrHandler());
         add(new CheckInterferenceXrHandler());
+        add(new MeasureMinDistanceXrHandler());
 
         // Inspection and intelligence (queries)
         add(new GetSketchInfoHandler());

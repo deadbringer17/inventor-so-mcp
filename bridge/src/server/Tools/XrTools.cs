@@ -45,6 +45,14 @@ public sealed class XrTools
             ["occurrence_ids"] = occurrence_ids is null ? null : new JArray(occurrence_ids),
         }, ct);
 
+    [McpServerTool(Name = "inventor_measure_min_distance_xr"), Description("Revision-bound Inventor minimum distance (mm) between two direct occurrences of the active assembly (portable ids) for XR. Returns distance_mm and, when Inventor provides them, the closest points point_a/point_b in assembly millimetres (points_source inventor), otherwise null points (points_source unavailable). Expect 0 on touching or interfering parts. No CAD changes. Experimental.")]
+    public Task<string> MeasureMinDistanceXr(string document_id, string expected_revision, string a_occurrence_id, string b_occurrence_id, CancellationToken ct = default)
+        => Call("measure_min_distance_xr", new JObject
+        {
+            ["document_id"] = document_id, ["expected_revision"] = expected_revision,
+            ["a_occurrence_id"] = a_occurrence_id, ["b_occurrence_id"] = b_occurrence_id,
+        }, ct);
+
     /// <summary>A composed scene fetches at most this many distinct definitions.</summary>
     public const int MaxSceneDefinitions = 200;
 

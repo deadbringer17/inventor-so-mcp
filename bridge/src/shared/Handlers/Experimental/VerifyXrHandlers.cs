@@ -123,4 +123,51 @@ public sealed class CheckInterferenceXrHandler : ExperimentalHandler
         return result;
     }
 }
+
+/// <summary>
+/// <c>measure_min_distance_xr</c>: Inventor minimum distance between two direct occurrences, revision-bound. The closest points come
+/// from the NameValueMap context of GetMinimumDistance when the interop fills it (late bound: a failure leaves them null and never
+/// fails the measurement). Read-only.
+/// </summary>
+public sealed class MeasureMinDistanceXrHandler : ExperimentalHandler
+{
+    // Keys confirmed or replaced by the live probe recorded in docs/xr-m7-verification.md (task 1).
+    private const string PointOneKey = "ClosestPointOne", PointTwoKey = "ClosestPointTwo";
+
+    public override string Name => "measure_min_distance_xr";
+    public override bool IsReadOnly => true;
+
+    protected override JToken Run(InventorCommandContext ctx, Application app, JObject p)
+    {
+        var assembly = VerifyXr.Assembly(ctx, app, p, Name, out string documentId);
+        var direct = VerifyXr.Direct(assembly);
+        var a = VerifyXr.DirectOccurrence(assembly, direct, (string?)p["a_occurrence_id"]);
+        var b = VerifyXr.DirectOccurrence(assembly, direct, (string?)p["b_occurrence_id"]);
+        if (ReferenceEquals(a, b)) throw new ArgumentException("Choose two different occurrences.");
+        if (a.Suppressed || b.Suppressed) throw new ArgumentException("A suppressed occurrence has no geometry to measure.");
+        X.Deadline(ctx, "before minimum distance");
+
+        JToken pointA = JValue.CreateNull(), pointB = JValue.CreateNull();
+        double cm;
+        try
+        {
+            var context = app.TransientObjects.CreateNameValueMap();
+            cm = ((dynamic)app.MeasureTools).GetMinimumDistance(a, b, InferredTypeEnum.kNoInference, InferredTypeEnum.kNoInference, context);
+            if (context.Value[PointOneKey] is Point one && context.Value[PointTwoKey] is Point two)
+            {
+                pointA = VerifyXr.Mm(one); pointB = VerifyXr.Mm(two);
+            }
+        }
+        catch (Exception ex) when (ex is not CodedFailureException)
+        {
+            cm = app.MeasureTools.GetMinimumDistance(a, b);
+        }
+        bool points = pointA.Type == JTokenType.Array && pointB.Type == JTokenType.Array;
+        return new JObject
+        {
+            ["document_id"] = documentId, ["revision"] = ctx.Events!.Revision(documentId), ["distance_mm"] = cm * 10,
+            ["point_a"] = pointA, ["point_b"] = pointB, ["points_source"] = points ? "inventor" : "unavailable",
+        };
+    }
+}
 #endif
