@@ -51,6 +51,10 @@ namespace InventorXrSo.Core.Ui
         public IReadOnlyList<XrTab> Tabs =>
             (_active?.Tabs ?? Array.Empty<XrTab>()).Concat(_spaces.Tabs).Where(t => !t.Hidden).ToArray();
 
+        /// <summary>Scheda per id, anche se nascosta (schede di elenco dinamiche del workspace).</summary>
+        public XrTab FindTab(string id) =>
+            (_active?.Tabs ?? Array.Empty<XrTab>()).Concat(_spaces.Tabs).FirstOrDefault(t => t.Id == id);
+
         public IReadOnlyList<XrAction> Palette(string tabId)
         {
             var list = All().Where(a => a.Tab == tabId).ToArray();

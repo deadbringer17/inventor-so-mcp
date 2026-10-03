@@ -42,10 +42,10 @@ namespace InventorXrSo.Unity.Ui
 
         public void SetStatus(string text) => _status.text = text;
 
-        public void Flash(string text)
+        public void Flash(string text, float seconds = 3f)
         {
             SetFlash(text);
-            _flashUntil = Time.unscaledTime + 3f;
+            _flashUntil = Time.unscaledTime + seconds;
         }
 
         private void SetFlash(string text)

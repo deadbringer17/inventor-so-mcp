@@ -36,6 +36,8 @@ namespace InventorXrSo.Xr
         private ActionCatalog _catalog;
         private UiShell _shell;
         private InventorXrSo.Xr.Input.XrInput _input;
+        private Workbench _workbench;
+        private SketchSheetView _sheet;
         private ICredentialStore _store;
         private PairedServer _server;
         private SessionController _session;
@@ -90,9 +92,21 @@ namespace InventorXrSo.Xr
             XrUi.MakeInteractive(_shell.CommitBar.Canvas, head.GetComponent<Camera>());
             _badge = _shell.Hud;
             _badge.gameObject.SetActive(false);
+            // Progettazione draws on the shell (palette, commit bar, chip, ring) and puts the model on the work plane.
+            _workbench = gameObject.AddComponent<Workbench>();
+            _sheet = gameObject.AddComponent<SketchSheetView>();
+            _sheet.Bind(sceneView.transform);
             _input = gameObject.AddComponent<InventorXrSo.Xr.Input.XrInput>();
+            _design.Attach(_shell, _workbench, _sheet, _input);
+            _design.HudMessage += text => _badge.Flash(text, 6f);
+            _design.ActiveChanged += active =>
+            {
+                if (active) _catalog.SetActive(_design);
+                else if (ReferenceEquals(_catalog.Active, _design)) _catalog.SetActive(null);
+            };
+            _design.Closed += () => { if (_inSession) Place(); };
+            // Back, Fit, Recenter, step and zoom belong to the Design workspace (it subscribes through Attach); the palette owns the tabs.
             _input.TabDelta += _shell.Palette.SelectTab;
-            _input.Back += _shell.Palette.HideKeypad;
             _inspect.DesignRequested += OpenDesign;
             _inspect.AssemblyRequested += OpenAssembly;
             _inspect.LamieraRequested += OpenLamiera;
@@ -314,6 +328,7 @@ namespace InventorXrSo.Xr
             _assembly.SetScene(scene);
             _lamiera.SetScene(scene);
             if (scene != null && _inSession && !_placed) Place();
+            _design.RefreshWorkbench();
             if (scene != null && scene.Omitted.Count > 0) _badge.Flash(scene.Omitted.Count + UiText.Omitted);
             RefreshHome();
         }

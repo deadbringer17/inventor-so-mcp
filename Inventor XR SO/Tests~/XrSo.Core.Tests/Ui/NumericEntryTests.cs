@@ -129,5 +129,33 @@ namespace XrSo.Core.Tests.Ui
             e.Nudge(+1); e.CycleStep(+1); e.BeginEdit(); e.Type('1'); e.Backspace(); e.CancelEdit();
             Assert.Equal(6, n);
         }
+
+        [Fact]
+        public void Committed_fires_only_on_a_confirmed_keypad_value()
+        {
+            int n = 0;
+            var e = Mm();
+            e.Committed += () => n++;
+            e.Nudge(+1); e.SetValue(5, out _); e.BeginEdit(); e.Type('7'); e.CancelEdit();
+            Assert.Equal(0, n);
+            e.BeginEdit(); e.Type('7');
+            Assert.True(e.Commit(out _));
+            Assert.Equal(1, n);
+            Assert.Equal(7, e.Value);
+        }
+
+        [Fact]
+        public void CommitValue_validates_and_confirms_an_open_keypad()
+        {
+            int n = 0;
+            var e = Mm();
+            e.Committed += () => n++;
+            e.BeginEdit();
+            Assert.False(e.CommitValue(-1, out var reason));
+            Assert.False(string.IsNullOrEmpty(reason));
+            Assert.True(e.Editing); Assert.Equal(0, n);
+            Assert.True(e.CommitValue(12, out _));
+            Assert.False(e.Editing); Assert.Equal(12, e.Value); Assert.Equal(1, n);
+        }
     }
 }

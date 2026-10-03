@@ -176,5 +176,18 @@ namespace XrSo.Core.Tests.Ui
             Assert.Throws<ArgumentException>(() => new XrAction("id", "L", "", () => true, () => { }));
             Assert.Throws<ArgumentNullException>(() => new XrAction("id", "L", "t", null, () => { }));
         }
+
+        [Fact]
+        public void FindTab_also_returns_hidden_tabs_of_the_active_provider()
+        {
+            var c = new ActionCatalog(Spaces());
+            var p = new Provider();
+            p.TabList.Add(new XrTab("a", "A"));
+            p.TabList.Add(new XrTab("_pick.0", "Elenco"));
+            c.SetActive(p);
+            Assert.DoesNotContain(c.Tabs, t => t.Id == "_pick.0");
+            Assert.Equal("Elenco", c.FindTab("_pick.0").Label);
+            Assert.Null(c.FindTab("assente"));
+        }
     }
 }

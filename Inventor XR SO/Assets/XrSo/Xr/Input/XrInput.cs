@@ -21,22 +21,35 @@ namespace InventorXrSo.Xr.Input
         public bool PenHeld { get; private set; }
         public bool Precision { get; private set; }
         public bool TwoHand { get; private set; }
+        /// <summary>Controller destro (penna) connesso e tracciato nell'ultimo frame letto.</summary>
+        public bool PenTracked { get; private set; }
+        public bool PaletteTracked { get; private set; }
+        /// <summary>Grip destro tenuto (e tracciato): serve ai workspace per distinguere "solo vista" dal trigger.</summary>
+        public bool PenGripHeld { get; private set; }
 
         public event Action PenPressed, PenReleased, PenGrabStarted, PenGrabEnded, Back, Fit, Recenter, SnapToggled;
         public event Action<int> StepDelta, StepSizeDelta, TabDelta;
         public event Action<float> Zoom;
         public event Action<bool> TwoHandChanged;
+        /// <summary>
+        /// Il controller destro ha perso il tracking. Scatta PRIMA di <see cref="PenReleased"/> (se il trigger era tenuto), cosi
+        /// i chiamanti distinguono il rilascio voluto dalla perdita e chiudono la cattura senza anteprima.
+        /// </summary>
+        public event Action TrackingLost;
 
         private void Update() { if (Source != null) Poll(Source.Read(), Time.unscaledTime); }
 
         public void Poll(XrInputFrame f, float time)
         {
+            if (_last.PenTracked && !f.PenTracked) TrackingLost?.Invoke();
+            PenTracked = f.PenTracked; PaletteTracked = f.PaletteTracked;
             bool trigger = f.PenTrigger && f.PenTracked;
             if (trigger && !PenHeld) { PenHeld = true; PenPressed?.Invoke(); }
             else if (!trigger && PenHeld) { PenHeld = false; PenReleased?.Invoke(); }
 
             bool grip = f.PenGrip && f.PenTracked;
             bool lastGrip = _last.PenGrip && _last.PenTracked;
+            PenGripHeld = grip;
             if (grip && !lastGrip) PenGrabStarted?.Invoke();
             else if (!grip && lastGrip) PenGrabEnded?.Invoke();
 

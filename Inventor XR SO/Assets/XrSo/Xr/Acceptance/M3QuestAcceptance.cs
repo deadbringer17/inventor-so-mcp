@@ -13,8 +13,9 @@ using InventorXrSo.Core.Session;
 using InventorXrSo.Unity.Scene;
 using InventorXrSo.Unity.Ui;
 using Newtonsoft.Json.Linq;
+using InventorXrSo.Core.Ui;
+using SelectionKind = InventorXrSo.Core.Selection.SelectionKind;
 using UnityEngine;
-using UnityEngine.UI;
 
 namespace InventorXrSo.Xr
 {
@@ -24,21 +25,29 @@ namespace InventorXrSo.Xr
         internal static readonly string[] ReflectedMembers =
         {
             "AppController._session", "AppController._inspect", "AppController._design", "AppController._selection",
+            "AppController._catalog",
             "AppController.EnterSession",
             "InspectWorkspace.DesignRequested",
-            "DesignWorkspace._backend", "DesignWorkspace._session", "DesignWorkspace._panel", "DesignWorkspace._previewView",
+            "DesignWorkspace._backend", "DesignWorkspace._session", "DesignWorkspace._previewView",
             "DesignWorkspace._view", "DesignWorkspace._context", "DesignWorkspace._history", "DesignWorkspace._busy",
             "DesignWorkspace._pendingMutations", "DesignWorkspace._operation", "DesignWorkspace._negative",
             "DesignWorkspace._symmetric", "DesignWorkspace._dimension", "DesignWorkspace._diameter", "DesignWorkspace._through",
             "DesignWorkspace._face", "DesignWorkspace._edges", "DesignWorkspace._handle", "DesignWorkspace._ray",
             "DesignWorkspace._renderedPlan",
             "DesignPreviewView._originals", "DesignPreviewView._previewRoot",
-            "HomePanel._entry", "HomePanel._keypad",
         };
 
         private DesignWorkspace _design;
         private InspectWorkspace _inspect;
         private IDesignWorkspaceBackend _backend;
+        private bool _syntheticKeypadNoted;
+
+        // Design has no panel any more: every command goes through the action catalog by stable id (palette, ring and
+        // commit bar share these actions), numbers through the keypad entry. Both are SYNTHETIC input, not a controller.
+        private const string Extrude = "design.extrude", HoleAction = "design.hole",
+            FilletAction = "design.fillet", UndoAction = "design.history.undo", RedoAction = "design.history.redo",
+            Dimension = "design.dimension", Diameter = "design.diameter", Through = "design.through",
+            Position = "design.position", ParametersAction = "design.parameters", InspectSpace = "spaces.inspect";
 
         protected override string Milestone => "m3";
         protected override int TimeoutSeconds => 360;
@@ -93,14 +102,14 @@ namespace InventorXrSo.Xr
                 "workspace rendered the current plan");
             await CaptureScreenshot("extrude-preview", ct);
             Pass("M3-C1", "extrude Base_M3 20 mm join positive: preview ready, solid result and translucent original shown, revision unchanged");
-            Click("Annulla comando");
+            RunAction(CommitIds.Cancel);
             await VerifyCancelledAsync(state0, ct);
             Pass("M3-C1", "Cancel clears preview and ghost; revision unchanged");
 
             // ---- C2: preview again -> Apply
             await PreviewExtrudeAsync(state0, ct);
             RequireFixture();
-            Click("Applica");
+            RunAction(CommitIds.Apply);
             await SettleAsync(state0.Revision, ct);
             var state1 = await _backend.GetDocumentStateAsync(ct);
             Check(state1.DocumentId == state0.DocumentId && state1.Revision != state0.Revision, "Apply changed the revision");
@@ -129,7 +138,7 @@ namespace InventorXrSo.Xr
             Check(afterStalePreview.Revision == state1.Revision, "preview for the stale check left the revision unchanged");
 
             RequireFixture();
-            Click("Annulla modifica XR");
+            RunAction(UndoAction);
             await SettleAsync(state1.Revision, ct);
             var state2 = await _backend.GetDocumentStateAsync(ct);
             Check(state2.Revision != state1.Revision, "XR Undo changed the revision");
@@ -156,7 +165,7 @@ namespace InventorXrSo.Xr
             Pass("M3-Stale", "preview computed at the committed revision rejected with STALE_REVISION after Undo");
 
             RequireFixture();
-            Click("Ripeti modifica XR");
+            RunAction(RedoAction);
             await SettleAsync(state2.Revision, ct);
             var state3 = await _backend.GetDocumentStateAsync(ct);
             Check(state3.Revision != state2.Revision, "XR Redo changed the revision");
@@ -171,33 +180,33 @@ namespace InventorXrSo.Xr
             // ---- C9: blind hole on the top face of the block
             var topFace = DesignCtx.Faces.FirstOrDefault(f => Math.Abs(f.Normal.Z - 1) < 1e-3 && Math.Abs(f.PointMm.Z - 10) < 0.01);
             Check(topFace != null, "context exposes the block top face (normal +Z at Z=10 mm)");
-            Click("Foro");
+            RunAction(HoleAction);
             Set(_design, "_face", topFace.Id);
-            Click("Posizione esatta XYZ");
+            RunAction(Position);
             TypeValues(12, 0, topFace.PointMm.Z);
-            Click("Diametro");
+            RunAction(Diameter);
             TypeValues(4);
-            Click("Passante → Cieco");
-            Click("Dimensione numerica");
+            RunAction(Through);
+            RunAction(Dimension);
             TypeValues(5);
             Check(!ReadBoolean(_design, "_through") && Math.Abs(ReadValue<double>(_design, "_diameter") - 4) < 1e-9
                 && Math.Abs(ReadValue<double>(_design, "_dimension") - 5) < 1e-9, "hole draft is blind, diameter 4 mm, depth 5 mm");
             await PreviewAndVerifyAsync(state3, ct);
             Pass("M3-C9", "blind hole d4 x 5 mm at (12, 0, " + F(topFace.PointMm.Z) + ") on the top face: preview ready, revision unchanged");
-            Click("Annulla comando");
+            RunAction(CommitIds.Cancel);
             await VerifyCancelledAsync(state3, ct);
             Pass("M3-C9", "hole preview cancelled; revision unchanged");
 
             // ---- C10: fillet 1 mm
             var edge = PickBottomLineEdge(DesignCtx);
-            Click("Raccordo");
+            RunAction(FilletAction);
             Read<HashSet<string>>(_design, "_edges").Add(edge.Id);
-            Click("Dimensione numerica");
+            RunAction(Dimension);
             TypeValues(1);
             Check(Math.Abs(ReadValue<double>(_design, "_dimension") - 1) < 1e-9, "fillet radius is 1 mm");
             await PreviewAndVerifyAsync(state3, ct);
             Pass("M3-C10", "fillet 1 mm on edge " + edge.Id + ": preview ready, revision unchanged");
-            Click("Annulla comando");
+            RunAction(CommitIds.Cancel);
             await VerifyCancelledAsync(state3, ct);
             Pass("M3-C10", "fillet preview cancelled; revision unchanged");
 
@@ -206,44 +215,45 @@ namespace InventorXrSo.Xr
             var blockEdges = DesignCtx.Edges.Where(e => e.Kind == "kLineSegmentCurve" || e.Kind == "kLineCurve")
                 .Select(e => e.Id).Distinct().ToArray();
             Check(blockEdges.Length >= 8, "context exposes the block edge group for the invalid fillet case");
-            Click("Raccordo");
+            RunAction(FilletAction);
             Read<HashSet<string>>(_design, "_edges").UnionWith(blockEdges);
-            Click("Dimensione numerica");
+            RunAction(Dimension);
             TypeValues(1);
             await PreviewAndVerifyAsync(state3, ct);
-            Click("Dimensione numerica");
+            RunAction(Dimension);
             TypeValues(100);
             Check(Math.Abs(ReadValue<double>(_design, "_dimension") - 100) < 1e-9, "fillet radius is 100 mm");
-            Check(!DesignSess.CanApply && !ButtonInteractable("Applica"), "editing the radius disables Apply until a new preview");
-            Click("Anteprima");
+            Check(!DesignSess.CanApply && !ActionEnabled(CommitIds.Apply), "editing the radius disables Apply until a new preview");
+            RunAction(CommitIds.Preview);
             await WaitUntil(() => DesignSess.Status != DesignStatus.Previewing, ct);
             Check(DesignSess.Status == DesignStatus.Error && !string.IsNullOrEmpty(DesignSess.Error),
                 "fillet 100 mm fails validation (status " + DesignSess.Status + ")");
-            Check(!DesignSess.CanApply && !ButtonInteractable("Applica"), "Apply is disabled after the validation failure");
+            Check(!DesignSess.CanApply && !ActionEnabled(CommitIds.Apply), "Apply is disabled after the validation failure");
+            Check(_design.CommitBar.Phase == CommitBarPhase.Error, "the commit bar is in the error phase (" + _design.CommitBar.Phase + ")");
             bool ghostRetained = PreviewView.IsShowing;
             Record("Fillet 100 mm error: '" + DesignSess.Error + "'; last ghost retained=" + ghostRetained);
             var afterInvalid = await _backend.GetDocumentStateAsync(ct);
             Check(afterInvalid.Revision == state3.Revision, "failed preview leaves the revision unchanged");
             Pass("M3-C11", "100 mm fillet rejected, Apply disabled, ghost retained=" + ghostRetained);
-            Click("Dimensione numerica");
+            RunAction(Dimension);
             TypeValues(1);
             await PreviewAndVerifyAsync(state3, ct);
-            Check(ButtonInteractable("Applica"), "Apply is enabled again after a valid 1 mm preview");
+            Check(ActionEnabled(CommitIds.Apply), "Apply is enabled again after a valid 1 mm preview");
             Pass("M3-C11", "1 mm again: preview ready and Apply re-enabled");
-            Click("Annulla comando");
+            RunAction(CommitIds.Cancel);
             await VerifyCancelledAsync(state3, ct);
 
             // ---- C12: parameter +1 mm through the Parameters page and keypad
             await RunParameterCaseAsync(state3, ct);
 
             // ---- C15: back to Inspect with a live ghost, Inspect selection, reopen
-            Click("Raccordo");
+            RunAction(FilletAction);
             Read<HashSet<string>>(_design, "_edges").Add(edge.Id);
-            Click("Dimensione numerica");
+            RunAction(Dimension);
             TypeValues(1);
             await PreviewAndVerifyAsync(state3, ct);
             var contextBeforeClose = DesignCtx;
-            Click("Torna a Ispeziona");
+            RunAction(InspectSpace);
             Check(!_design.Active && !_inspect.DesignActive, "Design closed and Inspect is active again");
             Check(!PreviewView.IsShowing && Read<IList>(PreviewView, "_originals").Count == 0
                 && DesignSess.Preview == null && DesignSess.Status == DesignStatus.Empty, "no ghost after leaving Design");
@@ -267,12 +277,13 @@ namespace InventorXrSo.Xr
                 "reopened Design reloaded its context");
             Pass("M3-C15", "Design reopened: context reloaded (" + DesignCtx.Edges.Count + " edges)");
 
-            Click("Torna a Ispeziona");
+            RunAction(InspectSpace);
             var finalState = await _backend.GetDocumentStateAsync(ct);
             Check(!_design.Active, "Design closed at the end of the run");
             Record("Fixture left with the join extrusion of Base_M3 COMMITTED (Undo then Redo): revision " + finalState.Revision
                 + "; Design workspace closed, no open command. Restore the fixture before rerunning.");
-            NotCovered("M3-Physical", "controller sketch, edge pick, manipulator drag, tracking and readability require physical Quest input");
+            NotCovered("M3-Physical", "controller sketch, edge pick, trigger-held handle drag (M5-08; only the EditMode synthetic XrInput tests cover the capture contract, the runner does not move the real controller), tracking and readability require physical Quest input");
+            NotCovered("M6-Design-Input", "actions invoked by id through the catalog and numbers typed on the keypad entry are SYNTHETIC; palette ergonomics, ring, chip and commit bar legibility need a person with the controllers");
         }
 
         private async Task OpenDesignFromWristAsync(CancellationToken ct, DesignContext previousContext = null)
@@ -285,41 +296,45 @@ namespace InventorXrSo.Xr
                 && !ReferenceEquals(DesignCtx, previousContext) && Read<DesignHistory>(_design, "_history") != null, ct);
         }
 
-        private void Click(string label)
+        private ActionCatalog Catalog => Read<ActionCatalog>(App, "_catalog");
+
+        /// <summary>Invokes a declared action by id through the catalog, the same path as palette, ring and commit bar.</summary>
+        private void RunAction(string id)
         {
-            var panel = Read<HomePanel>(_design, "_panel");
-            var button = panel.GetComponentsInChildren<Button>()
-                .FirstOrDefault(b => b.gameObject.activeInHierarchy && b.GetComponentInChildren<Text>()?.text == label);
-            Check(button != null, "Design panel has no button '" + label + "'");
-            Check(button.interactable, "Design button '" + label + "' is disabled");
-            button.onClick.Invoke();
+            var action = Catalog.Find(id);
+            Check(action != null, "the action catalog has no action '" + id + "'");
+            Check(action.Enabled, "action '" + id + "' is disabled: " + action.DisabledReason);
+            Check(action.TryInvoke(), "action '" + id + "' did not run");
         }
 
-        private bool ButtonInteractable(string label)
+        private bool ActionEnabled(string id) => Catalog.Find(id)?.Enabled == true;
+
+        /// <summary>Chooses an entry of the open picker list (planes, profiles, parameters) by label.</summary>
+        private void PickItem(string label, bool prefix = false)
         {
-            var panel = Read<HomePanel>(_design, "_panel");
-            var button = panel.GetComponentsInChildren<Button>()
-                .FirstOrDefault(b => b.gameObject.activeInHierarchy && b.GetComponentInChildren<Text>()?.text == label);
-            return button != null && button.interactable;
+            var action = _design.Actions.FirstOrDefault(a => a.Id.StartsWith("design.pick.", StringComparison.Ordinal)
+                && (prefix ? a.Label.StartsWith(label, StringComparison.Ordinal) : a.Label == label));
+            Check(action != null, "the open list has no entry '" + label + "'");
+            Check(action.Enabled && action.TryInvoke(), "list entry '" + label + "' did not run");
         }
 
         private void TypeValues(params double[] values)
         {
-            var panel = Read<HomePanel>(_design, "_panel");
+            if (!_syntheticKeypadNoted) { Record("Numbers are typed on the keypad entry by the runner (synthetic keypad input)"); _syntheticKeypadNoted = true; }
             foreach (var value in values)
             {
-                Check(Read<RectTransform>(panel, "_keypad").gameObject.activeSelf, "numeric keypad is open");
-                while (Read<string>(panel, "_entry").Length > 0) panel.Press(UiText.KeyBack);
-                foreach (char c in F(value)) panel.Press(c.ToString());
-                panel.Press(UiText.KeyOk);
+                var entry = _design.ActiveEntry;
+                Check(entry != null && entry.Editing, "numeric keypad is open");
+                foreach (char c in F(value)) entry.Type(c);
+                Check(entry.Commit(out var reason), "keypad accepted " + F(value) + ": " + reason);
             }
         }
 
         private async Task PreviewExtrudeAsync(DocumentState baseline, CancellationToken ct)
         {
-            Click("Estrusione");
-            Click("Base_M3");
-            Click("Dimensione numerica");
+            RunAction(Extrude);
+            PickItem("Base_M3");
+            RunAction(Dimension);
             TypeValues(20);
             Check(Math.Abs(ReadValue<double>(_design, "_dimension") - 20) < 1e-9 && Read<string>(_design, "_operation") == "join"
                 && !ReadBoolean(_design, "_negative") && !ReadBoolean(_design, "_symmetric"),
@@ -329,11 +344,12 @@ namespace InventorXrSo.Xr
 
         private async Task PreviewAndVerifyAsync(DocumentState baseline, CancellationToken ct)
         {
-            Click("Anteprima");
+            RunAction(CommitIds.Preview);
             await WaitUntil(() => DesignSess.Status != DesignStatus.Previewing, ct);
             Check(DesignSess.Status == DesignStatus.PreviewReady && DesignSess.CanApply,
                 "preview is ready for Apply (status " + DesignSess.Status + ", error '" + DesignSess.Error + "')");
             Check(PreviewView.IsShowing, "DesignPreviewView is showing the preview");
+            Check(_design.CommitBar.Phase == CommitBarPhase.Ready, "the commit bar offers Apply (" + _design.CommitBar.Phase + ")");
             var state = await _backend.GetDocumentStateAsync(ct);
             Check(state.DocumentId == baseline.DocumentId && state.Revision == baseline.Revision,
                 "preview leaves document id and revision unchanged");
@@ -398,17 +414,8 @@ namespace InventorXrSo.Xr
             var parameter = parameters.FirstOrDefault(p => preferred.Contains((string)p["name"])) ?? parameters[0];
             string name = (string)parameter["name"];
             double value = (double)parameter["value_mm"], target = value + 1;
-            Click("Parametri");
-            Button button = null;
-            var panel = Read<HomePanel>(_design, "_panel");
-            for (int page = 0; page < 6 && button == null; page++)
-            {
-                button = panel.GetComponentsInChildren<Button>().FirstOrDefault(b => b.gameObject.activeInHierarchy
-                    && (b.GetComponentInChildren<Text>()?.text ?? "").StartsWith(name + " = ", StringComparison.Ordinal));
-                if (button == null) { if (!ButtonInteractable("Successivi")) break; Click("Successivi"); }
-            }
-            Check(button != null && button.interactable, "Parameters page lists " + name);
-            button.onClick.Invoke();
+            RunAction(ParametersAction);
+            PickItem(name + " = ", prefix: true);
             TypeValues(target);
             await WaitUntil(() => DesignSess.Status != DesignStatus.Previewing, ct);
             Check(DesignSess.Status == DesignStatus.PreviewReady && DesignSess.CanApply && PreviewView.IsShowing,
@@ -416,7 +423,7 @@ namespace InventorXrSo.Xr
             var state = await _backend.GetDocumentStateAsync(ct);
             Check(state.Revision == baseline.Revision, "parameter preview leaves the revision unchanged");
             Pass("M3-C12", "parameter " + name + " " + F(value) + " -> " + F(target) + " mm: preview ready, revision unchanged");
-            Click("Annulla comando");
+            RunAction(CommitIds.Cancel);
             await VerifyCancelledAsync(baseline, ct);
             Pass("M3-C12", "parameter preview cancelled; not committed");
         }
