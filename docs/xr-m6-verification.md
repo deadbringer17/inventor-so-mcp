@@ -140,3 +140,34 @@ Note sull'esecuzione:
 - **Run non valido**: durante la ripetizione Inventor si è chiuso da solo (`E_FAIL` in M5 `…m5-verification/…-20261003-191112.json`, fixture M4 non preparata). Non è un fallimento del software: Inventor riaperto, host HTTPS riavviato (`--target 2027`, `--pair-host 192.168.1.227`), M5 e M4 ripetuti con esito PASS.
 - Primo tentativo M1 (`…-185318.json`): `TIMEOUT before_runner_start`, visore sveglio ma senza finestra in primo piano; non è un fallimento del test.
 - Ogni fixture è stata chiusa senza salvare, il documento dell'utente riattivato e l'APK ordinario reinstallato con hash verificato.
+
+## Fase 5 — Collaudo (3 ottobre 2026)
+
+Consegnato (non ancora eseguito sul visore):
+
+- **Runner M6** `Inventor XR SO/Assets/XrSo/Xr/Acceptance/M6QuestAcceptance.cs` (`XR_SO_ACCEPTANCE`, extra Android `xr_m6_acceptance`, fixture `XR_M6_Quest_Acceptance`). Gira sull'`AppController` reale: sostituisce la sorgente dell'`XrInput` dell'app con una `SyntheticInputSource` (ogni evento dei controller è un frame **sintetico**, scritto così nel log), invoca le azioni per id sull'`ActionCatalog` reale e controlla dopo ogni anteprima che documento e revisione di Inventor non siano cambiati.
+- **Fixture M6** (`bridge/tests/QuestAcceptanceFixtures`, `--prepare-quest m6`): un assieme con due componenti, un blocco (sketch `Base_M6`) e una lamiera (sketch `Taglio_M6`), parti tenute aperte. Il runner passa da Ispeziona e Assieme sull'assieme, entra in Progettazione con «Apri in Progettazione» dal blocco isolato e in Lamiera con «Apri in Lamiera» dalla lamiera isolata, poi riattiva l'assieme.
+- **Plumbing**: `UiHitOverride` su `DesignWorkspace` (come Assieme e Lamiera), `m6` in `scripts/run-quest-acceptance.ps1` (timeout predefinito 780 s per m6), `M6QuestAcceptance` nel test di contratto EditMode (`ReflectedMembersExist` e `ReflectedMembersListIsComplete`).
+
+| Gate | Sottocasi che il runner esegue (input sintetico) | `NOT COVERED` dichiarato nel log |
+|---|---|---|
+| M6-01 | tavolozza figlia del controller sinistro e non della testa; schede e scheda Spazi su Ispeziona, Progettazione, Lamiera e Assieme; rotazione delle schede con lo stick sinistro; nessun pannello fluttuante; «Applica» solo sulla barra | leggibilità e posa sul controller reale |
+| M6-02 | schizzo sul foglio orizzontale all'altezza del piano; linea con la punta penna e linea col raggio; «Vista modello» ↔ «Foglio» senza variare elementi e piano di schizzo; stesso punto fisico → stesse coordinate CAD | precisione reale della punta penna |
+| M6-03 | chip e tastierino sulla tavolozza, X chiude il tastierino; stick ± passo con passo 1 → 10 → 0,1 e limiti; precisione col Trigger sinistro (drag della maniglia: +10 mm normale, +1 mm in precisione); dettatura nel campo armato (testo iniettato) | stick, tastierino e microfono reali |
+| M6-04 | anello su componente, bordo e faccia piana (azioni previste), aperto da un raggio sintetico, chiuso da X e dal vuoto, azione dell'anello eseguita | anello di Ispeziona (non esiste ancora) |
+| M6-05 | barra Empty, Draft, Previewing, Ready, Error (fillet 100 mm), Offline, Uncertain, Applied (un Apply reale di estrusione e il suo Undo XR); Applica abilitata solo in Ready; tabella pura `CommitBarState` con Stale | Stale dal vivo (coperto a livello backend da M3-Stale e M5-07) |
+| M6-06 | Assieme sollevato (65 cm davanti, 15 cm sotto la testa); isolamento solo visivo (revisione e occorrenze di Inventor invariate); «Apri in Progettazione» e «Apri in Lamiera» dal componente isolato | percezione dell'isolamento |
+| M6-07 | una mano e due mani solo vista; Adatta (Y breve); Ricentra (Y tenuto 1 s) | calibrazione dell'altezza del piano (nessun percorso nell'app chiama `Workbench.SetDeskHeight`); tracking reale |
+| M6-08 | «applica» con anteprima valida mostra solo la conferma; etichetta disabilitata e frase ignota rifiutate senza mutazione; etichetta abilitata eseguita; ambiguità, disabilitato ed eseguito su un `ActionCatalog` controllato (stessa classe, provider sintetico) | pulsante B, microfono, audio |
+
+| Prova | Esito |
+|---|---|
+| Core `XrSo.Core.Tests` | 443/443 PASS |
+| Unity EditMode (batch, 3 ottobre 2026) | 377/377 PASS, incluso il contratto dei runner con `M6QuestAcceptance` (`ReflectedMembersExist`, `ReflectedMembersListIsComplete`, esclusione dall'APK ordinario) |
+| Compilazione di runner e fixture | Runner M6 compilato con `XR_SO_ACCEPTANCE` (stesso `csproj` generato da Unity, build `dotnet`); fixture compilate (`dotnet build`); controllo statico di `ReflectedMembers` (tutti i nomi usati sono dichiarati e presenti nei sorgenti) |
+| Runner M6 sul Quest 3 con Inventor 2027 | **NOT RUN**: nessun esito, nessun manifest. Non si deduce nulla da test automatici o dalla sola compilazione |
+| Prova fisica da seduto (M6-10) | **NOT RUN** |
+
+Stato dei gate: **M6-01…M6-08** hanno i sottocasi riproducibili scritti nel runner, ma restano aperti finché il runner non gira sul Quest e finché non c'è la prova fisica. **M6-09** resta **aperto**: servono il runner M6 eseguito (`PASS COMPLETE` sui sottocasi riproducibili) e i runner M1–M5 migrati rieseguiti con la Fase 4. **M6-10** resta **aperto**: serve una persona con i controller.
+
+Prima del primo run: costruire l'APK di collaudo, `dotnet run --project bridge/tests/QuestAcceptanceFixtures -- --prepare-quest m6`, avviare l'host HTTPS con `--target 2027` sull'IP corrente del PC, poi `pwsh scripts/run-quest-acceptance.ps1 -Milestone m6 -Apk artifacts/InventorXrSo-acceptance.apk -OrdinaryApk artifacts/InventorXrSo.apk`, `--inspect-quest m6` e `--restore-quest m6`. Dettagli e avvertenze (il runner fa un Apply reale e lo annulla; dopo un run interrotto riattivare l'assieme) in [xr-quest-acceptance.md](xr-quest-acceptance.md). Punti scritti senza Inventor e da confermare al primo run: nomi delle occorrenze (`Block`, `Sheet`), `Occurrences.Add` di una lamiera ancora aperta, esito del fillet da 100 mm come errore, mira dei raggi sintetici su bordo, faccia e componente (se non colpisce, il log riporta `NOT COVERED [M6-04]` o `[M6-07]` con il motivo).

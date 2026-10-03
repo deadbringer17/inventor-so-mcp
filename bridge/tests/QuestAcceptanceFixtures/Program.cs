@@ -14,9 +14,9 @@ internal static class Program
             var mode = args.FirstOrDefault(a => a is "--prepare-quest" or "--inspect-quest" or "--restore-quest");
             var index = Array.IndexOf(args, mode);
             var milestone = mode == null || index + 1 >= args.Length ? null : args[index + 1].ToLowerInvariant();
-            if (mode == null || milestone is not ("m1" or "m2" or "m3" or "m5"))
+            if (mode == null || milestone is not ("m1" or "m2" or "m3" or "m5" or "m6"))
             {
-                Console.Error.WriteLine("Usage: QuestAcceptanceFixtures (--prepare-quest|--inspect-quest|--restore-quest) <m1|m2|m3|m5>");
+                Console.Error.WriteLine("Usage: QuestAcceptanceFixtures (--prepare-quest|--inspect-quest|--restore-quest) <m1|m2|m3|m5|m6>");
                 return 64;
             }
             var clsid = Type.GetTypeFromProgID("Inventor.Application")!.GUID;

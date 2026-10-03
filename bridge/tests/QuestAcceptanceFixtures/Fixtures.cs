@@ -43,6 +43,7 @@ internal static class Fixtures
                 "m1" or "m2" => PrepareAssembly(app, m, directory, created),
                 "m3" => PrepareM3(app, directory, created),
                 "m5" => PrepareM5(app, directory, created),
+                "m6" => PrepareM6(app, directory, created),
                 _ => throw new ArgumentException("Unknown milestone " + m),
             };
             var active = app.ActiveDocument ?? throw new InvalidOperationException("No active document after preparing the fixture.");
@@ -167,7 +168,9 @@ internal static class Fixtures
         return new JObject { ["part"] = path, ["documents"] = new JArray(path), ["expected"] = expected };
     }
 
-    private static JObject PrepareM5(global::Inventor.Application app, string directory, List<object> created)
+    /// <summary>Sheet-metal part: a 100 x 60 mm Face (sketch <paramref name="baseName"/>) and an unconsumed 20 x 10 mm cut sketch on its top face.</summary>
+    private static PartDocument BuildSheetMetalPart(global::Inventor.Application app, string path, List<object> created,
+        string baseName, string cutName)
     {
         var template = app.FileManager.GetTemplateFile(DocumentTypeEnum.kPartDocumentObject, SystemOfMeasureEnum.kDefaultSystemOfMeasure,
             DraftingStandardEnum.kDefault_DraftingStandard, SheetMetalSubType);
@@ -177,20 +180,73 @@ internal static class Fixtures
             throw new InvalidOperationException("The sheet-metal template did not produce a sheet-metal part.");
         var tg = app.TransientGeometry;
         var baseSketch = def.Sketches.Add(def.WorkPlanes[3]);
-        baseSketch.Name = "Base_M5";
+        baseSketch.Name = baseName;
         baseSketch.SketchLines.AddAsTwoPointRectangle(tg.CreatePoint2d(0, 0), tg.CreatePoint2d(10, 6));
         var faces = ((SheetMetalFeatures)def.Features).FaceFeatures;
         faces.Add(faces.CreateFaceFeatureDefinition(baseSketch.Profiles.AddForSolid()));
-        SketchOnTopFace(app, def, "Taglio_M5", (sketch, c) =>
+        SketchOnTopFace(app, def, cutName, (sketch, c) =>
             sketch.SketchLines.AddAsTwoPointRectangle(tg.CreatePoint2d(c.X - 1, c.Y - 0.5), tg.CreatePoint2d(c.X + 1, c.Y + 0.5)));
-        var path = Path.Combine(directory, "XR_M5_Quest_Acceptance.ipt");
         part.SaveAs(path, false);
+        return part;
+    }
+
+    private static JObject PrepareM5(global::Inventor.Application app, string directory, List<object> created)
+    {
+        var path = Path.Combine(directory, "XR_M5_Quest_Acceptance.ipt");
+        var part = BuildSheetMetalPart(app, path, created, "Base_M5", "Taglio_M5");
+        var def = (SheetMetalComponentDefinition)part.ComponentDefinition;
         var expected = new JObject
         {
             ["is_sheet_metal"] = true, ["thickness_mm"] = ThicknessMm(def), ["bends"] = 0,
             ["has_flat_pattern"] = false, ["cut_sketch"] = "Taglio_M5",
         };
         return new JObject { ["part"] = path, ["documents"] = new JArray(path), ["expected"] = expected };
+    }
+
+    /// <summary>
+    /// M6: one assembly with two components, both parts kept open so "Apri in Progettazione / Lamiera" can activate them.
+    /// The block (40 x 30 x 10 mm, as m3, unconsumed sketch Base_M6) serves Progettazione, the sheet (as m5, unconsumed sketch
+    /// Taglio_M6) serves Lamiera, the assembly serves Ispeziona and Assieme. Every document name starts with XR_M6_Quest_Acceptance.
+    /// </summary>
+    private static JObject PrepareM6(global::Inventor.Application app, string directory, List<object> created)
+    {
+        var block = (PartDocument)app.Documents.Add(DocumentTypeEnum.kPartDocumentObject);
+        created.Add(block);
+        CreateBlock(app, block, 40, 30, 10, true, "Blocco");
+        var blockDef = block.ComponentDefinition;
+        var top = TopPlanarFace(blockDef, out var box);
+        if (top == null || Math.Abs(box!.MaxPoint.Z - 1) > 1e-3)
+            throw new InvalidOperationException("The +Z face at z = 10 mm was not found.");
+        SketchOnTopFace(app, blockDef, "Base_M6", (sketch, c) => sketch.SketchCircles.AddByCenterRadius(c, 0.5));
+        var blockPath = Path.Combine(directory, "XR_M6_Quest_Acceptance_Block.ipt");
+        block.SaveAs(blockPath, false);
+
+        var sheetPath = Path.Combine(directory, "XR_M6_Quest_Acceptance_Sheet.ipt");
+        var sheet = BuildSheetMetalPart(app, sheetPath, created, "Base_M6", "Taglio_M6");
+
+        var assembly = (AssemblyDocument)app.Documents.Add(DocumentTypeEnum.kAssemblyDocumentObject);
+        created.Add(assembly);
+        var tg = app.TransientGeometry;
+        var first = assembly.ComponentDefinition.Occurrences.Add(blockPath, tg.CreateMatrix());
+        first.Grounded = true;
+        var pose = tg.CreateMatrix();
+        pose.SetTranslation(tg.CreateVector(6, 0, 0));   // cm: the sheet (0..100 mm in X) sits beside the block (-20..20 mm)
+        var second = assembly.ComponentDefinition.Occurrences.Add(sheetPath, pose);
+        second.Grounded = false;
+        var assemblyPath = Path.Combine(directory, "XR_M6_Quest_Acceptance.iam");
+        assembly.SaveAs(assemblyPath, false);
+        assembly.Activate();
+        var expected = new JObject
+        {
+            ["occurrences"] = 2, ["block_volume_mm3"] = 12000, ["block_sketch"] = "Base_M6", ["sheet_cut_sketch"] = "Taglio_M6",
+            ["sheet_thickness_mm"] = ThicknessMm((SheetMetalComponentDefinition)sheet.ComponentDefinition),
+            ["fixture_documents"] = 3,
+        };
+        return new JObject
+        {
+            ["assembly"] = assemblyPath, ["block_part"] = blockPath, ["sheet_part"] = sheetPath,
+            ["documents"] = new JArray(assemblyPath, blockPath, sheetPath), ["expected"] = expected,
+        };
     }
 
     private static double? ThicknessMm(SheetMetalComponentDefinition def)

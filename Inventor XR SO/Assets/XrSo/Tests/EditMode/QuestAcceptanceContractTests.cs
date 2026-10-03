@@ -22,6 +22,7 @@ namespace InventorXrSo.Tests
             "M3QuestAcceptance",
             "M4QuestAcceptance",
             "M5QuestAcceptance",
+            "M6QuestAcceptance",
         };
 
         private const BindingFlags PerLevel =
@@ -60,6 +61,7 @@ namespace InventorXrSo.Tests
         [TestCase("M2QuestAcceptance")]
         [TestCase("M3QuestAcceptance")]
         [TestCase("M5QuestAcceptance")]
+        [TestCase("M6QuestAcceptance")]
         public void ReflectedMembersExist(string runner)
         {
             var missing = new List<string>();
@@ -94,6 +96,7 @@ namespace InventorXrSo.Tests
         [TestCase("M2QuestAcceptance")]
         [TestCase("M3QuestAcceptance")]
         [TestCase("M5QuestAcceptance")]
+        [TestCase("M6QuestAcceptance")]
         public void ReflectedMembersListIsComplete(string runner)
         {
             var declared = new HashSet<string>();
