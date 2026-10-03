@@ -14,6 +14,7 @@ using InventorXrSo.Core.Voice;
 using InventorXrSo.Unity.Scene;
 using InventorXrSo.Unity.Ui;
 using InventorXrSo.Xr;
+using InventorXrSo.Xr.Input;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using UnityEngine;
@@ -127,7 +128,7 @@ namespace InventorXrSo.Tests
         [SetUp]
         public void Setup()
         {
-            _hud.Clear();
+            _hud.Clear(); _haptics.Clear(); _xr = null; _previousSink = Haptics.Sink; Haptics.Sink = (pulse, pen) => _haptics.Add(pulse);
             _root = new GameObject("Lamiera UI test");
             _material = new Material(Shader.Find("XrSo/CadSurface"));
             _eye = Child("Eye").AddComponent<Camera>();
@@ -157,6 +158,7 @@ namespace InventorXrSo.Tests
 
         [TearDown] public void Cleanup()
         {
+            Haptics.Sink = _previousSink;
             // The chips and the ring are free-standing canvases (not children of the workspace).
             foreach (var name in new[] { "_heightChip", "_angleChip", "_thicknessChip", "_ring" })
             {
@@ -480,11 +482,29 @@ namespace InventorXrSo.Tests
             Assert.Null(_view.transform.Find("Flat pattern (view only)"));
         }
 
-        // M5-03 (gesture path): synthetic controller frames through the same ProcessControllerFrame as Update()
-        private void Frame(bool tracked, bool grip, bool trigger, bool gripDown = false, bool triggerDown = false, bool ui = false, bool onPanel = false)
-            => typeof(LamieraWorkspace).GetMethod("ProcessControllerFrame", Flags)
-                .Invoke(_workspace, new object[] { tracked, grip, trigger, gripDown, triggerDown, ui, onPanel });
+        // ---------------------------------------------------------------- M6 phase 3 part B: XrInput (synthetic) drives the workspace
 
+        private XrInput _xr;
+        private XrInputFrame _frame;
+        private float _clock;
+        private readonly List<HapticPulse> _haptics = new List<HapticPulse>();
+        private Action<HapticPulse, bool> _previousSink;
+
+        /// <summary>Synthetic input: no OVRInput is read; the test feeds frames to the same XrInput the app uses.</summary>
+        private void UseInput()
+        {
+            _xr = Child("XrInput").AddComponent<XrInput>(); _xr.Source = new SyntheticInputSource();
+            Assert.True(_xr.Synthetic, "the runner log must call this input synthetic");
+            _workspace.Attach(null, null, null, _xr);
+            _frame = new XrInputFrame { PenTracked = true, PaletteTracked = true };
+            Poll();
+        }
+
+        private void Poll() => _xr.Poll(_frame, _clock += 0.016f);
+        private void PressTrigger() { _frame.PenTrigger = true; Poll(); }
+        private void ReleaseTrigger() { _frame.PenTrigger = false; Poll(); }
+        private void Frame() => typeof(LamieraWorkspace).GetMethod("Update", Flags).Invoke(_workspace, null);
+        private bool Capturing => Manipulator.Dragging;
         private Vector3 AxisWorld() => _view.transform.TransformDirection(CadCoordinates.ToLocal(Manipulator.Axis)).normalized;
 
         private void AimAtKnob()
@@ -495,103 +515,249 @@ namespace InventorXrSo.Tests
             _ray.Origin.SetPositionAndRotation(Manipulator.KnobWorldPosition + side * 0.15f, Quaternion.LookRotation(-side));
         }
 
+        private void AimAwayFromKnob() => _ray.Origin.SetPositionAndRotation(new Vector3(5, 5, 5), Quaternion.LookRotation(Vector3.up));
+
         /// <summary>Moves the controller by a physical distance along the flange axis: the same CAD millimetres at any view scale.</summary>
         private void MoveHandAlongAxis(double cadMm) => _ray.Origin.position += AxisWorld() * (float)(cadMm * 0.001 * _view.transform.lossyScale.x);
 
         [TestCase(1f)][TestCase(0.25f)]
-        public void GripTriggerOnKnobDragsTheDraftHeightByTheSameMillimetresAtAnyScale(float scale)
+        public void TriggerHeldOnTheKnobDragsOnlyTheDraftByTheSameMillimetresAtAnyScale(float scale)
         {
-            ArmFlangeWithEdge();
+            UseInput(); ArmFlangeWithEdge();
             _view.transform.localScale = Vector3.one * scale;
-            AimAtKnob();
-            Frame(true, true, true, gripDown: true, triggerDown: true);
-            Assert.True(Manipulator.Dragging);
-            MoveHandAlongAxis(10);
-            Frame(true, true, true);
+            AimAtKnob(); PressTrigger();
+            Assert.True(Capturing, "Trigger held on the knob captures it");
+            MoveHandAlongAxis(10); Frame();
             Assert.That(_workspace.Flange.HeightMm, Is.EqualTo(20).Within(0.05));
             Assert.AreEqual(0, _backend.Previews, "Dragging alone never computes a preview.");
-            Frame(true, false, false);
-            Assert.False(Manipulator.Dragging);
-            Assert.AreEqual(1, _backend.Previews); Assert.AreEqual(0, _backend.Commits);
+            Assert.AreEqual(0, _backend.Commits); Assert.False(Enabled(CommitIds.Apply), "only the draft changed");
+            ReleaseTrigger();
+            Assert.False(Capturing);
+            Assert.AreEqual(1, _backend.Previews, "the release asks for exactly one preview"); Assert.AreEqual(0, _backend.Commits);
             Assert.That((double)_backend.LastOperations[0]["arguments"]["height_mm"], Is.EqualTo(20).Within(0.05));
             Assert.True(PreviewView.IsShowing);
         }
 
-        [Test] public void PlainGripNeverChangesTheFlangeDraft()
+        [Test] public void OnlyAPressThatStartsOnTheKnobCaptures()
         {
-            ArmFlangeWithEdge();
+            UseInput(); ArmFlangeWithEdge();
+            AimAwayFromKnob(); PressTrigger();
+            Assert.False(Capturing, "Trigger away from the knob does not capture");
+            AimAtKnob(); Frame();
+            Assert.False(Capturing, "moving onto the knob with the Trigger already held does not capture either");
+            Assert.AreEqual(10, _workspace.Flange.HeightMm);
+            ReleaseTrigger();
+            Assert.AreEqual(0, _backend.Previews, "a release that captured nothing previews nothing");
+            AimAtKnob(); PressTrigger(); Assert.True(Capturing);
+        }
+
+        [Test] public void GripNeverCapturesTheKnobAndAloneItOnlyMovesTheView()
+        {
+            UseInput(); ArmFlangeWithEdge();
             int version = _workspace.Flange.Version;
             AimAtKnob();
-            Frame(true, true, false, gripDown: true);
-            MoveHandAlongAxis(10);
-            Frame(true, true, false);
-            Assert.False(Manipulator.Dragging);
+            _frame.PenGrip = true; Poll(); PressTrigger();
+            Assert.False(Capturing, "Grip + Trigger no longer drags the knob");
+            MoveHandAlongAxis(10); Frame();
             Assert.AreEqual(10, _workspace.Flange.HeightMm); Assert.AreEqual(version, _workspace.Flange.Version);
-            Frame(true, false, false);
+            ReleaseTrigger(); _frame.PenGrip = false; Poll();
             Assert.AreEqual(0, _backend.Previews); Assert.AreEqual(0, _backend.Commits);
         }
 
-        [Test] public void TriggerWithoutGripNeverStartsTheKnobDrag()
+        [Test] public void PlainGripNeverChangesTheFlangeDraft()
         {
-            ArmFlangeWithEdge(); AimAtKnob();
-            Frame(true, false, true, triggerDown: true);
-            Assert.False(Manipulator.Dragging); Assert.AreEqual(10, _workspace.Flange.HeightMm);
+            UseInput(); ArmFlangeWithEdge();
+            int version = _workspace.Flange.Version;
+            AimAtKnob();
+            _frame.PenGrip = true; Poll();
+            MoveHandAlongAxis(10); Frame();
+            Assert.False(Capturing);
+            Assert.AreEqual(10, _workspace.Flange.HeightMm); Assert.AreEqual(version, _workspace.Flange.Version);
+            _frame.PenGrip = false; Poll();
+            Assert.AreEqual(0, _backend.Previews); Assert.AreEqual(0, _backend.Commits);
         }
 
-        [Test] public void ReleasingTheTriggerEndsTheDragAndFurtherMotionIsIgnored()
+        [Test] public void ReleasingTheTriggerEndsTheCaptureAndFurtherMotionIsIgnored()
         {
-            ArmFlangeWithEdge(); AimAtKnob();
-            Frame(true, true, true, gripDown: true, triggerDown: true);
-            MoveHandAlongAxis(5); Frame(true, true, true);
+            UseInput(); ArmFlangeWithEdge(); AimAtKnob(); PressTrigger();
+            MoveHandAlongAxis(5); Frame();
             Assert.That(_workspace.Flange.HeightMm, Is.EqualTo(15).Within(0.05));
-            Frame(true, true, false); // trigger released, grip still held: view grab, never the draft
-            Assert.False(Manipulator.Dragging); Assert.AreEqual(1, _backend.Previews);
-            MoveHandAlongAxis(20); Frame(true, true, false);
+            ReleaseTrigger();
+            Assert.False(Capturing); Assert.AreEqual(1, _backend.Previews);
+            MoveHandAlongAxis(20); Frame();
             Assert.That(_workspace.Flange.HeightMm, Is.EqualTo(15).Within(0.05));
             Assert.AreEqual(0, _backend.Commits);
         }
 
-        [Test] public void TrackingLossEndsTheDragAndKeepsTheLastValidHeight()
+        [Test] public void TrackingLossKeepsTheLastValidHeightWithAnErrorPulseAndNoPreview()
         {
-            ArmFlangeWithEdge(); AimAtKnob();
-            Frame(true, true, true, gripDown: true, triggerDown: true);
-            MoveHandAlongAxis(8); Frame(true, true, true);
+            UseInput(); ArmFlangeWithEdge(); AimAtKnob(); PressTrigger();
+            MoveHandAlongAxis(8); Frame();
             Assert.That(_workspace.Flange.HeightMm, Is.EqualTo(18).Within(0.05));
-            MoveHandAlongAxis(500); // garbage pose reported while tracking is lost
-            Frame(false, false, false);
-            Assert.False(Manipulator.Dragging);
+            _haptics.Clear();
+            MoveHandAlongAxis(500);                       // garbage pose reported while tracking is lost
+            _frame.PenTracked = false; Poll();            // Trigger still down: tracking loss first, then the release
+            Assert.False(Capturing);
             Assert.That(_workspace.Flange.HeightMm, Is.EqualTo(18).Within(0.05));
-            Assert.AreEqual(0, _backend.Commits);
-            Frame(false, true, true, gripDown: true, triggerDown: true);
-            Assert.False(Manipulator.Dragging, "No drag can start while untracked.");
+            Assert.AreEqual(0, _backend.Previews, "a loss is not a release: no preview"); Assert.AreEqual(0, _backend.Commits);
+            CollectionAssert.Contains(_haptics, HapticPulse.Error);
+            Frame(); Assert.That(_workspace.Flange.HeightMm, Is.EqualTo(18).Within(0.05));
+            _frame.PenTracked = true; Poll();             // the Trigger is still held: a new press far from the knob
+            Assert.False(Capturing, "no capture can start from a pose that is not on the knob");
+            _frame.PenTrigger = false; Poll();
+            Assert.AreEqual(0, _backend.Previews); Assert.AreEqual(0, _backend.Commits);
             Assert.That(_workspace.Flange.HeightMm, Is.EqualTo(18).Within(0.05));
         }
 
-        [Test] public void ClosingTheWorkspaceEndsTheDragCapture()
+        [Test] public void ClosingOrHidingTheWorkspaceEndsTheCapture()
         {
-            ArmFlangeWithEdge(); AimAtKnob();
-            Frame(true, true, true, gripDown: true, triggerDown: true);
-            Assert.True(Manipulator.Dragging);
+            UseInput(); ArmFlangeWithEdge(); AimAtKnob(); PressTrigger(); Assert.True(Capturing);
             _workspace.Close();
-            Assert.False(Manipulator.Dragging); Assert.AreEqual(0, _backend.Commits);
+            Assert.False(Capturing); Assert.AreEqual(0, _backend.Commits);
+            int previews = _backend.Previews;
+            ReleaseTrigger(); Assert.AreEqual(previews, _backend.Previews, "a release after Close does not preview");
+
+            _workspace.Open(); ArmFlangeWithEdge(); AimAtKnob(); PressTrigger(); Assert.True(Capturing);
+            _workspace.SetVisible(false);
+            Assert.False(Capturing); Assert.False(_workspace.Active); Assert.AreEqual(0, _backend.Commits);
+            ReleaseTrigger(); Assert.AreEqual(previews, _backend.Previews);
         }
 
-        [Test] public void UiHitBlocksTheKnobDrag()
+        [Test] public void KnobCaptureNeedsTheFlangeCommandArmedWithAnEdge()
         {
-            ArmFlangeWithEdge(); AimAtKnob();
-            Frame(true, true, true, gripDown: true, triggerDown: true, ui: true);
-            Assert.False(Manipulator.Dragging); Assert.AreEqual(10, _workspace.Flange.HeightMm);
-            Frame(true, true, true, gripDown: true, triggerDown: true);
-            Assert.True(Manipulator.Dragging, "The same gesture works once the ray leaves the UI.");
+            UseInput();
+            PressTrigger(); Assert.False(Manipulator.Visible); Assert.False(Capturing); ReleaseTrigger();
+            Do(FlangeAction);   // armed, still no edge
+            PressTrigger(); Assert.False(Capturing); ReleaseTrigger();
         }
 
-        [Test] public void KnobDragNeedsTheFlangeCommandArmedWithAnEdge()
+        [Test] public void PrecisionHeldMakesTheDragTenTimesSlowerAndReAnchorsWithoutJumping()
         {
-            Frame(true, true, true, gripDown: true, triggerDown: true);
-            Assert.False(Manipulator.Visible); Assert.False(Manipulator.Dragging);
-            Do(FlangeAction); // armed, still no edge
-            Frame(true, true, true, gripDown: true, triggerDown: true);
-            Assert.False(Manipulator.Dragging);
+            UseInput(); ArmFlangeWithEdge();
+            AimAtKnob(); PressTrigger();
+            MoveHandAlongAxis(10); Frame();
+            Assert.That(_workspace.Flange.HeightMm, Is.EqualTo(20).Within(0.05));
+            ReleaseTrigger();
+
+            _frame.PaletteTrigger = true; Poll(); Assert.True(_xr.Precision);
+            AimAtKnob(); PressTrigger();
+            MoveHandAlongAxis(10); Frame();
+            Assert.That(_workspace.Flange.HeightMm, Is.EqualTo(21).Within(0.05), "10 mm of hand = 1 mm of height with the left trigger held");
+            ReleaseTrigger();
+
+            // switching precision on in the middle of a drag re-anchors instead of jumping
+            _frame.PaletteTrigger = false; Poll();
+            AimAtKnob(); PressTrigger();
+            MoveHandAlongAxis(10); Frame(); double fast = _workspace.Flange.HeightMm;
+            Assert.That(fast, Is.EqualTo(31).Within(0.05));
+            _frame.PaletteTrigger = true; Poll(); Frame();
+            Assert.That(_workspace.Flange.HeightMm, Is.EqualTo(fast).Within(1e-9), "no jump when precision toggles");
+            MoveHandAlongAxis(10); Frame();
+            Assert.That(_workspace.Flange.HeightMm, Is.EqualTo(fast + 1).Within(0.05));
+            Assert.AreEqual(0, _backend.Commits);
+        }
+
+        [Test] public void WorkspaceWithoutAnInputNeverThrowsAndKeepsNoControllerState()
+        {
+            ArmFlangeWithEdge();
+            Assert.DoesNotThrow(() => { Frame(); _workspace.Back(); _workspace.FitView(); _workspace.RecenterView(); _workspace.ZoomView(1, 0.1f); });
+            Assert.False(Capturing);
+        }
+
+        private bool PickerTabs() => _workspace.Tabs.Any(t => t.Id.StartsWith(LamieraWorkspace.PickTabPrefix));
+        private void PressX() { _frame.X = true; Poll(); _frame.X = false; Poll(); }
+
+        [Test] public void BackClosesKeypadThenRingThenPickerThenTheArmedFieldThenTheLastDraftStep()
+        {
+            UseInput(); var shell = AttachShell(out _);
+            var ring = Field<RingView>("_ring");
+            Do(Rule); Assert.True(PickerTabs(), "the rule list is open");
+            typeof(LamieraWorkspace).GetMethod("AskNumber", Flags).Invoke(_workspace, new object[] { LamieraWorkspace.FieldThickness });
+            Assert.True(shell.Palette.KeypadVisible); Assert.NotNull(_workspace.ActiveEntry); Assert.NotNull(_workspace.ArmedField);
+            typeof(LamieraWorkspace).GetMethod("ShowRing", Flags).Invoke(_workspace, new object[] { UiSelectionKind.PlanarFace, Vector3.zero });
+            Assert.True(ring.Visible);
+            int previews = _backend.Previews;
+
+            PressX(); Assert.False(shell.Palette.KeypadVisible, "1: keypad"); Assert.True(ring.Visible); Assert.True(PickerTabs()); Assert.NotNull(_workspace.ArmedField);
+            PressX(); Assert.False(ring.Visible, "2: ring"); Assert.True(PickerTabs()); Assert.NotNull(_workspace.ArmedField);
+            PressX(); Assert.False(PickerTabs(), "3: picker"); Assert.NotNull(_workspace.ArmedField);
+            PressX(); Assert.IsNull(_workspace.ArmedField, "4: pending pick (the armed chip)"); Assert.AreEqual(SheetMetalCommand.Rule, _workspace.Mode.Armed);
+            PressX(); Assert.AreEqual(SheetMetalCommand.None, _workspace.Mode.Armed, "5: last draft step (the command)");
+            PressX(); Assert.AreEqual(SheetMetalCommand.None, _workspace.Mode.Armed, "nothing left to discard");
+            Assert.AreEqual(previews, _backend.Previews, "X never previews"); Assert.AreEqual(0, _backend.Commits, "X never touches the CAD");
+        }
+
+        [Test] public void BackDropsTheLastFlangeEdgeBeforeTheCommand()
+        {
+            UseInput(); ArmFlangeWithEdge();
+            _workspace.Flange.ToggleEdge("ent_edge2");
+            PressX(); CollectionAssert.AreEqual(new[] { "ent_edge" }, _workspace.Flange.EdgeIds.ToArray());
+            PressX(); Assert.AreEqual(0, _workspace.Flange.EdgeIds.Count); Assert.AreEqual(SheetMetalCommand.Flange, _workspace.Mode.Armed);
+            PressX(); Assert.AreEqual(SheetMetalCommand.None, _workspace.Mode.Armed);
+            Assert.AreEqual(0, _backend.Commits);
+        }
+
+        [Test] public void ZoomScalesTheModelAndClampsToTheLayoutLimits()
+        {
+            UseInput(); ArmFlangeWithEdge();
+            var root = _view.transform; var status = _workspace.Session.Status;
+            var up = new XrInputFrame { PenTracked = true, PaletteTracked = true, PaletteStick = new Vector2(0, 1) };
+            float before = root.localScale.x;
+            _xr.Poll(up, _clock += 0.016f);
+            Assert.Greater(root.localScale.x, before, "stick up zooms in");
+            for (int i = 0; i < 3000; i++) _xr.Poll(up, _clock += 0.016f);
+            Assert.AreEqual((float)WorkbenchLayout.MaxScale, root.localScale.x, 1e-6f);
+            var down = up; down.PaletteStick = new Vector2(0, -1);
+            for (int i = 0; i < 6000; i++) _xr.Poll(down, _clock += 0.016f);
+            Assert.AreEqual((float)WorkbenchLayout.MinScale, root.localScale.x, 1e-9f);
+            Assert.AreEqual(status, _workspace.Session.Status, "zoom is view only"); Assert.AreEqual(0, _backend.Commits);
+        }
+
+        private void Flick(float x, float y)
+        {
+            _xr.Poll(new XrInputFrame { PenTracked = true, PaletteTracked = true, PenStick = new Vector2(x, y) }, _clock += 0.016f);
+            _xr.Poll(new XrInputFrame { PenTracked = true, PaletteTracked = true }, _clock += 0.016f);
+        }
+
+        [Test] public void RightStickNudgesTheArmedChipAndCyclesTheStepWithTicks()
+        {
+            UseInput(); ArmFlangeWithEdge();
+            Flick(0.9f, 0); Assert.AreEqual(10, _workspace.Flange.HeightMm, "no chip armed: the stick does nothing"); Assert.IsEmpty(_haptics);
+            Assert.True(_workspace.TryArmField(LamieraWorkspace.FieldFlangeHeight)); _haptics.Clear();
+            Flick(0.9f, 0); Assert.AreEqual(11, _workspace.Flange.HeightMm, 1e-9, "right = +1 step"); CollectionAssert.AreEqual(new[] { HapticPulse.Tick }, _haptics);
+            Flick(0, 0.9f); Assert.AreEqual(11, _workspace.Flange.HeightMm, "cycling the step changes no value");
+            Flick(0.9f, 0); Assert.AreEqual(21, _workspace.Flange.HeightMm, 1e-9, "step is now 10");
+            Flick(0, -0.9f); Flick(0, -0.9f);
+            Flick(-0.9f, 0); Assert.AreEqual(20.9, _workspace.Flange.HeightMm, 1e-9, "step is now 0,1; left = -1 step");
+            Assert.AreEqual(6, _haptics.Count(p => p == HapticPulse.Tick), "every step and every step change ticks");
+            Assert.AreEqual(0, _backend.Commits);
+            _workspace.DisarmField();
+        }
+
+        [Test] public void HapticsFollowTheProfilesForApplySuccessAndError()
+        {
+            UseInput(); ArmFlangeWithEdge(); Do(CommitIds.Preview); _haptics.Clear();
+            Do(CommitIds.Apply);
+            CollectionAssert.Contains(_haptics, HapticPulse.Success);
+            Assert.AreEqual(1, _haptics.Count(p => p == HapticPulse.Success), "one success pulse");
+            _haptics.Clear();
+            Start(_backend); ArmFlangeWithEdge();
+            _backend.PreviewError = new InvalidOperationException("boom"); Do(CommitIds.Preview);
+            CollectionAssert.Contains(_haptics, HapticPulse.Error);
+        }
+
+        [Test] public void HoveringTheKnobGivesAShortPulseOnEntryOnly()
+        {
+            UseInput(); ArmFlangeWithEdge(); _haptics.Clear();
+            AimAwayFromKnob(); Frame(); Assert.IsEmpty(_haptics);
+            AimAtKnob(); Frame(); Frame();
+            CollectionAssert.AreEqual(new[] { HapticPulse.Hover }, _haptics);
+        }
+
+        [Test] public void LamieraSourcesNeverReadOvrInput()
+        {
+            foreach (var path in new[] { "XrSo/Xr/LamieraWorkspace.cs", "XrSo/Xr/LamieraActions.cs", "XrSo/Runtime/Scene/FlangeManipulator.cs", "XrSo/Runtime/Scene/FlatPatternDisplay.cs" })
+                StringAssert.DoesNotContain("OVRInput", File.ReadAllText(Path.Combine(Application.dataPath, path)), path);
         }
 
         private void AimAtEdge(string edgeId)
@@ -606,17 +772,21 @@ namespace InventorXrSo.Tests
 
         [Test] public void TriggerRayOnAnUnobstructedEdgeTogglesItInTheFlangeDraft()
         {
-            Do(FlangeAction);
+            UseInput(); Do(FlangeAction);
             var draft = _workspace.Flange;
             AimAtEdge("ent_edge");
-            Frame(true, false, true, triggerDown: true);
+            PressTrigger(); ReleaseTrigger();
             CollectionAssert.AreEqual(new[] { "ent_edge" }, draft.EdgeIds.ToArray());
-            Frame(true, false, true, triggerDown: true);
-            Assert.AreEqual(0, draft.EdgeIds.Count);
+            // the knob of the first edge stands on that edge's normal: a press there takes the knob, not the edge
+            AimAtEdge("ent_edge2");
+            PressTrigger(); ReleaseTrigger();
+            CollectionAssert.AreEqual(new[] { "ent_edge", "ent_edge2" }, draft.EdgeIds.ToArray());
+            PressTrigger(); ReleaseTrigger();
+            CollectionAssert.AreEqual(new[] { "ent_edge" }, draft.EdgeIds.ToArray());
             Assert.AreEqual(0, _backend.Commits);
         }
 
-        // M5-06 (gesture path): Grip moves only the detached flat pattern view
+        // M5-06: Grip moves only the detached flat pattern view
         private FlatPatternDisplay ShowFlatAndAimAt()
         {
             _backend.FlatExists = true; Start(_backend); Do(FlatShow);
@@ -629,6 +799,7 @@ namespace InventorXrSo.Tests
 
         [Test] public void GripOnTheDetachedFlatPatternMovesOnlyTheFlatMeshRoot()
         {
+            UseInput();
             var display = ShowFlatAndAimAt();
             Do(FlatDetach);
             var model = _view.transform;
@@ -636,28 +807,213 @@ namespace InventorXrSo.Tests
             var modelRotation = model.rotation;
             int previews = _backend.Previews, commits = _backend.Commits;
             var delta = new Vector3(0.05f, 0.02f, 0f);
-            Frame(true, true, false, gripDown: true);
-            _ray.Origin.position += delta;
-            Frame(true, true, false);
+            _frame.PenGrip = true; Poll();
+            _ray.Origin.position += delta; Frame();
             var expected = rootBefore + model.InverseTransformVector(delta);
             Assert.That(Vector3.Distance(display.MeshRoot.localPosition, expected), Is.LessThan(1e-4f));
             Assert.AreEqual(modelPosition, model.position); Assert.AreEqual(modelScale, model.localScale); Assert.AreEqual(modelRotation, model.rotation);
-            Frame(true, false, false);
-            _ray.Origin.position += delta; Frame(true, false, false);
+            _frame.PenGrip = false; Poll();
+            _ray.Origin.position += delta; Frame();
             Assert.That(Vector3.Distance(display.MeshRoot.localPosition, expected), Is.LessThan(1e-4f), "Released grip stops the movement.");
             Assert.AreEqual(previews, _backend.Previews); Assert.AreEqual(commits, _backend.Commits, "Moving the view never touches CAD.");
         }
 
         [Test] public void GripDoesNotGrabTheFlatPatternWhenItIsNotDetached()
         {
+            UseInput();
             var display = ShowFlatAndAimAt();
             Assert.False(_workspace.FlatPattern.Detached);
             var rootBefore = display.MeshRoot.localPosition;
-            Frame(true, true, false, gripDown: true);
-            _ray.Origin.position += new Vector3(0.05f, 0.02f, 0f);
-            Frame(true, true, false);
+            _frame.PenGrip = true; Poll();
+            _ray.Origin.position += new Vector3(0.05f, 0.02f, 0f); Frame();
             Assert.AreEqual(rootBefore, display.MeshRoot.localPosition);
             Assert.AreEqual(0, _workspace.FlatPattern.OffsetX);
+            Assert.AreEqual(0, _backend.Commits);
+        }
+
+        // ---------------------------------------------------------------- the flat pattern on the work plane
+
+        private static Bounds WorldBounds(Transform root)
+        {
+            var renderers = root.GetComponentsInChildren<MeshRenderer>(true);
+            var bounds = renderers[0].bounds;
+            foreach (var r in renderers) bounds.Encapsulate(r.bounds);
+            return bounds;
+        }
+
+        private FlatPatternDisplay ShowFlatOnThePlane(out Workbench bench)
+        {
+            UseInput(); AttachShell(out bench);
+            _backend.FlatExists = true; Start(_backend); Do(FlatShow);
+            bench.Snap();
+            var display = _workspace.GetComponentInChildren<FlatPatternDisplay>(true);
+            display.Snap();
+            return display;
+        }
+
+        [Test] public void FlatPatternLiesOnTheWorkPlaneInFrontOfTheUserFittedToTheSheetArea()
+        {
+            _backend.FlatExists = true;
+            UseInput(); AttachShell(out var bench); Start(_backend); Do(FlatShow);
+            var display = _workspace.GetComponentInChildren<FlatPatternDisplay>(true);
+            Assert.True(display.HasWorkPlane); Assert.True(display.IsShowing);
+            Assert.True(display.Tweening, "the pattern eases onto the plane (PoseTween), no jump");
+            var model = ScenePlacement.LocalBounds(_view.transform).center;
+            Assert.Less(Vector3.Distance(display.MeshRoot.position, _view.transform.TransformPoint(model)), 0.05f, "it starts out of the folded part");
+            bench.Snap(); display.Snap();
+            Assert.False(display.Tweening);
+            var bounds = WorldBounds(display.MeshRoot);
+            var floor = WorkbenchLayout.Part(bench.Frame, 0.4).Position;
+            Assert.AreEqual((float)floor.X, bounds.center.x, 2e-3f); Assert.AreEqual((float)floor.Z, bounds.center.z, 2e-3f);
+            Assert.AreEqual((float)floor.Y + 0.002f + bounds.extents.y, bounds.center.y, 2e-3f, "it rests on the plane");
+            Assert.LessOrEqual(bounds.size.x, (float)WorkbenchLayout.SheetWidth + 2e-3f); Assert.LessOrEqual(bounds.size.z, (float)WorkbenchLayout.SheetDepth + 2e-3f);
+            Assert.LessOrEqual(bounds.size.y, Mathf.Min(bounds.size.x, bounds.size.z) + 1e-4f, "the sheet normal is vertical");
+            Assert.True(display.FoldedHidden, "the pattern replaces the folded part on the plane");
+            Assert.True(_view.GetComponentsInChildren<CadBody>(true).All(b => !b.GetComponent<MeshRenderer>().enabled));
+            // Recentre: the pattern follows the new frame
+            _eye.transform.position = new Vector3(0, 1.6f, 0); _eye.transform.rotation = Quaternion.Euler(0, 90, 0);
+            Do(LamieraWorkspace.IdRecenter); bench.Snap(); display.Snap();
+            var moved = WorldBounds(display.MeshRoot); var next = WorkbenchLayout.Part(bench.Frame, 0.4).Position;
+            Assert.AreEqual((float)next.X, moved.center.x, 2e-3f); Assert.AreEqual((float)next.Z, moved.center.z, 2e-3f);
+            Assert.AreEqual(0, _backend.Commits);
+        }
+
+        [Test] public void DetachMovesOnlyThePatternAndAttachReturnsItToThePlacedPose()
+        {
+            var display = ShowFlatOnThePlane(out _);
+            var model = _view.transform;
+            Vector3 placed = display.MeshRoot.position, modelPosition = model.position, modelScale = model.localScale; var modelRotation = model.rotation;
+            int previews = _backend.Previews;
+            Do(FlatDetach); display.Snap();
+            Assert.That(Vector3.Distance(display.MeshRoot.position, placed), Is.LessThan(1e-4f), "detaching alone moves nothing");
+            Assert.True(_workspace.FlatPattern.MoveLocal(0.10, 0, 0.05));
+            Assert.That(Vector3.Distance(display.MeshRoot.position, placed + new Vector3(0.10f, 0, 0.05f)), Is.LessThan(1e-4f), "offset in plane metres");
+            Assert.AreEqual(modelPosition, model.position); Assert.AreEqual(modelScale, model.localScale); Assert.AreEqual(modelRotation, model.rotation);
+            Do(FlatAttach); display.Snap();
+            Assert.That(Vector3.Distance(display.MeshRoot.position, placed), Is.LessThan(1e-4f), "attach returns to the placed pose");
+            Assert.AreEqual(0, _workspace.FlatPattern.OffsetX);
+            Assert.AreEqual(previews, _backend.Previews); Assert.AreEqual(0, _backend.Commits);
+        }
+
+        [Test] public void GripMovesTheDetachedPatternOnThePlaneAndNeverTheModel()
+        {
+            var display = ShowFlatOnThePlane(out _);
+            Do(FlatDetach);
+            var model = _view.transform;
+            Vector3 before = display.MeshRoot.position, modelPosition = model.position, modelScale = model.localScale; var modelRotation = model.rotation;
+            var centre = _view.transform.TransformPoint(display.LocalBounds.center);
+            _ray.Origin.SetPositionAndRotation(centre + Vector3.back * 0.5f, Quaternion.identity);
+            var delta = new Vector3(0.05f, 0.0f, 0.02f);
+            _frame.PenGrip = true; Poll();
+            _ray.Origin.position += delta; Frame();
+            Assert.That(Vector3.Distance(display.MeshRoot.position, before + delta), Is.LessThan(1e-4f));
+            Assert.AreEqual(modelPosition, model.position); Assert.AreEqual(modelScale, model.localScale); Assert.AreEqual(modelRotation, model.rotation);
+            _frame.PenGrip = false; Poll();
+            Assert.AreEqual(0, _backend.Commits);
+        }
+
+        [Test] public void ZoomOnThePlaneScalesThePatternWithinTheLayoutLimits()
+        {
+            var display = ShowFlatOnThePlane(out _);
+            float modelScale = _view.transform.localScale.x;
+            var up = new XrInputFrame { PenTracked = true, PaletteTracked = true, PaletteStick = new Vector2(0, 1) };
+            float before = WorldBounds(display.MeshRoot).size.x;   // the small test mesh is already fitted at the maximum scale
+            var down = up; down.PaletteStick = new Vector2(0, -1);
+            _xr.Poll(down, _clock += 0.016f); display.Snap();
+            Assert.Less(WorldBounds(display.MeshRoot).size.x, before, "stick down zooms the pattern out");
+            for (int i = 0; i < 4000; i++) _xr.Poll(up, _clock += 0.016f);
+            display.Snap();
+            Assert.LessOrEqual(display.MeshRoot.lossyScale.x, (float)WorkbenchLayout.MaxScale + 1e-4f);
+            for (int i = 0; i < 9000; i++) _xr.Poll(down, _clock += 0.016f);
+            display.Snap();
+            Assert.GreaterOrEqual(display.MeshRoot.lossyScale.x, (float)WorkbenchLayout.MinScale - 1e-6f);
+            Assert.AreEqual(modelScale, _view.transform.localScale.x, "the folded part is not zoomed");
+            Do(LamieraWorkspace.IdFit); display.Snap();
+            Assert.That(WorldBounds(display.MeshRoot).size.x, Is.EqualTo(before).Within(2e-3f), "Adatta returns to the fitted size");
+        }
+
+        [Test] public void ViewActionsToggleBetweenFoldedAndFlatOnlyWhenAFlatPatternExists()
+        {
+            Assert.False(Enabled(LamieraWorkspace.IdViewFlat)); Assert.False(Enabled(LamieraWorkspace.IdViewFolded));
+            StringAssert.Contains("non esiste", Act(LamieraWorkspace.IdViewFlat).DisabledReason);
+            Assert.False(string.IsNullOrEmpty(Act(LamieraWorkspace.IdViewFolded).DisabledReason));
+            Assert.AreEqual(LamieraWorkspace.TabView, Act(LamieraWorkspace.IdViewFlat).Tab); Assert.AreEqual(LamieraWorkspace.TabView, Act(LamieraWorkspace.IdViewFolded).Tab);
+            _backend.FlatExists = true; Start(_backend);
+            Assert.True(Enabled(LamieraWorkspace.IdViewFlat)); Assert.False(Enabled(LamieraWorkspace.IdViewFolded), "already folded");
+            Do(LamieraWorkspace.IdViewFlat);
+            Assert.AreEqual(FlatPatternState.Ready, _workspace.FlatPattern.State);
+            var display = _workspace.GetComponentInChildren<FlatPatternDisplay>(true);
+            Assert.True(display.IsShowing); Assert.True(_workspace.FlatViewOn);
+            Assert.True(Enabled(LamieraWorkspace.IdViewFolded)); Assert.False(Enabled(LamieraWorkspace.IdViewFlat));
+            int meshes = _backend.FlatMeshes;
+            Do(LamieraWorkspace.IdViewFolded);
+            Assert.False(display.IsShowing, "Piegato: the pattern is hidden"); Assert.False(_workspace.FlatViewOn);
+            Assert.AreEqual(FlatPatternState.Ready, _workspace.FlatPattern.State, "only the view changed, the verified asset is kept");
+            Assert.True(Enabled(LamieraWorkspace.IdViewFlat)); Assert.False(Enabled(LamieraWorkspace.IdViewFolded));
+            Do(LamieraWorkspace.IdViewFlat); Assert.True(display.IsShowing);
+            Assert.AreEqual(meshes, _backend.FlatMeshes, "toggling never refetches the pattern");
+            Do(FlangeAction);
+            Assert.False(display.IsShowing, "editing the part brings the folded view back"); Assert.AreEqual(0, _backend.Commits);
+        }
+
+        [Test] public void FoldedViewBringsTheFoldedPartBackOnThePlane()
+        {
+            var display = ShowFlatOnThePlane(out _);
+            Assert.True(_view.GetComponentsInChildren<CadBody>(true).All(b => !b.GetComponent<MeshRenderer>().enabled));
+            Do(LamieraWorkspace.IdViewFolded);
+            Assert.False(display.FoldedHidden);
+            Assert.True(_view.GetComponentsInChildren<CadBody>(true).All(b => b.GetComponent<MeshRenderer>().enabled));
+            Do(LamieraWorkspace.IdViewFlat); Do(FlatHide);
+            Assert.True(_view.GetComponentsInChildren<CadBody>(true).All(b => b.GetComponent<MeshRenderer>().enabled), "hiding the pattern restores the part");
+            _workspace.Close();
+            Assert.True(_view.GetComponentsInChildren<CadBody>(true).All(b => b.GetComponent<MeshRenderer>().enabled));
+        }
+
+        // ---------------------------------------------------------------- the idle ring
+
+        private bool InvokeSelectPlanarFace(CadBody body, int triangle)
+            => (bool)typeof(LamieraWorkspace).GetMethod("SelectPlanarFace", Flags).Invoke(_workspace, new object[] { body, triangle, Vector3.zero });
+
+        [Test] public void RingOpensOnAnEdgeAndOnlyOnARealPlanarFace()
+        {
+            UseInput(); var shell = AttachShell(out _);
+            var ring = Field<RingView>("_ring");
+            // an edge
+            AimAtEdge("ent_edge"); PressTrigger(); ReleaseTrigger();
+            Assert.True(ring.Visible); Assert.AreEqual(SheetMetalCommand.None, _workspace.Mode.Armed);
+            // empty space closes it
+            AimAwayFromKnob(); PressTrigger(); ReleaseTrigger();
+            Assert.False(ring.Visible, "a press on nothing closes the ring");
+            // a body hit that the CAD context does not list as a planar face never opens it
+            var body = _view.Instances[0].Bodies[0]; var range = body.Primitive.FaceMap.FaceAtTriangle(0);
+            Assert.False(InvokeSelectPlanarFace(body, 0), "the default context has no face for this mesh face");
+            StringAssert.Contains("non piana", _workspace.Notice);
+            // the same hit with a matching planar face (same revision, same body and face ordinal)
+            var state = Field<DocumentState>("_state");
+            var context = DesignContext.Parse(new JObject
+            {
+                ["document_id"] = state.DocumentId, ["revision"] = state.Revision, ["kind"] = "part",
+                ["faces"] = new JArray(new JObject { ["id"] = "ent_planar", ["body_index"] = body.Primitive.BodyIndex, ["face_ordinal"] = range.Ordinal,
+                    ["point_mm"] = new JArray(0, 0, 10), ["normal"] = new JArray(0, 0, 1) }),
+            }, state);
+            typeof(LamieraWorkspace).GetField("_designContext", Flags).SetValue(_workspace, context);
+            Assert.True(InvokeSelectPlanarFace(body, 0));
+            // a context of another revision is not trusted
+            var stale = DesignContext.Parse(new JObject { ["document_id"] = state.DocumentId, ["revision"] = "r_old", ["kind"] = "part",
+                ["faces"] = new JArray(new JObject { ["id"] = "ent_planar", ["body_index"] = body.Primitive.BodyIndex, ["face_ordinal"] = range.Ordinal,
+                    ["point_mm"] = new JArray(0, 0, 10), ["normal"] = new JArray(0, 0, 1) }) }, new DocumentState(state.DocumentId, "r_old", "v"));
+            typeof(LamieraWorkspace).GetField("_designContext", Flags).SetValue(_workspace, stale);
+            Assert.False(InvokeSelectPlanarFace(body, 0));
+            Assert.AreEqual(0, _backend.Commits);
+        }
+
+        [Test] public void IdleTriggerRayOnAnEdgeOpensTheRing()
+        {
+            UseInput(); AttachShell(out _);
+            var ring = Field<RingView>("_ring");
+            AimAtEdge("ent_edge");
+            PressTrigger();
+            Assert.True(ring.Visible); Assert.AreEqual(SheetMetalCommand.None, _workspace.Mode.Armed);
             Assert.AreEqual(0, _backend.Commits);
         }
 
@@ -886,7 +1242,7 @@ namespace InventorXrSo.Tests
             var shell = UiShell.Create(Child("Left").transform, _root.transform.Find("Eye"), catalog);
             _roots.Add(shell.gameObject); _roots.Add(shell.CommitBar.Canvas.gameObject); _roots.Add(shell.Hud.Canvas.gameObject);
             bench = Child("Bench").AddComponent<Workbench>();
-            _workspace.Attach(shell, bench);
+            _workspace.Attach(shell, bench, null, _xr);
             catalog.SetActive(_workspace);
             _workspace.Close(); _workspace.Open();   // a real Open with the bench in place
             return shell;
@@ -970,16 +1326,6 @@ namespace InventorXrSo.Tests
             var ring = Field<RingView>("_ring");
             typeof(LamieraWorkspace).GetMethod("ShowRing", Flags).Invoke(_workspace, new object[] { UiSelectionKind.PlanarFace, Vector3.zero });
             Assert.True(ring.Visible); Assert.AreEqual(3, ring.Canvas.GetComponentsInChildren<UnityEngine.UI.Button>().Length);
-        }
-
-        [Test] public void IdleTriggerRayOnAnEdgeOpensTheRing()
-        {
-            AttachShell(out _);
-            var ring = Field<RingView>("_ring");
-            AimAtEdge("ent_edge");
-            Frame(true, false, true, triggerDown: true);
-            Assert.True(ring.Visible); Assert.AreEqual(SheetMetalCommand.None, _workspace.Mode.Armed);
-            Assert.AreEqual(0, _backend.Commits);
         }
 
         [Test] public void ChipsAppearWithTheFlangeAndTheKeypadSetsTheDraft()

@@ -26,6 +26,7 @@ namespace InventorXrSo.Xr
             IdFlatCreate = "lamiera.flat.create", IdFlatShow = "lamiera.flat.show", IdFlatHide = "lamiera.flat.hide",
             IdFlatDetach = "lamiera.flat.detach", IdFlatAttach = "lamiera.flat.attach",
             IdFit = "lamiera.view.fit", IdRecenter = "lamiera.view.recenter", IdRefresh = "lamiera.refresh",
+            IdViewFolded = "lamiera.view.folded", IdViewFlat = "lamiera.view.flat",
             IdPickPrefix = "lamiera.pick.";
 
         private static readonly XrTab[] StaticTabs =
@@ -162,6 +163,10 @@ namespace InventorXrSo.Xr
         }
 
         private bool FlatVisible => _flat != null && _flat.IsVisible;
+        /// <summary>The "Sviluppo" view is on: the pattern is shown on the work plane (the folded part gives way).</summary>
+        private bool FlatViewShown => FlatVisible && _flatDisplay != null && _flatDisplay.FlatViewOn;
+        private bool FlatPatternExists => _mode.Context?.FlatPattern.Exists == true || FlatVisible;
+        public bool FlatViewOn => FlatViewShown;
 
         private XrAction[] BuildActions()
         {
@@ -220,6 +225,12 @@ namespace InventorXrSo.Xr
                 // Vista
                 new XrAction(IdFit, "Adatta", TabView, () => Active && _bench != null, FitView, () => "Postazione non disponibile."),
                 new XrAction(IdRecenter, "Ricentra", TabView, () => Active && _bench != null, RecenterView, () => "Postazione non disponibile."),
+                new XrAction(IdViewFolded, "Vista: piegato", TabView, () => Active && FlatViewShown, () => { FoldedView(); Refresh(); },
+                    () => FlatPatternExists ? "La vista Piegato è già attiva." : "Lo sviluppo piano non esiste: usa Crea sviluppo.", new[] { "vista piegato" }),
+                new XrAction(IdViewFlat, "Vista: sviluppo", TabView,
+                    () => Active && FlatPatternExists && !FlatViewShown && (FlatVisible || (Interactive && _flat != null && _flat.State != FlatPatternState.Loading)),
+                    ShowFlat, () => !FlatPatternExists ? "Lo sviluppo piano non esiste: usa Crea sviluppo." : FlatViewShown ? "La vista Sviluppo è già attiva." : CommandReason(),
+                    new[] { "vista sviluppo" }),
                 new XrAction(IdRefresh, "Aggiorna", TabView,
                     () => Active && _online && _kind == "part" && !_busy && !Locked && _session != null && _session.Status != DesignStatus.RefreshRequired, LoadContext,
                     () => !_online ? "Offline." : _busy ? "Lettura del contesto lamiera in corso." : CommandReason()),

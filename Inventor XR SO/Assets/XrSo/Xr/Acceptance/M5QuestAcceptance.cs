@@ -9,6 +9,7 @@ using InventorXrSo.Core.Mcp;
 using InventorXrSo.Core.Ui;
 using InventorXrSo.Core.Voice;
 using InventorXrSo.Unity.Scene;
+using InventorXrSo.Xr.Input;
 using InventorXrSo.Xr.Voice;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
@@ -24,6 +25,7 @@ namespace InventorXrSo.Xr
             "AppController._catalog",
             "AppController._lamiera",
             "AppController._voiceTarget",
+            "AppController._input",
             "AppController.EnterSession",
             "AppController.OpenLamiera",
             "LamieraWorkspace._busy",
@@ -38,7 +40,7 @@ namespace InventorXrSo.Xr
             "LamieraWorkspace._ray",
             "LamieraWorkspace._view",
             "LamieraWorkspace._manip",
-            "LamieraWorkspace.ProcessControllerFrame",
+            "LamieraWorkspace.AttachInput",
             "DesignSession._operations",
         };
 
@@ -178,7 +180,7 @@ namespace InventorXrSo.Xr
             await AssertUnchanged(initial, "flange Cancel", ct);
             Pass("M5-03", "Cancel cleared the flange draft, preview and rendering; revision unchanged");
 
-            // ---- M5-03 (gesture path): synthetic controller frames through LamieraWorkspace.ProcessControllerFrame
+            // ---- M5-03 (gesture path): synthetic XrInput frames (Trigger held on the knob) through the very events the controllers raise
             await CheckSyntheticFlangeGestures(edgeId, initial, ct);
 
             // ---- M5-04: Cut from Taglio_M5, preview, Cancel
@@ -387,8 +389,8 @@ namespace InventorXrSo.Xr
             // ---- M5-06 (gesture path): synthetic Grip on the detached flat pattern
             await CheckSyntheticFlatGrab(flat, display, ct);
 
-            NotCovered("M6-Lamiera-Input", "actions invoked by id through the catalog and numbers typed on the keypad entry are SYNTHETIC; palette ergonomics, ring, chip and commit bar legibility, and the flange handle dragged with the Trigger only need a person with the controllers (Part B input)");
-            Record("NOT COVERED [M5-03-physical] real controller, real tracking, reduced-scale feel and readability of the flange manipulator: the Grip+Trigger gesture and the Trigger edge pick above were synthetic frames fed to LamieraWorkspace.ProcessControllerFrame, not a person's hand");
+            NotCovered("M6-Lamiera-Input", "actions invoked by id through the catalog and numbers typed on the keypad entry are SYNTHETIC; palette ergonomics, ring, chip and commit bar legibility, and the flange handle dragged with the Trigger held is covered by the EditMode synthetic XrInput tests only (this runner feeds synthetic frames, never a hand), so ergonomics, tracking and precision feel need a person with the controllers");
+            Record("NOT COVERED [M5-03-physical] real controller, real tracking, reduced-scale feel and readability of the flange manipulator: the Trigger-held knob drag and the Trigger edge pick above were synthetic XrInput frames, not a person's hand");
             Record("NOT COVERED [M5-04] Face and rule/thickness commands: Cut preview, Cancel, Apply and Undo run here");
             Record("NOT COVERED [M5-05] flat pattern outcomes on multi-body or non-unfoldable parts: only AlreadyExists is asserted");
             Record("NOT COVERED [M5-06-physical] real Grip grab of the detached pattern and visual comparison with the folded part: the grab above was a synthetic frame, orientation and legibility need a person wearing the Quest");
@@ -409,8 +411,45 @@ namespace InventorXrSo.Xr
         // ---------------------------------------------------------------- synthetic controller gestures (M5-03, M5-06)
 
         /// <summary>One synthetic controller frame, called "synthetic" everywhere: never physical evidence.</summary>
+        private XrInput _appInput, _syntheticInput;
+        private SyntheticInputSource _syntheticSource;
+        private float _syntheticClock;
+
+        /// <summary>
+        /// The workspace listens to a synthetic <see cref="XrInput"/> for the duration of the gesture checks (the application's
+        /// real input is detached, then restored): the same semantic events the controllers raise, SYNTHETIC in every log.
+        /// </summary>
+        private void BeginSyntheticInput()
+        {
+            if (_syntheticInput != null) return;
+            _appInput = Read<XrInput>(App, "_input");
+            _syntheticSource = new SyntheticInputSource();
+            _syntheticInput = gameObject.AddComponent<XrInput>();
+            _syntheticInput.Source = _syntheticSource;
+            Check(_syntheticInput.Synthetic, "the gesture input is flagged synthetic");
+            Call(_ws, "AttachInput", _syntheticInput);
+            Frame(true, false, false, false, false, false);
+        }
+
+        private void EndSyntheticInput()
+        {
+            if (_syntheticInput == null) return;
+            Frame(true, false, false, false, false, false);
+            Call(_ws, "AttachInput", _appInput);
+            Destroy(_syntheticInput);
+            _syntheticInput = null; _syntheticSource = null;
+        }
+
+        /// <summary>
+        /// One synthetic controller frame. Only the held states matter (Trigger on the knob captures it, Grip alone moves the view);
+        /// the edge flags and the UI flag of the old Grip+Trigger path are ignored.
+        /// </summary>
         private void Frame(bool tracked, bool grip, bool trigger, bool gripDown, bool triggerDown, bool ui)
-            => Call(_ws, "ProcessControllerFrame", tracked, grip, trigger, gripDown, triggerDown, ui, false);
+        {
+            var frame = new XrInputFrame { PenTracked = tracked, PenGrip = grip, PenTrigger = trigger, PaletteTracked = true };
+            _syntheticSource.Next = frame;   // the component's own Update polls the same state: no phantom release between frames
+            _syntheticInput.Poll(frame, _syntheticClock += 0.016f);
+        }
 
         private static Vector3 AxisWorld(FlangeManipulator manip, Transform model)
             => model.TransformDirection(CadCoordinates.ToLocal(manip.Axis)).normalized;
@@ -449,6 +488,7 @@ namespace InventorXrSo.Xr
             var savedHandPosition = hand.position; var savedHandRotation = hand.rotation;
             var savedPosition = model.position; var savedRotation = model.rotation; var savedScale = model.localScale;
             const double DragMm = 10;
+            BeginSyntheticInput();
             try
             {
                 var reached = new double[2];
@@ -460,25 +500,25 @@ namespace InventorXrSo.Xr
                     Check(await TryFlangePreview(edgeId, FlangeHeightMm, ct), "flange preview before the " + label + " synthetic gesture: " + _design.Error);
                     Check(manip.Visible, "flange knob is visible at " + label);
                     AimAtKnob(manip, model, hand);
-                    Frame(true, true, true, true, true, false);
-                    Check(manip.Dragging, "synthetic Grip+Trigger on the knob starts a drag at " + label);
+                    Frame(true, false, true, false, true, false);
+                    Check(manip.Dragging, "synthetic Trigger held on the knob starts a drag at " + label);
                     MoveAlongAxis(manip, model, hand, DragMm);
-                    Frame(true, true, true, false, false, false);
+                    Frame(true, false, true, false, false, false);
                     reached[i] = _ws.Flange.HeightMm;
                     Check(Math.Abs(reached[i] - (FlangeHeightMm + DragMm)) < 0.05,
                         "synthetic controller displacement at " + label + " converts to +" + F(DragMm) + " mm, height " + F(reached[i]));
                     Check(!_design.CanApply, "Apply is disabled while the knob edits the draft");
                     Frame(true, false, false, false, false, false);
-                    Check(!manip.Dragging, "releasing Grip+Trigger ends the drag");
+                    Check(!manip.Dragging, "releasing the Trigger ends the drag");
                     await WaitPreviewReady(ct);
                     CheckFlangePreviewShown(FlangeHeightMm + DragMm);
                     await AssertUnchanged(baseline, "synthetic knob drag at " + label, ct);
                     if (i == 0)
-                        Pass("M5-03-programmatic", "synthetic Grip+Trigger on the flange knob at scale 1:1 changed the height " + F(FlangeHeightMm)
+                        Pass("M5-03-programmatic", "synthetic Trigger held on the flange knob at scale 1:1 changed the height " + F(FlangeHeightMm)
                             + " -> " + F(reached[i]) + " mm (+" + F(DragMm) + " within 0.05); rendered native preview ready, revision "
                             + baseline.Revision + " unchanged until Apply");
                     else
-                        Pass("M5-03-programmatic", "synthetic Grip+Trigger at scale 0.25x: the same physical displacement converted to the same CAD height "
+                        Pass("M5-03-programmatic", "synthetic Trigger held at scale 0.25x: the same physical displacement converted to the same CAD height "
                             + F(reached[i]) + " mm as at 1:1 (" + F(reached[0]) + " mm, within 0.05); rendered native preview ready, revision unchanged");
                     await CancelFlangeDraft(ct);
                 }
@@ -504,18 +544,18 @@ namespace InventorXrSo.Xr
                     + " mm, its preview and the native revision " + baseline.Revision + " unchanged");
                 await CancelFlangeDraft(ct);
 
-                // Release of the Trigger and a tracking loss both close the capture: last valid height, a preview request, no commit.
+                // Release of the Trigger closes the capture with a preview request; a tracking loss closes it WITHOUT one (last valid height kept). Neither commits.
                 // (M5-08 is the push-to-talk microphone gate; the manipulator drag belongs to M5-03.)
                 Check(await TryFlangePreview(edgeId, FlangeHeightMm, ct), "flange preview before the synthetic release: " + _design.Error);
                 AimAtKnob(manip, model, hand);
-                Frame(true, true, true, true, true, false);
+                Frame(true, false, true, false, true, false);
                 Check(manip.Dragging, "drag armed before the synthetic Trigger release");
                 MoveAlongAxis(manip, model, hand, DragMm);
-                Frame(true, true, true, false, false, false);
-                Frame(true, true, false, false, false, false);
-                Check(!manip.Dragging, "releasing the Trigger (Grip still held) closes the drag");
+                Frame(true, false, true, false, false, false);
+                Frame(true, false, false, false, false, false);
+                Check(!manip.Dragging, "releasing the Trigger closes the drag");
                 MoveAlongAxis(manip, model, hand, 20);
-                Frame(true, true, false, false, false, false);
+                Frame(true, false, false, false, false, false);
                 Check(Math.Abs(_ws.Flange.HeightMm - (FlangeHeightMm + DragMm)) < 0.05, "motion after the release does not change the height");
                 Frame(true, false, false, false, false, false);
                 model.SetPositionAndRotation(savedPosition, savedRotation);
@@ -528,21 +568,22 @@ namespace InventorXrSo.Xr
 
                 Check(await TryFlangePreview(edgeId, FlangeHeightMm, ct), "flange preview before the synthetic tracking loss: " + _design.Error);
                 AimAtKnob(manip, model, hand);
-                Frame(true, true, true, true, true, false);
+                Frame(true, false, true, false, true, false);
                 Check(manip.Dragging, "drag armed before the synthetic tracking loss");
                 MoveAlongAxis(manip, model, hand, 7);
-                Frame(true, true, true, false, false, false);
+                Frame(true, false, true, false, false, false);
                 MoveAlongAxis(manip, model, hand, 500); // pose reported while tracking is lost must not reach the draft
                 Frame(false, false, false, false, false, false);
                 Check(!manip.Dragging && Math.Abs(_ws.Flange.HeightMm - (FlangeHeightMm + 7)) < 0.05,
                     "tracking loss closes the drag and keeps the last valid height " + F(_ws.Flange.HeightMm));
-                Frame(false, true, true, true, true, false);
+                Frame(false, false, true, false, true, false);
                 Check(!manip.Dragging, "no drag can start while untracked");
-                await WaitPreviewReady(ct);
-                CheckFlangePreviewShown(FlangeHeightMm + 7);
+                Frame(true, false, false, false, false, false);
+                Check(_design.Status == DesignStatus.Draft && !_design.CanApply && !_previewView.IsShowing,
+                    "a tracking loss is not a release: the draft keeps the last valid height and no preview was requested");
                 await AssertUnchanged(baseline, "synthetic tracking loss", ct);
                 Pass("M5-03-programmatic", "synthetic tracking loss closed the drag at the last valid " + F(FlangeHeightMm + 7)
-                    + " mm, asked for a preview and made no CAD mutation (revision " + baseline.Revision + ")");
+                    + " mm, requested no preview (Apply stays off) and made no CAD mutation (revision " + baseline.Revision + ")");
                 await CancelFlangeDraft(ct);
 
                 // Trigger ray on the real edge, from the outward face normal so nothing hides it.
@@ -572,6 +613,7 @@ namespace InventorXrSo.Xr
             }
             finally
             {
+                EndSyntheticInput();
                 model.localScale = savedScale;
                 model.SetPositionAndRotation(savedPosition, savedRotation);
                 hand.SetPositionAndRotation(savedHandPosition, savedHandRotation);
@@ -585,6 +627,7 @@ namespace InventorXrSo.Xr
             var savedHandPosition = hand.position; var savedHandRotation = hand.rotation;
             var savedPosition = model.position; var savedRotation = model.rotation; var savedScale = model.localScale;
             double offsetX = flat.OffsetX, offsetY = flat.OffsetY, offsetZ = flat.OffsetZ;
+            BeginSyntheticInput();
             try
             {
                 Check(flat.Detached && flat.IsVisible && display.IsShowing && display.MeshRoot != null,
@@ -633,6 +676,7 @@ namespace InventorXrSo.Xr
             }
             finally
             {
+                EndSyntheticInput();
                 model.localScale = savedScale;
                 model.SetPositionAndRotation(savedPosition, savedRotation);
                 hand.SetPositionAndRotation(savedHandPosition, savedHandRotation);

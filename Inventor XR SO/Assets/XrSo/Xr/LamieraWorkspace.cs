@@ -85,9 +85,15 @@ namespace InventorXrSo.Xr
         private float _nextRender;
         private CancellationTokenSource _reads = new CancellationTokenSource();
         private Transform _grab;
-        private bool _grabFlat;
+        private bool _grabFlat, _gripHeld, _twoHandActive;
         private Vector3 _grabPosition;
         private Quaternion _grabRotation;
+        private Transform _leftHand;
+        private Vector3 _twoHandVector, _twoHandMid, _twoHandRootPosition;
+        private Quaternion _twoHandRootRotation;
+        private float _twoHandRootScale;
+        private int _hoverKey;
+        private const float ZoomRatePerSecond = 1.5f;
 
         public bool Active { get; private set; }
         public bool RequiresCadReview => _reviewAfterRebind || _pendingMutations > 0 || _session?.Status == DesignStatus.Committing || _session?.Status == DesignStatus.RefreshRequired;
@@ -166,25 +172,45 @@ namespace InventorXrSo.Xr
         }
 
         /// <summary>
-        /// Back, Fit and Recenter arrive from <see cref="XrInput"/> (the other controller events are wired by the Part B input task).
-        /// Without an input (tests, headless) the workspace simply never receives them and never throws.
+        /// All controller input arrives as semantic events of <see cref="XrInput"/>; haptics go through <see cref="Haptics"/>.
+        /// Without an input (tests, headless) the workspace simply never receives pen events and never throws.
         /// </summary>
         private void AttachInput(XrInput input)
         {
             DetachInput();
             _input = input;
             if (_input == null) return;
+            _leftHand = _head != null && _head.parent != null
+                ? _head.parent.Find("LeftHandAnchor/LeftControllerAnchor") ?? _head.parent.Find("LeftHandAnchor") : null;
+            _input.PenPressed += OnPenPressed;
+            _input.PenReleased += OnPenReleased;
+            _input.TrackingLost += OnTrackingLost;
+            _input.PenGrabStarted += OnGrabStarted;
+            _input.PenGrabEnded += OnGrabEnded;
+            _input.TwoHandChanged += OnTwoHandChanged;
             _input.Back += Back;
             _input.Fit += FitView;
             _input.Recenter += RecenterView;
+            _input.StepDelta += OnStepDelta;
+            _input.StepSizeDelta += OnStepSizeDelta;
+            _input.Zoom += OnZoom;
         }
 
         private void DetachInput()
         {
             if (_input == null) return;
+            _input.PenPressed -= OnPenPressed;
+            _input.PenReleased -= OnPenReleased;
+            _input.TrackingLost -= OnTrackingLost;
+            _input.PenGrabStarted -= OnGrabStarted;
+            _input.PenGrabEnded -= OnGrabEnded;
+            _input.TwoHandChanged -= OnTwoHandChanged;
             _input.Back -= Back;
             _input.Fit -= FitView;
             _input.Recenter -= RecenterView;
+            _input.StepDelta -= OnStepDelta;
+            _input.StepSizeDelta -= OnStepSizeDelta;
+            _input.Zoom -= OnZoom;
             _input = null;
         }
 
@@ -268,7 +294,8 @@ namespace InventorXrSo.Xr
         {
             bool was = Active;
             // The capture of the flange knob ends with the workspace (M5-08): only the local draft was ever touched.
-            if (_manip != null && _manip.Dragging) { _manip.EndDrag(); _flange.ReleaseManipulator(); }
+            if (_manip != null && _manip.Dragging) { _manip.EndDrag(); _renderPending = false; }
+            EndViewGrabs();
             Active = false; CancelReads();
             if (_session != null && _session.Status != DesignStatus.Committing && _session.Status != DesignStatus.RefreshRequired) _session.Cancel();
             ResetDraft(); _selection?.Clear();
@@ -303,7 +330,7 @@ namespace InventorXrSo.Xr
             _extent = "thickness"; _direction = "positive"; _acrossBends = false;
             DisarmField();
             _ask = null; _lastErrorShown = null;
-            _grab = null; _renderedPlan = null; _screen = "tools";
+            _grab = null; _grabFlat = false; _gripHeld = false; _twoHandActive = false; _renderedPlan = null; _screen = "tools";
             _previewView?.Clear(); _geometry?.Clear(); _manip?.Hide();
             HideRing(); ClosePicker(false);
             UpdateChips();
@@ -548,7 +575,8 @@ namespace InventorXrSo.Xr
         }
 
         /// <summary>
-        /// X: closes the keypad, else the ring, else the open list. Local state only: it never touches the CAD.
+        /// X: closes the keypad, else the ring, else the open list, else the armed field, else drops the last draft step (the last
+        /// selected flange edge; with none left, the armed command). Local state only: it never touches the CAD.
         /// </summary>
         public void Back()
         {
@@ -557,6 +585,16 @@ namespace InventorXrSo.Xr
             if (_shell == null && _ask != null) { _ask.CancelEdit(); _ask = null; return; }
             if (_ring != null && _ring.Visible) { HideRing(); return; }
             if (_picker != null) { ClosePicker(); return; }
+            if (_armedField != null) { DisarmField(); return; }
+            DiscardLastDraftStep();
+        }
+
+        private void DiscardLastDraftStep()
+        {
+            if (_session == null || Locked || _manip?.Dragging == true) return;
+            if (_mode.Armed == SheetMetalCommand.Flange && _flange.EdgeIds.Count > 0 && _session.CanEdit)
+            { _flange.ToggleEdge(_flange.EdgeIds[_flange.EdgeIds.Count - 1]); Refresh(); return; }
+            if (_mode.Armed != SheetMetalCommand.None || _session.Status != DesignStatus.Empty) CancelCommand();
         }
 
         // ---------------------------------------------------------------- workbench
@@ -572,6 +610,7 @@ namespace InventorXrSo.Xr
             if (_bench == null || _head == null || _view == null) return;
             var frame = _bench.Recenter(_head);
             _bench.ApplyPart(_view.transform, ModelExtentM());
+            _flatDisplay?.SetWorkPlane(frame);
             PlaceCommitBar(frame);
         }
 
@@ -594,13 +633,16 @@ namespace InventorXrSo.Xr
         {
             if (!Active || _bench == null) return;
             _bench.Fit();
+            _flatDisplay?.ResetPlane();
         }
 
         /// <summary>Y long press: new bench frame from the head.</summary>
         public void RecenterView()
         {
             if (!Active || _bench == null || _head == null) return;
-            PlaceCommitBar(_bench.Recenter(_head));
+            var frame = _bench.Recenter(_head);
+            _flatDisplay?.SetWorkPlane(frame);
+            PlaceCommitBar(frame);
         }
 
         // ---------------------------------------------------------------- reading
@@ -640,10 +682,16 @@ namespace InventorXrSo.Xr
             finally { if (generation == _generation) { _busy = false; AnnounceStatus(); Refresh(); } }
         }
 
+        /// <summary>
+        /// "Sviluppo" view: the pattern lies on the work plane in front of the user and replaces the folded part there.
+        /// Fetched (and verified for this revision) first when it is not on screen yet.
+        /// </summary>
         private async void ShowFlat()
         {
             var flat = _flat;
             if (flat == null) return;
+            _flatDisplay?.SetFlatView(true);
+            if (flat.State == FlatPatternState.Ready) { Refresh(); return; }
             try { await flat.ShowAsync(); }
             catch (InvalidOperationException ex) { SetNotice(ex.Message); }
             catch (Exception ex) { SetNotice(ex.Message); }
@@ -828,8 +876,12 @@ namespace InventorXrSo.Xr
             _screen = screen;
         }
 
+        /// <summary>Editing the part needs the folded model on the plane: "Piegato" (the pattern stays loaded, only hidden).</summary>
+        private void FoldedView() => _flatDisplay?.SetFlatView(false);
+
         private void ArmFlange()
         {
+            FoldedView();
             DiscardDraft();
             if (!_mode.Arm(SheetMetalCommand.Flange, out var reason)) { SetNotice(reason); Refresh(); return; }
             _notice = ""; _screen = "flange"; Refresh();
@@ -848,6 +900,7 @@ namespace InventorXrSo.Xr
         {
             if (!(_mode.Armed == SheetMetalCommand.Rule && _screen == "rule"))
             {
+                FoldedView();
                 DiscardDraft();
                 if (!_mode.Arm(SheetMetalCommand.Rule, out var reason)) { SetNotice(reason); Refresh(); return; }
                 _notice = ""; SetScreen("rule");
@@ -857,6 +910,7 @@ namespace InventorXrSo.Xr
 
         private void OpenSketchPick(SheetMetalCommand command)
         {
+            FoldedView();
             DiscardDraft();
             if (!_mode.Arm(command, out var reason)) { SetNotice(reason); Refresh(); return; }
             _notice = ""; SetScreen("sketches");
@@ -865,6 +919,7 @@ namespace InventorXrSo.Xr
 
         private void StartFlatPattern()
         {
+            FoldedView();
             DiscardDraft();
             if (!_mode.Arm(SheetMetalCommand.FlatPattern, out var reason)) { SetNotice(reason); Refresh(); return; }
             _notice = ""; _screen = "flat";
@@ -1130,7 +1185,25 @@ namespace InventorXrSo.Xr
             Refresh();
         }
 
-        // ---------------------------------------------------------------- controller (OVRInput until the Part B input task)
+        // ---------------------------------------------------------------- controller input (XrInput events + per-frame hover)
+
+        private bool InputTracked => _input == null || _input.PenTracked;
+        private bool Precision => _input != null && _input.Precision;
+
+        /// <summary>The pen ray, or false when the workspace cannot take pen input right now.</summary>
+        private bool TryPenRay(out Ray ray, out bool overUi)
+        {
+            ray = default; overUi = false;
+            if (!Active || !_visible || _ray == null || _ray.Origin == null || !InputTracked) return false;
+            ray = new Ray(_ray.Origin.position, _ray.Origin.forward);
+            var ui = EventSystem.current?.currentInputModule as ControllerUiInputModule;
+            overUi = ui != null && ui.CurrentHit.isValid;
+            return true;
+        }
+
+        /// <summary>The flange knob can take the pen: armed Flange with an edge, an editable draft, no keypad waiting.</summary>
+        private bool CanManipulate => _manip != null && _session?.CanEdit == true && _mode.CanWrite && _mode.Armed == SheetMetalCommand.Flange
+            && _flange.EdgeIds.Count > 0 && _manip.Visible && _ask == null;
 
         private void Update()
         {
@@ -1142,54 +1215,30 @@ namespace InventorXrSo.Xr
                 DropClosedKeypad();
             }
             if (!Active || !_visible || _ray == null || _ray.Origin == null) return;
-            bool tracked = OVRInput.IsControllerConnected(_ray.Controller) && OVRInput.GetControllerPositionTracked(_ray.Controller)
-                && OVRInput.GetControllerOrientationTracked(_ray.Controller);
-            var input = EventSystem.current?.currentInputModule as ControllerUiInputModule;
-            bool ui = input != null && input.CurrentHit.isValid;
-            ProcessControllerFrame(tracked,
-                OVRInput.Get(OVRInput.Button.PrimaryHandTrigger, _ray.Controller),
-                OVRInput.Get(OVRInput.Button.PrimaryIndexTrigger, _ray.Controller),
-                OVRInput.GetDown(OVRInput.Button.PrimaryHandTrigger, _ray.Controller),
-                OVRInput.GetDown(OVRInput.Button.PrimaryIndexTrigger, _ray.Controller),
-                ui, false);
+            if (!InputTracked) { _hoverKey = 0; return; }
+            if (_manip.Dragging) { DragStep(); return; }
+            if (_twoHandActive) { TwoHandStep(); return; }
+            if (_grab != null) { MoveGrab(); return; }
+            if (!TryPenRay(out var ray, out bool overUi)) return;
+            HoverFeedback(ray, overUi);
         }
 
-        /// <summary>
-        /// One controller frame. <paramref name="ui"/>: the UI ray hits something (palette, chip, ring). <paramref name="uiOnPanel"/>
-        /// is unused now that there is no floating panel to grab. Split from <see cref="Update"/> so tests and the Quest
-        /// acceptance runner can feed synthetic frames through the very same path.
-        /// </summary>
-        private void ProcessControllerFrame(bool tracked, bool grip, bool trigger, bool gripDown, bool triggerDown, bool ui, bool uiOnPanel)
+        /// <summary>Best effort: a short pulse when the ray enters an interactive target (palette, chip, ring, flange knob).</summary>
+        private void HoverFeedback(Ray ray, bool overUi)
         {
-            if (!Active || !_visible || _ray == null || _ray.Origin == null) return;
-            if (!tracked) { EndManipulation(); _grab = null; _grabFlat = false; return; }
-            var ray = new Ray(_ray.Origin.position, _ray.Origin.forward);
-            bool overUi = ui;
-            bool canManipulate = _session?.CanEdit == true && _mode.CanWrite && _mode.Armed == SheetMetalCommand.Flange
-                && _flange.EdgeIds.Count > 0 && _manip.Visible && _ask == null;
-            if (_manip.Dragging)
-            {
-                if (!grip || !trigger || !canManipulate) EndManipulation();
-                else
-                {
-                    _flange.ApplyManipulatorHeight(_manip.Drag(CadCoordinates.FromWorld(_view.transform, _ray.Origin.position)));
-                    return;
-                }
-            }
-            else if (grip && trigger && canManipulate && !overUi)
-            {
-                // Only Grip+Trigger on the knob edits the draft; Grip alone (below) only moves the view.
-                if (_manip.TryBeginDrag(ray, CadCoordinates.FromWorld(_view.transform, _ray.Origin.position))) { _grab = null; return; }
-            }
-            if (grip && !trigger)
-            {
-                if (gripDown) BeginGrab(ray, overUi);
-                if (_grab != null) MoveGrab();
-                return;
-            }
-            _grab = null; _grabFlat = false;
-            if (overUi || _ask != null || _session?.CanEdit != true || grip) return;
-            if (!triggerDown) return;
+            int key = overUi ? 1 : (CanManipulate && _manip.IsOverKnob(ray)) ? 2 : 0;
+            if (key != _hoverKey && key != 0) Haptics.Play(HapticPulse.Hover);
+            _hoverKey = key;
+        }
+
+        /// <summary>Trigger press with the ray on the knob captures it (M5-08): from here on only the local draft changes.</summary>
+        private void OnPenPressed()
+        {
+            if (!TryPenRay(out var ray, out bool overUi)) return;
+            if (!overUi && !_gripHeld && CanManipulate
+                && _manip.TryBeginDrag(ray, CadCoordinates.FromWorld(_view.transform, _ray.Origin.position), Precision ? FlangeManipulator.PrecisionFactor : 1))
+            { _grab = null; _grabFlat = false; return; }
+            if (overUi || _ask != null || _session?.CanEdit != true || _gripHeld || _manip.Dragging) return;
             if (_mode.Armed == SheetMetalCommand.Flange && _designContext != null && _mode.CanWrite && SceneCurrent)
             {
                 string edge = CadCoordinates.PickEdge(_view.transform, _designContext.Edges, ray, requireVisible: true);
@@ -1197,30 +1246,95 @@ namespace InventorXrSo.Xr
             }
             else if (_mode.Armed == SheetMetalCommand.None && _ring != null && Idle && _designContext != null)
             {
-                // Idle: an edge or the body opens the ring; the empty space closes it.
+                // Idle: an edge or a real planar face opens the ring; any other hit or the empty space closes it.
                 string edge = CadCoordinates.PickEdge(_view.transform, _designContext.Edges, ray, requireVisible: true);
-                if (edge != null) SelectEdge(edge);
-                else if (CadRaycaster.TryPick(ray, 20, out _, out _, out var hit)) { HideRing(); ShowRing(UiSelectionKind.PlanarFace, hit); }
-                else HideRing();
+                if (edge != null) { SelectEdge(edge); return; }
+                HideRing();
+                if (CadRaycaster.TryPick(ray, 20, out var body, out int triangle, out var hit) && SelectPlanarFace(body, triangle, hit))
+                    ShowRing(UiSelectionKind.PlanarFace, hit);
             }
         }
 
-        private void EndManipulation()
+        /// <summary>
+        /// A body hit is a planar face only when the revision-bound CAD context (the same B-rep at this revision) lists it;
+        /// otherwise the ring stays closed and a notice says why.
+        /// </summary>
+        private bool SelectPlanarFace(CadBody body, int triangle, Vector3 hit)
+        {
+            if (_designContext == null || _state == null || _designContext.State.DocumentId != _state.DocumentId
+                || _designContext.State.Revision != _state.Revision || !SceneCurrent || body.Instance.DefinitionId != _state.DocumentId) return false;
+            var range = body.Primitive.FaceMap?.FaceAtTriangle(triangle);
+            var face = range == null ? null : _designContext.Faces.FirstOrDefault(f =>
+                f.BodyIndex > 0 && f.FaceOrdinal > 0 && f.BodyIndex == body.Primitive.BodyIndex && f.FaceOrdinal == range.Ordinal);
+            if (face == null && range != null) face = _designContext.Faces.FirstOrDefault(f => f.Id == range.FaceId);
+            if (face == null)
+            {
+                _selection?.Clear();
+                SetNotice("Faccia non piana o riferimenti non aggiornati. Prova Aggiorna.");
+                return false;
+            }
+            _selection?.Show(new InventorXrSo.Core.Selection.Selection(InventorXrSo.Core.Selection.SelectionKind.Face, body.Instance.OccurrenceId, range.FaceId, face.Id));
+            SetNotice("Faccia piana selezionata.");
+            return true;
+        }
+
+        private static bool Finite(Vector3 v) => !(float.IsNaN(v.x + v.y + v.z) || float.IsInfinity(v.x + v.y + v.z));
+
+        /// <summary>Per frame while the knob is captured: the draft height follows the hand (precision = 10x slower, re-anchored).</summary>
+        private void DragStep()
+        {
+            if (!CanManipulate) { EndCapture(false, false); return; }
+            if (!Finite(_ray.Origin.position)) return;
+            _flange.ApplyManipulatorHeight(_manip.Drag(CadCoordinates.FromWorld(_view.transform, _ray.Origin.position),
+                Precision ? FlangeManipulator.PrecisionFactor : 1));
+        }
+
+        /// <summary>
+        /// Ends the knob capture. <paramref name="preview"/>: Trigger released, the draft is final and gets a preview request (never a
+        /// commit). <paramref name="error"/>: tracking lost, the draft keeps the last valid height, the controller buzzes, no preview.
+        /// </summary>
+        private void EndCapture(bool preview, bool error)
         {
             if (_manip == null || !_manip.Dragging) return;
             _manip.EndDrag();
-            _flange.ReleaseManipulator();
             _renderPending = false;
+            if (error) Haptics.Play(HapticPulse.Error);
             Refresh();
+            if (!preview || !Active || _session?.CanEdit != true) return;
+            _flange.ReleaseManipulator();
             PreviewPending();
         }
 
+        private void EndViewGrabs() { _grab = null; _grabFlat = false; _gripHeld = false; _twoHandActive = false; }
+
+        private void OnPenReleased() => EndCapture(true, false);
+
+        private void OnTrackingLost()
+        {
+            // Raised before the release of a held Trigger: the capture is closed here, without a preview.
+            if (!Active) return;
+            EndCapture(false, true);
+            EndViewGrabs(); _hoverKey = 0;
+        }
+
+        private void OnGrabStarted()
+        {
+            if (!TryPenRay(out var ray, out bool overUi)) return;
+            _gripHeld = true;
+            if (_manip.Dragging || _twoHandActive) return;
+            BeginGrab(ray, overUi);
+        }
+
+        private void OnGrabEnded() { _grab = null; _grabFlat = false; _gripHeld = false; }
+
+        /// <summary>Grip alone: the detached flat pattern moves (its mesh only), otherwise the folded model moves. View only.</summary>
         private void BeginGrab(Ray ray, bool overUi)
         {
             _grab = null; _grabFlat = false;
             if (!overUi && _flat != null && _flat.Detached && _flat.IsVisible && _flatDisplay.HitTest(ray) && _flatDisplay.MeshRoot != null)
             { _grab = _flatDisplay.MeshRoot; _grabFlat = true; }
-            else if (!overUi && CadRaycaster.TryPick(ray, 20, out _, out _, out _)) { _bench?.Snap(); _grab = _view.transform; }
+            else if (!overUi && !(_flatDisplay != null && _flatDisplay.FoldedHidden) && CadRaycaster.TryPick(ray, 20, out _, out _, out _))
+            { _bench?.Snap(); _grab = _view.transform; }
             if (_grab == null) return;
             _grabPosition = _ray.Origin.InverseTransformPoint(_grab.position);
             _grabRotation = Quaternion.Inverse(_ray.Origin.rotation) * _grab.rotation;
@@ -1229,15 +1343,90 @@ namespace InventorXrSo.Xr
         private void MoveGrab()
         {
             var position = _ray.Origin.TransformPoint(_grabPosition);
+            if (!Finite(position)) return;
             if (_grabFlat)
             {
                 // View state only: the offset lives in FlatPatternView and never reaches CAD.
                 if (_flat == null || !_flat.Detached || !_flat.IsVisible) { _grab = null; _grabFlat = false; return; }
-                var offset = _view.transform.InverseTransformPoint(position) - _flatDisplay.DefaultLocalPosition();
+                var offset = _flatDisplay.OffsetForRootPosition(position);
                 _flat.MoveLocal(offset.x, offset.y, offset.z);
                 return;
             }
             _grab.SetPositionAndRotation(position, _ray.Origin.rotation * _grabRotation);
+        }
+
+        private bool LeftHandPose(out Vector3 position)
+        {
+            position = default;
+            if (_leftHand == null || _input == null || !_input.PaletteTracked) return false;
+            position = _leftHand.position; return true;
+        }
+
+        private void OnTwoHandChanged(bool on)
+        {
+            if (!Active) return;
+            if (!on) { _twoHandActive = false; return; }
+            if (_ray?.Origin == null || !LeftHandPose(out var left)) return;
+            EndCapture(false, false); _grab = null; _grabFlat = false;
+            _bench?.Snap();
+            var root = _view.transform; var right = _ray.Origin.position;
+            _twoHandVector = right - left; _twoHandMid = (right + left) * 0.5f;
+            _twoHandRootPosition = root.position; _twoHandRootRotation = root.rotation; _twoHandRootScale = root.localScale.x;
+            _twoHandActive = _twoHandVector.sqrMagnitude > 1e-6f;
+        }
+
+        /// <summary>Two hands: rotate, scale and move the model. View only; the CAD data never changes.</summary>
+        private void TwoHandStep()
+        {
+            if (_ray?.Origin == null || !LeftHandPose(out var left)) return;
+            var right = _ray.Origin.position; var vector = right - left;
+            if (vector.sqrMagnitude < 1e-6f) return;
+            float scale = Mathf.Clamp(_twoHandRootScale * vector.magnitude / _twoHandVector.magnitude, (float)WorkbenchLayout.MinScale, (float)WorkbenchLayout.MaxScale);
+            var turn = Quaternion.FromToRotation(_twoHandVector, vector);
+            var root = _view.transform;
+            root.localScale = Vector3.one * scale;
+            root.rotation = turn * _twoHandRootRotation;
+            root.position = (right + left) * 0.5f + turn * ((_twoHandRootPosition - _twoHandMid) * (scale / _twoHandRootScale));
+        }
+
+        /// <summary>Left stick up/down: zooms the model (or the flat pattern on the plane). View only, clamped to the layout limits.</summary>
+        private void OnZoom(float axis)
+        {
+            if (!Active || _view == null || _manip.Dragging || _twoHandActive) return;
+            ZoomView(axis, Mathf.Clamp(Time.unscaledDeltaTime, 1f / 120f, 1f / 20f));
+        }
+
+        /// <summary>Scales the model about the centre of its bounds (or the flat pattern on the plane), never outside [MinScale, MaxScale].</summary>
+        public void ZoomView(float axis, float seconds)
+        {
+            if (_flatDisplay != null && _flatDisplay.FoldedHidden && _flatDisplay.IsShowing) { _flatDisplay.ZoomPlane(axis, seconds); return; }
+            var root = _view.transform;
+            _bench?.Snap();
+            float current = root.localScale.x;
+            float target = Mathf.Clamp(current * Mathf.Exp(axis * ZoomRatePerSecond * seconds), (float)WorkbenchLayout.MinScale, (float)WorkbenchLayout.MaxScale);
+            if (Mathf.Approximately(target, current)) return;
+            var pivot = root.TransformPoint(ScenePlacement.LocalBounds(root).center);
+            root.localScale = Vector3.one * target;
+            root.position = pivot + (root.position - pivot) * (target / current);
+        }
+
+        /// <summary>Right stick left/right: one step on the armed chip (height, angle or thickness). Silent when nothing can change now.</summary>
+        private void OnStepDelta(int direction)
+        {
+            if (!Active || _armedField == null) return;
+            var entry = EntryFor(_armedField);
+            if (entry == null || entry.Editing || !FieldApplies(_armedField) || !Idle) return;
+            if (entry.Nudge(direction)) Haptics.Play(HapticPulse.Tick);
+        }
+
+        /// <summary>Right stick up/down: step 0,1 / 1 / 10 of the armed chip.</summary>
+        private void OnStepSizeDelta(int direction)
+        {
+            if (!Active || _armedField == null) return;
+            var entry = EntryFor(_armedField);
+            if (entry == null || entry.Editing) return;
+            entry.CycleStep(direction);
+            Haptics.Play(HapticPulse.Tick);
         }
 
         private void OnDestroy()
