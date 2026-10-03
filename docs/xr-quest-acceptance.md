@@ -1,8 +1,9 @@
-# Test automatici sul Quest 3 — standard M1–M5
+# Test automatici sul Quest 3 — standard M1–M6
 
 Standard nato con M4 ([collaudo M4](xr-m4-collaudo.md)) ed esteso il 29 settembre
 2026 a M1, M2, M3 e M5 ([piano](superpowers/plans/2026-09-29-quest-acceptance-runners.md)).
-Un runner per milestone gira **dentro l'app sul Quest**, contro Inventor 2027
+Il runner M6 (Fase 5 della [spec M6](superpowers/specs/2026-09-29-inventor-xr-so-m6-ux-spaziale-design.md))
+è stato scritto il 3 ottobre 2026. Un runner per milestone gira **dentro l'app sul Quest**, contro Inventor 2027
 reale, su un documento di prova dedicato, e scrive log e screenshot come evidenza.
 
 ## Pezzi
@@ -10,9 +11,9 @@ reale, su un documento di prova dedicato, e scrive log e screenshot come evidenz
 | Pezzo | Percorso |
 |---|---|
 | Base comune (intent Android, log, attese, riflessione, screenshot, guardia fixture) | `Inventor XR SO/Assets/XrSo/Xr/Acceptance/QuestAcceptanceRunner.cs` |
-| Runner M1, M2, M3, M5 | `Inventor XR SO/Assets/XrSo/Xr/Acceptance/M{1,2,3,5}QuestAcceptance.cs` |
+| Runner M1, M2, M3, M5, M6 | `Inventor XR SO/Assets/XrSo/Xr/Acceptance/M{1,2,3,5,6}QuestAcceptance.cs` |
 | Runner M4 (stessi passi del collaudo del 28 settembre, ora sulla base comune) | `Inventor XR SO/Assets/XrSo/Xr/M4QuestAcceptance.cs` |
-| Fixture Inventor M1, M2, M3, M5 | `bridge/tests/QuestAcceptanceFixtures/` |
+| Fixture Inventor M1, M2, M3, M5, M6 | `bridge/tests/QuestAcceptanceFixtures/` |
 | Fixture Inventor M4 | `bridge/tests/M4LiveProbe -- --prepare-quest / --restore-quest` |
 | Orchestrazione ADB | `scripts/run-quest-acceptance.ps1` |
 | Test di contratto (campi/metodi letti per riflessione, runner esclusi dall'APK ordinario) | `Inventor XR SO/Assets/XrSo/Tests/EditMode/QuestAcceptanceContractTests.cs` |
@@ -68,11 +69,18 @@ interno non è un fallimento del caso CAD: indica che il runner non è partito.
 Questi campi applicano a M1–M5 la distinzione fra prova sintetica sul Quest e
 prova fisica prevista dai `CLAUDE.md`.
 
+Per M6 la fixture è un assieme con due componenti (un blocco e una lamiera, parti
+tenute aperte): `--prepare-quest m6`, poi `-Milestone m6` (l'esecuzione dura fino a
+13 minuti: lo script usa 780 s di timeout se non si passa `-TimeoutSeconds`) e
+`--restore-quest m6`. Il runner M6 **non è di sola lettura**: esegue un `Apply`
+reale di estrusione sul blocco e lo annulla con l'Undo XR; alla fine riattiva
+l'assieme. Dopo un run interrotto, riattivare l'assieme a mano prima del restore.
+
 Per M4 la fixture si prepara con
 `dotnet run --project bridge/tests/M4LiveProbe -- --prepare-quest` (e
 `--restore-quest`); il resto è identico con `-Milestone m4`.
 
-Non usare Inventor né il visore durante un run. M3 e M5 lasciano la fixture
+Non usare Inventor né il visore durante un run. M3, M5 e M6 lasciano la fixture
 modificata (estrusione, flangia, sviluppo): va sempre eseguito
 `--restore-quest` prima di ripetere il run.
 
@@ -85,6 +93,7 @@ modificata (estrusione, flangia, sviluppo): va sempre eseguito
 | M3 | casi 1, 2, 9, 10, 11, 12, 15 del [collaudo M3](xr-m3-quest-collaudo.md): preview di estrusione con revisione invariata, Annulla, Applica con volume 12000 + π·25·20 mm³, Undo/Redo XR, piano stale rifiutato, foro cieco, raccordo, errore di validazione correggibile, parametro, ritorno a Inspect | disegno di schizzo e vincoli, drag del manipolatore, pick di facce e spigoli col raggio (impostati per riflessione), casi 3–8, 13, 14 |
 | M4 | A/B e vincoli compatibili, preview Move, Cancel, Apply, centro nativo, Undo/Redo, stale, riapertura; runner esteso con A/B dopo CAD Move, gesture sintetiche a 0,25×, blocco UI e perdita tracking | gesto reale, leggibilità, click-through e tracking fisico di A02/A07/A14 |
 | M5 | M5-01, M5-02, M5-03 (campo numerico; gesto **sintetico** Grip+Trigger sul pomello a 1:1 e a 0,25× con +10 mm e preview nativa a revisione invariata, Grip semplice che non scrive la bozza, rilascio del Trigger e perdita tracking che chiudono il drag senza CAD, Trigger sintetico su un bordo reale), M5-04 (Cut preview/Annulla/Applica/Undo), M5-05, M5-06 (Detach senza chiamate al backend; Grip **sintetico** che sposta solo la mesh piana, non il modello), M5-07 (solo stale), M5-09, M5-10, M5-11 con testo iniettato nel push-to-talk reale senza microfono | `M5-03-physical` e `M5-06-physical`: controller e tracking reali, sensazione a scala ridotta, leggibilità, confronto visivo dello sviluppo col piegato; Face e regola/spessore, rete/preview tardiva/commit incerto, M5-08 microfono e pulsante B, M5-12 |
+| M6 | Input **sintetico** (frame di `SyntheticInputSource` sull'`XrInput` dell'app, azioni invocate per id sull'`ActionCatalog` reale). M6-01 tavolozza figlia del controller sinistro, schede e scheda Spazi su Ispeziona, Progettazione, Lamiera e Assieme, rotazione delle schede con lo stick sinistro, nessun pannello fluttuante accanto alla testa; M6-02 schizzo sul foglio orizzontale all'altezza del piano, linea con la punta penna e linea col raggio, «Vista modello» ↔ «Foglio» senza variare elementi e piano di schizzo, stesso punto fisico → stesse coordinate CAD; M6-03 chip e tastierino, passi dello stick 1/10/0,1, modalità precisione (drag della maniglia della flangia: +10 mm normale, +1 mm con Trigger sinistro), dettatura nel campo armato; M6-04 anello su componente, bordo e faccia piana, chiusura con X e col vuoto, azione dell'anello; M6-05 barra Empty, Draft, Previewing, Ready, Error, Offline, Uncertain, Applied (un Apply reale e il suo Undo), Applica solo dalla barra, tabella pura con Stale; M6-06 Assieme sollevato, isolamento solo visivo (revisione e occorrenze di Inventor invariate), «Apri in Progettazione» e «Apri in Lamiera» dal componente isolato; M6-07 una e due mani solo vista, Adatta, Ricentra; M6-08 `ResolveVoice` (disabilitato e frase ignota rifiutati, «applica» non committa, ambiguità su un catalogo controllato) con testo iniettato | M6-10 prova fisica da seduto (leggibilità, comfort, precisione della penna, aptica, trascinamento a Trigger); ergonomia e tracking reali; microfono e audio; calibrazione dell'altezza del piano (M6-07: nessun percorso nell'app la usa); Stale dal vivo; anello di Ispeziona; M6-09 (i runner M1–M5 migrati vanno rieseguiti) |
 
 ## Stato
 
@@ -165,3 +174,7 @@ La build ordinaria finale, che include il fix M4, è in
 `artifacts/InventorXrSo-full-ordinary.apk`: SHA-256
 `DCD5846A42040E1AEFDDE6BB6053EF403400A45585A31A16EC79CE5140D509FF`,
 uguale all'hash dell'APK installato sul Quest.
+
+Runner M6 (3 ottobre 2026): scritto e compilato con `XR_SO_ACCEPTANCE`, **non ancora
+eseguito** sul Quest con Inventor reale (stato NOT RUN). Gli esiti andranno in
+[xr-m6-verification.md](xr-m6-verification.md), sezione «Fase 5 — Collaudo».

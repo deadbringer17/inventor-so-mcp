@@ -7,7 +7,7 @@ This script never touches Quest test properties (proximity, guardian).
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('m1', 'm2', 'm3', 'm4', 'm5')][string]$Milestone,
+    [Parameter(Mandatory)][ValidateSet('m1', 'm2', 'm3', 'm4', 'm5', 'm6')][string]$Milestone,
     [Parameter(Mandatory)][string]$Apk,
     [string]$Serial,
     [int]$TimeoutSeconds = 240,
@@ -18,6 +18,9 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+# The M6 runner crosses four workspaces and two documents: it needs more than the default of the single-workspace runners.
+if ($Milestone -eq 'm6' -and -not $PSBoundParameters.ContainsKey('TimeoutSeconds')) { $TimeoutSeconds = 780 }
 
 function Fail-Setup([string]$Message) {
     [Console]::Error.WriteLine("SETUP ERROR: $Message")

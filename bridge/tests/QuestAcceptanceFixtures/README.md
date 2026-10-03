@@ -1,4 +1,4 @@
-# Quest acceptance fixtures (M1, M2, M3, M5)
+# Quest acceptance fixtures (M1, M2, M3, M5, M6)
 
 Windows only. Needs Inventor 2027 already open and available for automation. Creates the dedicated
 documents the in-app Quest acceptance runners work on (plan `docs/superpowers/plans/2026-09-29-quest-acceptance-runners.md`,
@@ -11,7 +11,7 @@ dotnet run --project bridge/tests/QuestAcceptanceFixtures -- --inspect-quest m3
 dotnet run --project bridge/tests/QuestAcceptanceFixtures -- --restore-quest m3
 ```
 
-The milestone is `m1`, `m2`, `m3` or `m5`. The manifest is written relative to the current directory:
+The milestone is `m1`, `m2`, `m3`, `m5` or `m6`. The manifest is written relative to the current directory:
 `artifacts/<m>-verification/quest-fixture.json` (document paths, `previous_document`, `document_id`,
 `active_document`, `expected`).
 
@@ -28,6 +28,22 @@ The milestone is `m1`, `m2`, `m3` or `m5`. The manifest is written relative to t
 | m2 | `XR_M2_Quest_Acceptance.iam` | same, part `XR_M2_Quest_Acceptance_Block.ipt` also kept open |
 | m3 | `XR_M3_Quest_Acceptance.ipt` | 40 x 30 x 10 mm block (sketch `Blocco`), unconsumed sketch `Base_M3` with a circle R 5 mm on the top face |
 | m5 | `XR_M5_Quest_Acceptance.ipt` | sheet-metal Face 100 x 60 mm, no flat pattern, unconsumed sketch `Taglio_M5` (20 x 10 mm rectangle) |
+| m6 | `XR_M6_Quest_Acceptance.iam` | two occurrences, three documents kept open: `XR_M6_Quest_Acceptance_Block.ipt` (40 x 30 x 10 mm centred block, unconsumed sketch `Base_M6` with a circle R 5 mm on the top face, grounded), `XR_M6_Quest_Acceptance_Sheet.ipt` (sheet-metal Face 100 x 60 mm, unconsumed sketch `Taglio_M6`, +60 mm in X, free) |
+
+### What one m6 fixture serves
+
+The M6 runner (`M6QuestAcceptance`) crosses all four workspaces on one fixture, reaching each document the way a user does:
+
+| Workspace | Document the runner works on | How the runner gets there |
+|---|---|---|
+| Ispeziona, Assieme | the assembly (needs at least two components: here a block and a sheet) | active after `--prepare-quest m6` |
+| Progettazione | the block part (planes, planar top face, straight edges, unconsumed sketch `Base_M6`) | "Apri in Progettazione" from the isolated block (the part must already be open in Inventor, hence the three kept-open documents) |
+| Lamiera | the sheet-metal part (straight 100 and 60 mm edges, no flat pattern) | "Apri in Lamiera" from the isolated sheet |
+
+Every document name starts with `XR_M6_Quest_Acceptance`, so the runner's fixture guard holds on each of them. The runner is
+not read-only: it makes one real extrusion `Apply` on the block and reverts it with XR Undo, then leaves the assembly active
+again. Nothing is saved, so `--restore-quest m6` (assembly active, closes the three documents without saving) always brings
+the fixture back. Not covered by this fixture: sub-assemblies and assemblies with more than two components.
 
 Naming exception: every document display name starts with `XR_<M>_Quest_Acceptance` except the M1 block part
 `XR_M1_Quest_Block.ipt`, which is closed right after saving and only placed by path.
@@ -44,3 +60,5 @@ Written without Inventor; these calls in `Fixtures.cs` are unverified:
 - `SketchOnTopFace`: `Sketches.Add(face)` and `ModelToSketchSpace` on a part and on a sheet-metal definition.
 - `PrepareAssembly` (m2): `Documents.Open(partPath, true)` on a part already referenced by the assembly.
 - `Inspect`: `Bends.Count` and `HasFlatPattern` on the sheet-metal definition.
+- `PrepareM6`: a sheet-metal part (`BuildSheetMetalPart`, shared with m5) placed in an assembly with `Occurrences.Add(path, matrix)` while it is still open, and `Documents.Add` parts left open after `SaveAs` (as m2 does for its part). The runner finds the two components by the words `Block` and `Sheet` in the occurrence names, so check that Inventor names them `XR_M6_Quest_Acceptance_Block:1` and `XR_M6_Quest_Acceptance_Sheet:1`.
+- `--restore-quest m6`: the assembly must be active; the runner reactivates it at its end, but after an interrupted run activate the assembly by hand first.

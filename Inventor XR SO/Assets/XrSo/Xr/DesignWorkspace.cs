@@ -838,6 +838,9 @@ namespace InventorXrSo.Xr
 
         private bool InputTracked => _input == null || _input.PenTracked;
 
+        /// <summary>Runners with a synthetic pen set this so the real controller's UI hit cannot swallow the gesture (same hook as Assieme and Lamiera).</summary>
+        public Func<bool> UiHitOverride { get; set; }
+
         /// <summary>The pen ray, or false when the workspace cannot take pen input right now.</summary>
         private bool TryPenRay(out Ray ray, out bool overUi)
         {
@@ -845,7 +848,7 @@ namespace InventorXrSo.Xr
             if (!Active || !_visible || _ray == null || _ray.Origin == null || !InputTracked) return false;
             ray = new Ray(_ray.Origin.position, _ray.Origin.forward);
             var ui = EventSystem.current?.currentInputModule as ControllerUiInputModule;
-            overUi = ui != null && ui.CurrentHit.isValid;
+            overUi = UiHitOverride != null ? UiHitOverride() : ui != null && ui.CurrentHit.isValid;
             return true;
         }
 
