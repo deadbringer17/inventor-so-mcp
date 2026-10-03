@@ -99,7 +99,7 @@ Commit: `e22a142`, `a3182c5` più la correzione dei runner e del workspace.
 Note sull'esecuzione:
 
 - **Runner M5 adeguato** al nuovo input: input sintetico attivo per tutta la durata del run (i controller reali, in mano o appoggiati, non devono muovere chip né armare campi: in un primo tentativo il rumore dello stick aveva portato l'angolo a 5°); passo sincrono del trascinamento, dell'afferra e delle due mani a ogni frame sintetico; rilascio prima di ogni nuova pressione (gli eventi sono a fronte); verifica dello sviluppo in coordinate mondo (sul piano di lavoro la mesh non vive più nel sistema del modello).
-- **NOT COVERED nel log M5**: il Trigger sul bordo per deselezionarlo. Con la maniglia (raggio di cattura 45 mm) il bordo corto della fixture è coperto per intero: il rilevamento è dichiarato, non aggirato. La deselezione resta possibile con l'azione «Azzera flangia».
+- **NOT COVERED nel log M5**: il Trigger sul bordo per deselezionarlo. Con la maniglia (raggio di cattura 45 mm) il bordo corto della fixture è coperto per intero: il rilevamento è dichiarato, non aggirato. La deselezione resta possibile con l'azione «Svuota bordi».
 - **M4 falliva** («fixture has translation and rotation axes») anche con l'APK della Fase 2 che il mattino passava: la causa era l'**host HTTPS** rimasto agganciato al vecchio Inventor; riavviato l'host, M4 è passato. Non è una regressione.
 - Il visore va indossato o tenuto sveglio: da fermo va in standby e il runner va in `TIMEOUT before_runner_start` (non un fallimento). Un `TIMEOUT runner` durante i gesti era la conseguenza di un'anteprima mai richiesta (valore uguale nel tastierino), poi corretta.
 - Ogni fixture è stata chiusa senza salvare; l'APK ordinario finale è sul visore.
