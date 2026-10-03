@@ -93,7 +93,7 @@ Ogni capacità è un modulo in tre parti, testabili separatamente:
 |---|---|---|
 | Servizio | stato, chiamata al backend, parsing, legame con la revisione. Nessuna dipendenza da Unity. | core: `Packages/com.occhipinti.inventorxrso.core/Runtime/Verify/` |
 | Vista | disegno in scena (fantasma, rosso, box, linea, etichetta) | `Runtime/Scene/` |
-| Azioni | id `inspect.verify.*` nella nuova scheda **Verifica** di `InspectActions` | `Xr/` |
+| Azioni | id `inspect.visibility.*` nella nuova scheda **Visibilità** e `inspect.verify.*` nella nuova scheda **Verifica** di `InspectActions` | `Xr/` |
 
 La UI non chiama mai il backend direttamente: passa dal servizio.
 
@@ -108,8 +108,12 @@ riusa la logica dell'handler stabile corrispondente, che resta invariato per
 gli agenti testuali.
 
 **`inventor_check_interference_xr`**
-Input: `document_id`, `expected_revision`, `occurrence_ids` (opzionale; se
-assente, tutte le occorrenze di primo livello non soppresse).
+Input: `document_id`, `expected_revision`, `occurrence_ids` (opzionale).
+Se assente, si analizzano tra loro tutte le occorrenze di primo livello non
+soppresse. Se presente, si analizzano le occorrenze indicate contro tutte le
+altre di primo livello non soppresse (secondo insieme di
+`AnalyzeInterference`): così "solo selezione" funziona anche con un solo
+componente selezionato.
 Output: `revision`, `count`, `total_volume_mm3`, `pairs[]` con
 `a_occurrence_id`, `b_occurrence_id`, `a_name`, `b_name`, `volume_mm3` e
 `boxes[]` (un box min/max in mm, coordinate assieme, per ogni corpo di
@@ -161,8 +165,8 @@ Selezionando una riga:
 Deselezionando, si torna allo stato di visibilità precedente.
 
 **`InterferenceService`** (core) e **`InterferenceView`** (`Runtime/Scene/`).
-Ambito: tutte le occorrenze di primo livello, oppure solo quelle
-selezionate. La vista colora di rosso le due occorrenze della coppia
+Ambito: tutte le occorrenze di primo livello, oppure il componente
+selezionato contro tutti gli altri. La vista colora di rosso le due occorrenze della coppia
 selezionata e disegna i box di interferenza come contorni rossi, visibili
 attraverso i corpi in fantasma. Zero interferenze è un risultato esplicito
 ("Nessuna interferenza su N occorrenze").
@@ -181,10 +185,18 @@ quella nuova "Distanza minima (Inventor)".
 vincolati; vincoli, giunti e righe BOM in errore) e righe `VerifyFinding`
 per ogni problema.
 
-### Scheda Verifica
+### Schede Visibilità e Verifica
 
-Quattro sezioni: Visibilità, Interferenze, Distanza, Salute. È attiva una
-sola verifica di Inventor alla volta. La lista Risultati è condivisa.
+La palette accetta al massimo 8 azioni per scheda (`ActionCatalog.MaxPalette`),
+quindi le azioni stanno in due schede nuove, dopo Vista:
+
+- **Visibilità**: X-Ray, Isola, Nascondi, Mostra tutto.
+- **Verifica**: Interferenze, Solo selezione (interruttore), Distanza minima,
+  Salute, Risultati, Ignora risultato.
+
+È attiva una sola verifica di Inventor alla volta. La lista Risultati è
+condivisa e usa l'elenco a pagine già usato da Esplora e Documenti aperti.
+Le azioni M7 non hanno comandi vocali (`voiceInvokes: false`).
 
 Le sezioni che richiedono Inventor sono disabilitate quando:
 - il backend è offline;
@@ -215,8 +227,12 @@ log.
 - `STALE_REVISION` / `DOCUMENT_CHANGED`: "Il modello è cambiato, rilancia"
   (nessun nuovo tentativo automatico).
 - `TIMEOUT`: "Inventor sta ancora calcolando. Riprova tra poco o restringi
-  alla selezione". Finché Inventor non risponde, il client non lancia altre
-  verifiche.
+  alla selezione". Il client non può sapere quando Inventor finisce: per 30 s
+  dopo un `TIMEOUT` rifiuta nuove verifiche con lo stesso messaggio. Dopo, una
+  nuova richiesta parte e, se Inventor è ancora occupato, scade di nuovo.
+- "Ignora risultato" vale allo stesso modo: la richiesta ignorata tiene
+  occupato il client finché la sua risposta non arriva, e la risposta viene
+  scartata.
 - `WRONG_DOCUMENT_TYPE`: la sezione era già disabilitata; se capita
   comunque, "Serve un assieme".
 - `EXPERIMENTAL_DISABLED`: "Verifiche non attive sul server".
