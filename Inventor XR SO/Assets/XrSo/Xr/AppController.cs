@@ -98,6 +98,7 @@ namespace InventorXrSo.Xr
             _sheet.Bind(sceneView.transform);
             _input = gameObject.AddComponent<InventorXrSo.Xr.Input.XrInput>();
             _design.Attach(_shell, _workbench, _sheet, _input);
+            _lamiera.Attach(_shell, _workbench, _sheet, _input);
             _design.HudMessage += text => _badge.Flash(text, 6f);
             _design.ActiveChanged += active =>
             {
@@ -105,7 +106,14 @@ namespace InventorXrSo.Xr
                 else if (ReferenceEquals(_catalog.Active, _design)) _catalog.SetActive(null);
             };
             _design.Closed += () => { if (_inSession) Place(); };
-            // Back, Fit, Recenter, step and zoom belong to the Design workspace (it subscribes through Attach); the palette owns the tabs.
+            _lamiera.HudMessage += text => _badge.Flash(text, 6f);
+            _lamiera.ActiveChanged += active =>
+            {
+                if (active) _catalog.SetActive(_lamiera);
+                else if (ReferenceEquals(_catalog.Active, _lamiera)) _catalog.SetActive(null);
+            };
+            _lamiera.Closed += () => { if (_inSession) Place(); };
+            // Back, Fit, Recenter, step and zoom belong to the active authoring workspace (it subscribes through Attach); the palette owns the tabs.
             _input.TabDelta += _shell.Palette.SelectTab;
             _inspect.DesignRequested += OpenDesign;
             _inspect.AssemblyRequested += OpenAssembly;
@@ -329,6 +337,7 @@ namespace InventorXrSo.Xr
             _lamiera.SetScene(scene);
             if (scene != null && _inSession && !_placed) Place();
             _design.RefreshWorkbench();
+            _lamiera.RefreshWorkbench();
             if (scene != null && scene.Omitted.Count > 0) _badge.Flash(scene.Omitted.Count + UiText.Omitted);
             RefreshHome();
         }

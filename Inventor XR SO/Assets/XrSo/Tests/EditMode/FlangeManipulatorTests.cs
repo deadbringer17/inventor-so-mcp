@@ -79,6 +79,33 @@ namespace InventorXrSo.Tests
             _manip.Show(new CadPoint(0, 0, 0), new CadPoint(0, 1, 0), 7, true); Assert.AreEqual(40, _manip.HeightMm);
         }
 
+        [Test] public void IsOverKnobChangesNoStateAndPrecisionSlowsTheDragWithoutJumping()
+        {
+            _manip.Show(new CadPoint(0, 0, 0), new CadPoint(0, 1, 0), 20, true);
+            var knob = _manip.KnobWorldPosition;
+            Assert.True(_manip.IsOverKnob(RayAt(knob))); Assert.False(_manip.Dragging);
+            Assert.False(_manip.IsOverKnob(RayAt(knob + Vector3.right * 1f)));
+            Assert.True(_manip.TryBeginDrag(RayAt(knob), CadCoordinates.FromWorld(_model, knob), FlangeManipulator.PrecisionFactor));
+            Assert.That(_manip.Drag(CadCoordinates.FromWorld(_model, knob + Vector3.up * 0.010f), FlangeManipulator.PrecisionFactor), Is.EqualTo(21).Within(0.05),
+                "10 mm of hand = 1 mm of height at the precision factor");
+            // switching to the normal factor mid-drag re-anchors: the height does not jump
+            var hand = knob + Vector3.up * 0.010f;
+            Assert.That(_manip.Drag(CadCoordinates.FromWorld(_model, hand), 1), Is.EqualTo(21).Within(0.05));
+            Assert.That(_manip.Drag(CadCoordinates.FromWorld(_model, hand + Vector3.up * 0.010f), 1), Is.EqualTo(31).Within(0.05));
+        }
+
+        [Test] public void AGarbagePoseNeverReachesTheDragSoTheLastValidHeightStays()
+        {
+            _manip.Show(new CadPoint(0, 0, 0), new CadPoint(0, 1, 0), 20, true);
+            var knob = _manip.KnobWorldPosition;
+            Assert.True(_manip.TryBeginDrag(RayAt(knob), CadCoordinates.FromWorld(_model, knob)));
+            Assert.That(_manip.Drag(CadCoordinates.FromWorld(_model, knob + Vector3.up * 0.005f)), Is.EqualTo(25).Within(0.05));
+            // CadPoint itself refuses non-finite coordinates, so a garbage pose cannot even reach the drag
+            Assert.Throws<System.ArgumentException>(() => new CadPoint(double.NaN, 0, 0));
+            Assert.That(_manip.HeightMm, Is.EqualTo(25).Within(0.05));
+            Assert.True(_manip.Dragging);
+        }
+
         [Test] public void HandleFrameUsesTheSheetFacePairAndNotTheThinSideFace()
         {
             var top = new DesignFace("ent_top", new CadPoint(0, 0, 2), new CadPoint(0, 0, 1));

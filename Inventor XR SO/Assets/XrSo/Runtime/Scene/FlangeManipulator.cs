@@ -25,7 +25,7 @@ namespace InventorXrSo.Unity.Scene
         private GameObject _knob, _anchorMark;
         private LineRenderer _stem;
         private CadPoint _dragStart;
-        private double _dragHeight;
+        private double _dragHeight, _factor = 1;
 
         public bool Visible { get; private set; }
         public bool Dragging { get; private set; }
@@ -102,27 +102,48 @@ namespace InventorXrSo.Unity.Scene
             if (Visible) Apply();
         }
 
-        /// <summary>Grip+Trigger on the knob: the ray must pass within <see cref="PickRadiusMetres"/> of it.</summary>
-        public bool TryBeginDrag(Ray worldRay, CadPoint controllerModelPoint)
+        /// <summary>Precision mode (left trigger): the knob follows the hand ten times slower.</summary>
+        public const double PrecisionFactor = 0.1;
+
+        /// <summary>True when the pen ray passes within <see cref="PickRadiusMetres"/> of the knob (no state change).</summary>
+        public bool IsOverKnob(Ray worldRay)
         {
-            if (!Visible || Dragging || _model == null) return false;
+            if (!Visible || _model == null) return false;
             var direction = worldRay.direction.normalized;
             var toKnob = KnobWorldPosition - worldRay.origin;
             if (Vector3.Dot(toKnob, direction) <= 0) return false;
-            if (Vector3.Cross(direction, toKnob).magnitude > PickRadiusMetres) return false;
-            Dragging = true; _dragStart = controllerModelPoint; _dragHeight = HeightMm;
+            return Vector3.Cross(direction, toKnob).magnitude <= PickRadiusMetres;
+        }
+
+        /// <summary>
+        /// Trigger press with the ray on the knob: starts the capture (M5-08). Grip never reaches this method: the workspace
+        /// refuses it while the Grip is held, so Grip alone can only move the view.
+        /// </summary>
+        public bool TryBeginDrag(Ray worldRay, CadPoint controllerModelPoint, double factor = 1)
+        {
+            if (Dragging || !IsOverKnob(worldRay)) return false;
+            if (!Finite(controllerModelPoint)) return false;
+            Dragging = true; _dragStart = controllerModelPoint; _dragHeight = HeightMm; _factor = factor;
             _knob.GetComponent<MeshRenderer>().sharedMaterial = _active;
             return true;
         }
 
-        /// <summary>Height for the controller position (model millimetres), 0.1 mm steps, clamped to the tool range.</summary>
-        public double Drag(CadPoint controllerModelPoint)
+        /// <summary>
+        /// Height for the controller position (model millimetres), 0.1 mm steps, clamped to the tool range. A change of
+        /// <paramref name="factor"/> (precision on/off) re-anchors the drag on the current hand and height: no jump.
+        /// A non-finite pose (lost tracking reports garbage) is ignored: the last valid height stays.
+        /// </summary>
+        public double Drag(CadPoint controllerModelPoint, double factor = 1)
         {
-            if (!Dragging) return HeightMm;
-            HeightMm = Clamp(_dragHeight + (controllerModelPoint - _dragStart).Dot(Axis));
+            if (!Dragging || !Finite(controllerModelPoint)) return HeightMm;
+            if (factor != _factor) { _factor = factor; _dragStart = controllerModelPoint; _dragHeight = HeightMm; }
+            HeightMm = Clamp(_dragHeight + (controllerModelPoint - _dragStart).Dot(Axis) * _factor);
             Apply();
             return HeightMm;
         }
+
+        private static bool Finite(CadPoint p) => !(double.IsNaN(p.X) || double.IsNaN(p.Y) || double.IsNaN(p.Z)
+            || double.IsInfinity(p.X) || double.IsInfinity(p.Y) || double.IsInfinity(p.Z));
 
         public void EndDrag()
         {

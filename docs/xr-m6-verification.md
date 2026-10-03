@@ -74,3 +74,34 @@ Note sul run del 3 ottobre:
 - **Inventor** si era chiuso durante il primo tentativo di preparare la fixture (`MK_E_UNAVAILABLE`); riavviato, le fixture sono passate.
 - Ogni fixture è stata chiusa senza salvare e l'APK ordinario `01fdcf4c…30f6` è stato reinstallato dallo script.
 - M6-09 resta **aperto**: serve anche la migrazione degli altri workspace (Fasi 3–4) e il runner M6. La prova fisica da seduto (M6-02…M6-05, M6-10) resta **aperta**.
+
+## Fase 3 — Lamiera (3 ottobre 2026)
+
+Piano: [Fase 3](superpowers/plans/2026-10-03-inventor-xr-so-m6-fase3-lamiera.md). Consegnato sul branch `feat/m6-fase3`:
+
+- **`LamieraWorkspace` migrato**: niente pannello fluttuante; è un `IActionProvider` con schede Lamiera · Schizzo · Sviluppo · Vista (+ Spazi), id stabili `lamiera.*`, elenchi (regole, schizzi) come schede di scelta da massimo 8 voci. Altezza, angolo e spessore con chip + tastierino; Applica solo dalla barra di conferma; la voce «Applica» non committa (M5-11); dettagli di errore sull'HUD.
+- **Input solo da `XrInput`**: flangia trascinata con il solo Trigger tenuto sulla maniglia; rilascio → anteprima; perdita di tracking → ultimo valore valido e impulso di errore; chiusura del workspace → cattura chiusa (M5-08); precisione 10×; stick destro ± passo e passo 10 / 1 / 0,1; X = indietro; Grip = solo vista; due mani = solo vista; zoom con lo stick sinistro; aptica.
+- **Anello contestuale** solo su facce piane vere e su bordi.
+- **Sviluppo piano** posato sul piano di lavoro davanti all'utente (adattato a 0,45 × 0,30 m); «Distacca» / «Riaggancia» spostano solo la mesh; azioni «Vista: piegato» / «Vista: sviluppo».
+- **Correzioni emerse dal runner sul Quest**: confermare nel tastierino il valore già presente avviava nessuna anteprima (ora la richiede se manca); con la bozza modificata restava visibile il fantasma della vecchia anteprima (ora si nasconde: il fantasma blu è solo dello stato «Pronto»).
+
+Commit: `e22a142`, `a3182c5` più la correzione dei runner e del workspace.
+
+| Prova | Esito |
+|---|---|
+| Core `XrSo.Core.Tests` | 439/439 PASS |
+| Unity EditMode | 325/325 PASS (gesti con `SyntheticInputSource`) |
+| APK ordinario (sul Quest, hash verificato) | sha256 `584ad086…43e3` |
+| APK di collaudo | sha256 `cfed3bbc…54cc` |
+| Runner M1–M5 sul Quest 3 con Inventor 2027 | PASS COMPLETE ×5, input **sintetico**: M1 `artifacts/m1-verification/quest-acceptance-run-20261003-165142.json`; M2 `…m2-verification/…-20261003-165240.json`; M3 `…m3-verification/…-20261003-164559.json`; M4 `…m4-verification/…-20261003-164946.json`; M5 `…m5-verification/…-20261003-164330.json` |
+| Gesti di Lamiera visti sul Quest, leggibilità, ergonomia | NOT COVERED: serve la prova fisica da seduto |
+
+Note sull'esecuzione:
+
+- **Runner M5 adeguato** al nuovo input: input sintetico attivo per tutta la durata del run (i controller reali, in mano o appoggiati, non devono muovere chip né armare campi: in un primo tentativo il rumore dello stick aveva portato l'angolo a 5°); passo sincrono del trascinamento, dell'afferra e delle due mani a ogni frame sintetico; rilascio prima di ogni nuova pressione (gli eventi sono a fronte); verifica dello sviluppo in coordinate mondo (sul piano di lavoro la mesh non vive più nel sistema del modello).
+- **NOT COVERED nel log M5**: il Trigger sul bordo per deselezionarlo. Con la maniglia (raggio di cattura 45 mm) il bordo corto della fixture è coperto per intero: il rilevamento è dichiarato, non aggirato. La deselezione resta possibile con l'azione «Svuota bordi».
+- **M4 falliva** («fixture has translation and rotation axes») anche con l'APK della Fase 2 che il mattino passava: la causa era l'**host HTTPS** rimasto agganciato al vecchio Inventor; riavviato l'host, M4 è passato. Non è una regressione.
+- Il visore va indossato o tenuto sveglio: da fermo va in standby e il runner va in `TIMEOUT before_runner_start` (non un fallimento). Un `TIMEOUT runner` durante i gesti era la conseguenza di un'anteprima mai richiesta (valore uguale nel tastierino), poi corretta.
+- Ogni fixture è stata chiusa senza salvare; l'APK ordinario finale è sul visore.
+
+I gate M6-02, M6-03, M6-04 e M6-05 coprono ora Progettazione **e** Lamiera nei sottocasi automatici, ma restano **aperti**: mancano la prova fisica da seduto e le Fasi 4–5 (Assieme, Ispezione, runner M6). M6-09 e M6-10 restano aperti.

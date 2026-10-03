@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using InventorXrSo.Core.Backend;
 using InventorXrSo.Core.Glb;
 using InventorXrSo.Core.Session;
+using InventorXrSo.Core.Ui;
 using InventorXrSo.Unity.Scene;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
@@ -74,6 +75,70 @@ namespace InventorXrSo.Tests
             Assert.Less(folded.max.x, _display.LocalBounds.min.x, "Beside the folded part along +X, not overlapping it.");
             Assert.That(_display.LocalBounds.center.y, Is.EqualTo(folded.center.y).Within(1e-4));
             Assert.AreEqual(folded, ScenePlacement.LocalBounds(_view.transform), "The pattern does not change the folded part's bounds.");
+        }
+
+        private static Bounds WorldBounds(Transform root)
+        {
+            var renderers = root.GetComponentsInChildren<MeshRenderer>(true);
+            var bounds = renderers[0].bounds;
+            foreach (var r in renderers) bounds.Encapsulate(r.bounds);
+            return bounds;
+        }
+
+        [Test] public void OnAWorkPlaneItLiesFlatInFrontOfTheUserFittedToTheSheetArea()
+        {
+            var frame = WorkbenchFrame.FromHead(new CadPoint(0, 1.6, 0), 0, null);
+            _display.SetWorkPlane(frame);
+            Show();
+            Assert.True(_display.HasWorkPlane); Assert.True(_display.Tweening, "it eases in, it never jumps");
+            _display.Snap();
+            var bounds = WorldBounds(_display.MeshRoot);
+            var floor = WorkbenchLayout.Part(frame, 0.4).Position;
+            Assert.AreEqual((float)floor.X, bounds.center.x, 2e-3f); Assert.AreEqual((float)floor.Z, bounds.center.z, 2e-3f);
+            Assert.AreEqual((float)floor.Y + 0.002f + bounds.extents.y, bounds.center.y, 2e-3f);
+            Assert.LessOrEqual(bounds.size.x, (float)WorkbenchLayout.SheetWidth + 2e-3f);
+            Assert.LessOrEqual(bounds.size.z, (float)WorkbenchLayout.SheetDepth + 2e-3f);
+            Assert.True(bounds.size.x >= bounds.size.z - 1e-4f, "the longest side runs along the user's right");
+        }
+
+        [Test] public void FlatViewOffHidesThePatternAndKeepsTheVerifiedAssetAndFoldedViewOnShowsItAgain()
+        {
+            _display.SetWorkPlane(WorkbenchFrame.FromHead(new CadPoint(0, 1.6, 0), 0, null));
+            Show(); Assert.True(_display.IsShowing); Assert.True(_display.FoldedHidden);
+            var asset = _flat.Asset;
+            _display.SetFlatView(false);
+            Assert.False(_display.IsShowing); Assert.False(_display.FoldedHidden); Assert.False(_display.LabelVisible);
+            Assert.AreSame(asset, _flat.Asset); Assert.AreEqual(FlatPatternState.Ready, _flat.State);
+            _display.SetFlatView(true); Assert.True(_display.IsShowing); Assert.True(_display.FoldedHidden);
+        }
+
+        [Test] public void DetachOffsetIsInPlaneMetresAndAttachReturnsToThePlacedPose()
+        {
+            _display.SetWorkPlane(WorkbenchFrame.FromHead(new CadPoint(0, 1.6, 0), 0, null));
+            Show(); _display.Snap();
+            var placed = _display.MeshRoot.position;
+            _flat.Detach(); _display.Snap();
+            Assert.True(_flat.MoveLocal(0.1, 0, -0.05));
+            Assert.That(Vector3.Distance(_display.MeshRoot.position, placed + new Vector3(0.1f, 0, -0.05f)), Is.LessThan(1e-4f));
+            var offset = _display.OffsetForRootPosition(placed + new Vector3(0.2f, 0, 0.1f));
+            Assert.That(Vector3.Distance(offset, new Vector3(0.2f, 0, 0.1f)), Is.LessThan(1e-4f));
+            _flat.Attach(); _display.Snap();
+            Assert.That(Vector3.Distance(_display.MeshRoot.position, placed), Is.LessThan(1e-4f));
+        }
+
+        [Test] public void ZoomOnThePlaneIsClampedAndResetPlaneReturnsToTheFit()
+        {
+            _display.SetWorkPlane(WorkbenchFrame.FromHead(new CadPoint(0, 1.6, 0), 0, null));
+            Show(); _display.Snap();
+            float fitted = WorldBounds(_display.MeshRoot).size.x;
+            for (int i = 0; i < 3000; i++) _display.ZoomPlane(1, 0.1f);
+            _display.Snap();
+            Assert.LessOrEqual(_display.MeshRoot.lossyScale.x, (float)WorkbenchLayout.MaxScale + 1e-4f);
+            for (int i = 0; i < 6000; i++) _display.ZoomPlane(-1, 0.1f);
+            _display.Snap();
+            Assert.GreaterOrEqual(_display.MeshRoot.lossyScale.x, (float)WorkbenchLayout.MinScale - 1e-6f);
+            _display.ResetPlane(); _display.Snap();
+            Assert.That(WorldBounds(_display.MeshRoot).size.x, Is.EqualTo(fitted).Within(2e-3f));
         }
 
         [Test] public void IsNeverACadReferenceOrAPhysicsTarget()

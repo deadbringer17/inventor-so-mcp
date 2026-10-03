@@ -257,12 +257,14 @@ namespace InventorXrSo.Xr.Voice
             public bool SetArmedField(string fieldId, double value) => false;
         }
 
-        private sealed class LamieraSurface : IWorkspaceVoiceSurface, IWorkspacePanelVoiceSurface
+        private sealed class LamieraSurface : IWorkspaceVoiceSurface, IWorkspacePanelVoiceSurface, IWorkspaceActionVoiceSurface
         {
             private readonly LamieraWorkspace _ws;
             public LamieraSurface(LamieraWorkspace ws) { _ws = ws; }
             public bool Active => _ws != null && _ws.Active;
-            public HomePanel VoicePanel => _ws?.VoicePanel;
+            public HomePanel VoicePanel => _ws?.VoicePanel;   // null: Lamiera non ha piu il pannello
+            public System.Collections.Generic.IEnumerable<(string label, bool enabled)> VoiceActions => _ws.VoiceActions;
+            public bool InvokeVoiceAction(string label) => _ws.InvokeVoiceAction(label);
             public bool IsEnabled(string commandId) => _ws.IsEnabled(commandId);
             public bool Invoke(string commandId) => _ws.Invoke(commandId);
             public bool SetArmedField(string fieldId, double value) => _ws.SetArmedField(fieldId, value);
