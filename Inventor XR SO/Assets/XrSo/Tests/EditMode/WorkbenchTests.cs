@@ -91,6 +91,39 @@ namespace InventorXrSo.Tests
         }
 
         [Test]
+        public void ApplyAssemblyRaisesTheModelWithATweenAndApplyPartBringsItBack()
+        {
+            _bench.Recenter(_head);
+            var start = _scene.position;
+            _bench.ApplyAssembly(_scene, 1.6);
+            Assert.IsTrue(_bench.Raised); Assert.IsTrue(_bench.Tweening);
+            Assert.AreEqual(start, _scene.position);   // niente salto istantaneo
+            _bench.Snap();
+            var expected = WorkbenchLayout.Assembly(_bench.Frame, 1.6);
+            Assert.AreEqual((float)expected.Scale, _scene.localScale.x, 1e-5f);
+            Assert.AreEqual(0.5f, _scene.localScale.x, 1e-5f);
+            Assert.AreEqual(0.65f, _scene.position.z, 1e-4f);
+            Assert.AreEqual(1.2f - (float)WorkbenchLayout.AssemblyDrop, _scene.position.y, 1e-4f);
+            _bench.Fit(); _bench.Snap();   // Adatta tiene la posa sollevata
+            Assert.AreEqual(0.65f, _scene.position.z, 1e-4f);
+            _bench.ApplyPart(_scene, 0.8); _bench.Snap();
+            Assert.IsFalse(_bench.Raised);
+            Assert.AreEqual(0.4f, _scene.position.z, 1e-4f);
+            Assert.AreEqual(1.2f - (float)WorkbenchFrame.DefaultDeskDrop, _scene.position.y, 1e-4f);
+        }
+
+        [Test]
+        public void ReleaseDropsTheRaisedMode()
+        {
+            _bench.Recenter(_head);
+            _bench.ApplyAssembly(_scene, 1.6); _bench.Snap();
+            _bench.Release();
+            Assert.IsFalse(_bench.Raised);
+            _scene.position = Vector3.one; _bench.Snap();
+            Assert.AreEqual(Vector3.one, _scene.position);
+        }
+
+        [Test]
         public void CalibratedDeskHeightSetsThePlaneOnNextRecenter()
         {
             _bench.SetDeskHeight(0.72);

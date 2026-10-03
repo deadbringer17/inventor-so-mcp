@@ -231,16 +231,25 @@ namespace InventorXrSo.Xr.Voice
             public bool SetArmedField(string fieldId, double value) => _ws.SetArmedField(fieldId, value);
         }
 
-        private sealed class AssemblySurface : IWorkspaceVoiceSurface, IWorkspacePanelVoiceSurface
+        private sealed class AssemblySurface : IWorkspaceVoiceSurface, IWorkspacePanelVoiceSurface, IWorkspaceActionVoiceSurface
         {
             private readonly AssemblyWorkspace _ws;
             public AssemblySurface(AssemblyWorkspace ws) { _ws = ws; }
             public bool Active => _ws != null && _ws.Active;
-            public HomePanel VoicePanel => _ws?.VoicePanel;
+            public HomePanel VoicePanel => _ws?.VoicePanel;   // null: Assieme non ha piu il pannello
+            public System.Collections.Generic.IEnumerable<(string label, bool enabled)> VoiceActions => _ws.VoiceActions;
+            public bool InvokeVoiceAction(string label) => _ws.InvokeVoiceAction(label);
             public bool IsEnabled(string commandId) => _ws.IsEnabled(commandId);
             public bool Invoke(string commandId) => _ws.Invoke(commandId);
-            public DictationField ArmedField => null;   // Assembly usa solo il tastierino modale
-            public bool SetArmedField(string fieldId, double value) => false;
+            public bool SetArmedField(string fieldId, double value) => _ws.SetArmedField(fieldId, value);
+            public DictationField ArmedField
+            {
+                get
+                {
+                    var f = _ws.ArmedField;
+                    return f == null ? null : new DictationField(f.Id, f.Unit, f.Min, f.Max);
+                }
+            }
         }
 
         private sealed class InspectSurface : IWorkspaceVoiceSurface, IWorkspacePanelVoiceSurface, IWorkspaceWristVoiceSurface

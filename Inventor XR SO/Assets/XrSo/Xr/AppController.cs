@@ -99,6 +99,7 @@ namespace InventorXrSo.Xr
             _input = gameObject.AddComponent<InventorXrSo.Xr.Input.XrInput>();
             _design.Attach(_shell, _workbench, _sheet, _input);
             _lamiera.Attach(_shell, _workbench, _sheet, _input);
+            _assembly.Attach(_shell, _workbench, _sheet, _input);
             _design.HudMessage += text => _badge.Flash(text, 6f);
             _design.ActiveChanged += active =>
             {
@@ -106,6 +107,16 @@ namespace InventorXrSo.Xr
                 else if (ReferenceEquals(_catalog.Active, _design)) _catalog.SetActive(null);
             };
             _design.Closed += () => { if (_inSession) Place(); };
+            _assembly.HudMessage += text => _badge.Flash(text, 6f);
+            _assembly.ActiveChanged += active =>
+            {
+                if (active) _catalog.SetActive(_assembly);
+                else if (ReferenceEquals(_catalog.Active, _assembly)) _catalog.SetActive(null);
+            };
+            _assembly.Closed += () => { if (_inSession) Place(); };
+            // From the isolated component: its document is already active, the switch only changes workspace.
+            _assembly.DesignRequested += () => { if (!_design.RequiresCadReview && !_lamiera.RequiresCadReview) { _assembly.Close(); _design.Open(); } };
+            _assembly.LamieraRequested += () => { if (!_design.RequiresCadReview && !_lamiera.RequiresCadReview) { _assembly.Close(); _lamiera.Open(); } };
             _lamiera.HudMessage += text => _badge.Flash(text, 6f);
             _lamiera.ActiveChanged += active =>
             {
@@ -338,6 +349,7 @@ namespace InventorXrSo.Xr
             if (scene != null && _inSession && !_placed) Place();
             _design.RefreshWorkbench();
             _lamiera.RefreshWorkbench();
+            _assembly.RefreshWorkbench();
             if (scene != null && scene.Omitted.Count > 0) _badge.Flash(scene.Omitted.Count + UiText.Omitted);
             RefreshHome();
         }

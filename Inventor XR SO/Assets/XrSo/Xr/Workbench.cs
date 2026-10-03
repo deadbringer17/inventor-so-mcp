@@ -12,12 +12,15 @@ namespace InventorXrSo.Xr
         private Transform _root;
         private double _extentM;
         private double? _deskY;
+        private bool _raised;
 
         public WorkbenchFrame Frame { get; private set; }
         public LayoutPose PartPose { get; private set; }
         /// <summary>True se la scala ideale e fuori da [0,001; 10]: l'HUD mostra la scala.</summary>
         public bool Clamped => PartPose.Clamped;
         public bool Tweening => _tween.Active;
+        /// <summary>True in Assieme: il modello sta nella posa sollevata (65 cm davanti, testa - 15 cm, box di 80 cm).</summary>
+        public bool Raised => _raised;
 
         /// <summary>Altezza del piano calibrata (metri); null = testa - 0,45 m. Vale dal prossimo Recenter.</summary>
         public void SetDeskHeight(double? deskY) => _deskY = deskY;
@@ -32,6 +35,16 @@ namespace InventorXrSo.Xr
         /// <summary>Porta il modello sul piano alla scala che entra nel riquadro.</summary>
         public void ApplyPart(Transform sceneRoot, double extentM)
         {
+            _raised = false;
+            _root = sceneRoot;
+            _extentM = extentM;
+            if (Frame != null && _root != null) Apply();
+        }
+
+        /// <summary>Assieme sollevato: stessa transizione di ~250 ms, posa e scala di <see cref="WorkbenchLayout.Assembly"/>.</summary>
+        public void ApplyAssembly(Transform sceneRoot, double extentM)
+        {
+            _raised = true;
             _root = sceneRoot;
             _extentM = extentM;
             if (Frame != null && _root != null) Apply();
@@ -46,11 +59,12 @@ namespace InventorXrSo.Xr
         {
             _tween.Cancel();
             _root = null;
+            _raised = false;
         }
 
         private void Apply()
         {
-            PartPose = WorkbenchLayout.Part(Frame, _extentM);
+            PartPose = _raised ? WorkbenchLayout.Assembly(Frame, _extentM) : WorkbenchLayout.Part(Frame, _extentM);
             _tween.Start(_root, new Vector3((float)PartPose.Position.X, (float)PartPose.Position.Y, (float)PartPose.Position.Z),
                 Quaternion.Euler(0, (float)PartPose.YawDegrees, 0), (float)PartPose.Scale);
         }
