@@ -68,6 +68,7 @@ materiali/texture), M8-04/05-regression (regressione nativa M6). NOT COVERED:
 M8-05-stale-native, M8-06 (DPI reali/QR), M8-07-performance (GC/frame p95/GPU),
 M8-08 (prova fisica). APK ordinario ripristinato (sha256 verificato), fixture
 chiusa senza salvare.
+**Rerun di conferma (4 ottobre 2026, 19:07) con il codice finale** (fix `SceneCurrent` anche in Lamiera e Design, 419/419 EditMode): `PASS COMPLETE`, stessi PASS/NOT COVERED, manifest `artifacts/m8-verification/device/quest-acceptance-run-20261004-190746.json`; APK QA sha256 72e75c9b…, ordinario c379c51e… (ripristinato e verificato sul Quest, fixture chiusa).
 Tre problemi trovati e risolti per arrivare al PASS: (1) rate limit dell'host
 (240/min) durante il passo Lamiera: host avviato con `--http-rate-limit 3000`;
 (2) `AssemblyWorkspace.SceneCurrent` confrontava la revisione intera, per cui un
