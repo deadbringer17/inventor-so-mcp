@@ -98,6 +98,7 @@ namespace InventorXrSo.Xr
             else NotCovered("M7-02", "Inventor returned no interference body box: the pair is shown in red without boxes");
             await CaptureScreenshot("interference", ct);
             inspect.Back();
+            Check(!visibility.AnyChanged && overlay.BoxCount == 0, "Back restores the visibility and clears the boxes");
             Pass("M7-02", "1 pair M7_A/M7_B, " + F(pair.VolumeMm3) + " mm3, " + pair.Boxes.Count + " box(es), elapsed " + (interference.ElapsedMs?.ToString() ?? "?") + " ms; row focus and Back verified");
 
             // M7-03: minimum distance M7_A - M7_C.
@@ -134,7 +135,7 @@ namespace InventorXrSo.Xr
             inspect.SetDocumentState(new DocumentState(state.DocumentId, state.Revision + ":synthetic", state.VisualRevision));
             Check(session.Health.Status == VerifyStatus.Stale && ReadBoolean(inspect, "_findingsStale"), "a new revision marks the health result stale");
             Record("M7-05 stale used a SYNTHETIC revision on the client; the real revision check is covered by XrSo.Core.Tests (FakeAddIn)");
-            await WaitFor(() => Session.Document?.Revision == state.Revision ? Session.Document : null, ct);
+            Check(Session.Document != null, "the session has the real document state");
             inspect.SetDocumentState(Session.Document);
             await WaitUntil(() => VerifyEnabled(InspectWorkspace.IdInterference), ct);
             RunAction(InspectWorkspace.IdInterference);
@@ -146,12 +147,13 @@ namespace InventorXrSo.Xr
             Pass("M7-05", "stale on revision change (synthetic), concurrent run refused, ignored answer discarded after Inventor answered");
 
             // M7-07: timings on the fixture only.
-            Pass("M7-07", "fixture timings: interference " + (interference.ElapsedMs?.ToString() ?? "?") + " ms");
+            Check(interference.ElapsedMs.HasValue && interference.ElapsedMs.Value < 30000, "fixture interference finishes within the 30 s command limit");
+            Pass("M7-07", "fixture only: interference " + interference.ElapsedMs.Value + " ms (< 30 s)");
             NotCovered("M7-07", "timing on a real user assembly is measured by the --probe-active PC probe, not by this runner");
             NotCovered("M7-06", "offline and part-document enablement is covered by EditMode tests, not on the headset");
             NotCovered("M7-08", "physical: readability of red, ghosts, boxes, line and list while seated, real controller tracking");
 
-            RunAction(InspectWorkspace.IdShowAll);
+            if (visibility.AnyChanged) RunAction(InspectWorkspace.IdShowAll);
         }
 
         private static SceneNode Node(BrowserContext context, string name)
