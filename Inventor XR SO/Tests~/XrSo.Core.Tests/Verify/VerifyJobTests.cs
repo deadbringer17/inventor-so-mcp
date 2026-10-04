@@ -102,4 +102,25 @@ public class VerifyJobTests
         Assert.All(session.Jobs, j => Assert.Equal(VerifyStatus.Idle, j.Status));
         Assert.Null(session.Distance.Result); Assert.Null(session.Health.Result);
     }
+
+    [Fact]
+    public async Task AThrowingChangedSubscriberCannotLeaveTheGateBusy()
+    {
+        var session = new VerifySession();
+        session.Distance.Changed += () => throw new InvalidOperationException("subscriber bug");
+        try { await session.Distance.RunAsync(_ => Task.FromResult(Report("r1")), default); } catch (InvalidOperationException) { }
+        Assert.False(session.Gate.Busy);
+        Assert.True(session.Gate.CanStart);
+    }
+
+    [Fact]
+    public async Task ARawTransportTimeoutIsATimeoutToo()
+    {
+        var now = new DateTime(2026, 10, 3, 12, 0, 0, DateTimeKind.Utc);
+        var session = new VerifySession(() => now);
+        await session.Health.RunAsync(_ => Task.FromException<HealthReport>(new InventorXrSo.Core.Net.TransportTimeoutException("Request timeout")), default);
+        Assert.Equal(VerifyStatus.Failed, session.Health.Status);
+        Assert.Equal(VerifyMessages.Timeout, session.Health.ErrorMessage);
+        Assert.False(session.Gate.CanStart);
+    }
 }

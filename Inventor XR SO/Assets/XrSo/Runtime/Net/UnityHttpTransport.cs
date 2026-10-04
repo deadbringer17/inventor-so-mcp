@@ -116,7 +116,12 @@ namespace InventorXrSo.Unity.Net
         private Exception Failure(UnityWebRequest web, int before) =>
             _trust.RejectionCount != before
                 ? new CertificateRejectedException(_trust.LastPresentedSha256)
+                : IsTimeout(web) ? new TransportTimeoutException(web.error)
                 : (Exception)new TransportException(web.error);
+
+        /// <summary>UnityWebRequest reports its <c>timeout</c> as a connection error whose message is "Request timeout".</summary>
+        private static bool IsTimeout(UnityWebRequest web) =>
+            web.error != null && web.error.IndexOf("timeout", StringComparison.OrdinalIgnoreCase) >= 0;
 
         private static IDictionary<string, string> Headers(UnityWebRequest web) =>
             web.GetResponseHeaders() ?? new Dictionary<string, string>();

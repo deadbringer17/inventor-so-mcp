@@ -18,6 +18,38 @@ public class VerifyBackendTests : IClassFixture<BackendFixture>
         return (backend, await backend.GetDocumentStateAsync(default));
     }
 
+    private sealed class TimeoutSpy : InventorXrSo.Core.Net.IHttpTransport
+    {
+        private readonly InventorXrSo.Core.Net.IHttpTransport _inner;
+        public readonly Dictionary<string, TimeSpan> ToolTimeouts = new();
+        public TimeoutSpy(InventorXrSo.Core.Net.IHttpTransport inner) { _inner = inner; }
+
+        public Task<InventorXrSo.Core.Net.TransportResponse> SendAsync(InventorXrSo.Core.Net.TransportRequest request, CancellationToken ct)
+        {
+            var text = request.Body == null ? "" : System.Text.Encoding.UTF8.GetString(request.Body);
+            foreach (var tool in new[] { "inventor_check_interference_xr", "inventor_measure_min_distance_xr", "inventor_assembly_health_xr" })
+                if (text.Contains("\"" + tool + "\"")) ToolTimeouts[tool] = request.Timeout;
+            return _inner.SendAsync(request, ct);
+        }
+
+        public Task<int> StreamLinesAsync(InventorXrSo.Core.Net.TransportRequest request, Action<string> onLine, CancellationToken ct) =>
+            _inner.StreamLinesAsync(request, onLine, ct);
+    }
+
+    [Fact]
+    public async Task TheThreeVerificationsAskForSeventyFiveSeconds()
+    {
+        var spy = new TimeoutSpy(_fixture.Transport());
+        var backend = new InventorBackend(spy, _fixture.EditorServer, new MemoryAssetCache());
+        await backend.ConnectAsync(default);
+        var state = await backend.GetDocumentStateAsync(default);
+        await backend.CheckInterferenceAsync(state, null, default);
+        await backend.MeasureMinDistanceAsync(state, "ent_occ_1", "ent_occ_2", default);
+        await backend.GetAssemblyHealthAsync(state, default);
+        Assert.Equal(3, spy.ToolTimeouts.Count);
+        Assert.All(spy.ToolTimeouts.Values, t => Assert.Equal(TimeSpan.FromSeconds(75), t));
+    }
+
     [Fact]
     public async Task InterferenceCarriesIdsVolumeAndBoxesAndIsRevisionBound()
     {
@@ -57,8 +89,20 @@ public class VerifyBackendTests : IClassFixture<BackendFixture>
         Assert.Equal("constraint", issue.Kind); Assert.Equal("M7_Sick", issue.Name);
         Assert.Equal("ent_occ_1", issue.AOccurrenceId); Assert.Equal("ent_occ_3", issue.BOccurrenceId);
         Assert.Equal("ent_occ_2", Assert.Single(report.Unconstrained).OccurrenceId);
-        Assert.False(report.BomValid);
-        Assert.Contains(report.BomIssues, b => b.Code == "PART_NUMBER_MISSING");
+        // The real get_assembly_bom replaces a blank part number with the file name, so the BOM finding is a missing description (a warning).
+        Assert.True(report.BomValid);
+        var bom = Assert.Single(report.BomIssues);
+        Assert.Equal("DESCRIPTION_MISSING", bom.Code); Assert.Equal("warning", bom.Severity);
+    }
+
+    [Fact]
+    public async Task HealthRefusesWhenTheRevisionMovesBetweenTheBomAndTheFinalRecheck()
+    {
+        var (backend, state) = await Connect();
+        _fixture.AddIn.BumpRevisionOnNextBom = true;
+        var stale = await Assert.ThrowsAsync<McpToolException>(() => backend.GetAssemblyHealthAsync(state, default));
+        Assert.Equal("STALE_REVISION", stale.Code);
+        Assert.False(_fixture.AddIn.BumpRevisionOnNextBom, "the hook is one-shot");
     }
 
     [Fact]

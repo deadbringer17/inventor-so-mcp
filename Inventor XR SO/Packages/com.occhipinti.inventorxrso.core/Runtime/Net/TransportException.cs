@@ -8,6 +8,12 @@ namespace InventorXrSo.Core.Net
         public TransportException(string message, Exception inner = null) : base(message, inner) { }
     }
 
+    /// <summary>The request ran out of time (the per-request <see cref="TransportRequest.Timeout"/>), as opposed to a refused or lost connection.</summary>
+    public sealed class TransportTimeoutException : TransportException
+    {
+        public TransportTimeoutException(string message, Exception inner = null) : base(message, inner) { }
+    }
+
     /// <summary>The server presented a certificate other than the pinned one.</summary>
     public sealed class CertificateRejectedException : TransportException
     {

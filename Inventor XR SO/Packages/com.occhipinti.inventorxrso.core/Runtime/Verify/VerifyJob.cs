@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using InventorXrSo.Core.Backend;
 using InventorXrSo.Core.Mcp;
+using InventorXrSo.Core.Net;
 
 namespace InventorXrSo.Core.Verify
 {
@@ -64,16 +65,16 @@ namespace InventorXrSo.Core.Verify
             int ticket = ++_ticket;
             _gate.Busy = true;
             Status = VerifyStatus.Running; Result = null; Revision = null; ErrorCode = null; ErrorMessage = null;
-            Changed?.Invoke();
             try
             {
+                Changed?.Invoke();
                 var result = await run(ct);
                 if (ticket == _ticket) { Result = result; Revision = result?.Revision; Status = VerifyStatus.Done; }
             }
             catch (OperationCanceledException) { if (ticket == _ticket) Status = VerifyStatus.Idle; }
             catch (Exception ex)
             {
-                if (ex is McpException mcp && mcp.Code == "TIMEOUT") _gate.MarkTimeout();
+                if ((ex is McpException mcp && mcp.Code == "TIMEOUT") || ex is TransportTimeoutException) _gate.MarkTimeout();
                 if (ticket == _ticket)
                 {
                     Status = VerifyStatus.Failed;

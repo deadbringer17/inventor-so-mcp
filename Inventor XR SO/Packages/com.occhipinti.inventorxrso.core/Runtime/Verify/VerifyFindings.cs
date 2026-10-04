@@ -87,6 +87,7 @@ namespace InventorXrSo.Core.Verify
 
         public static string For(Exception ex)
         {
+            if (ex is Net.TransportTimeoutException) return Timeout;
             if (!(ex is McpException mcp)) return "Verifica non riuscita.";
             switch (mcp.Code)
             {

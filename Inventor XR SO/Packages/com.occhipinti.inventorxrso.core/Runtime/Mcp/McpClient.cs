@@ -46,9 +46,14 @@ namespace InventorXrSo.Core.Mcp
             await PostAsync(notification, ct);
         }
 
-        public async Task<JObject> CallToolAsync(string name, JObject arguments, CancellationToken ct)
+        /// <param name="timeout">Whole-request timeout; null keeps the transport default. A request that runs out of time throws <see cref="McpException"/> with code TIMEOUT.</param>
+        public async Task<JObject> CallToolAsync(string name, JObject arguments, CancellationToken ct, TimeSpan? timeout = null)
         {
-            var result = await RequestAsync("tools/call", new JObject { ["name"] = name, ["arguments"] = arguments ?? new JObject() }, ct);
+            JObject result;
+            try { result = await RequestAsync("tools/call", new JObject { ["name"] = name, ["arguments"] = arguments ?? new JObject() }, ct, timeout); }
+            catch (TransportTimeoutException ex) { throw new McpException("TIMEOUT", name + " did not answer in time: " + ex.Message); }
+            // A transport that enforces the timeout by cancelling its own request (not the caller's) reports it as a cancellation.
+            catch (OperationCanceledException ex) when (!ct.IsCancellationRequested) { throw new McpException("TIMEOUT", name + " did not answer in time: " + ex.Message); }
             var text = (string)result["content"]?[0]?["text"];
             bool isError = (bool?)result["isError"] ?? false;
             if (text == null) throw new McpToolException(name, "TOOL_NO_CONTENT", name + " returned no text content.", null);
@@ -64,12 +69,12 @@ namespace InventorXrSo.Core.Mcp
         public Task SubscribeAsync(string uri, CancellationToken ct) =>
             RequestAsync("resources/subscribe", new JObject { ["uri"] = uri }, ct);
 
-        public async Task<JObject> RequestAsync(string method, JObject parameters, CancellationToken ct)
+        public async Task<JObject> RequestAsync(string method, JObject parameters, CancellationToken ct, TimeSpan? timeout = null)
         {
             int id = Interlocked.Increment(ref _nextId);
             var message = new JObject { ["jsonrpc"] = "2.0", ["id"] = id, ["method"] = method };
             if (parameters != null) message["params"] = parameters;
-            var reply = ReadReply(await PostAsync(message, ct), id);
+            var reply = ReadReply(await PostAsync(message, ct, timeout), id);
             if (reply["error"] is JObject rpcError)
                 throw new McpException("RPC_" + ((int?)rpcError["code"] ?? 0), (string)rpcError["message"] ?? method + " failed.");
             return reply["result"] as JObject ?? new JObject();
@@ -88,9 +93,10 @@ namespace InventorXrSo.Core.Mcp
             return request;
         }
 
-        private async Task<TransportResponse> PostAsync(JObject message, CancellationToken ct)
+        private async Task<TransportResponse> PostAsync(JObject message, CancellationToken ct, TimeSpan? timeout = null)
         {
             var request = NewRequest("POST", "application/json, text/event-stream");
+            if (timeout.HasValue) request.Timeout = timeout.Value;
             request.Body = System.Text.Encoding.UTF8.GetBytes(message.ToString(Formatting.None));
             request.Headers["Content-Type"] = "application/json";
             var response = await _transport.SendAsync(request, ct);

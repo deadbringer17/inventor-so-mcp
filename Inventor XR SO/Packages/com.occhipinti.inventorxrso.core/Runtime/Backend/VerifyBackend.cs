@@ -159,24 +159,27 @@ namespace InventorXrSo.Core.Backend
 
     public sealed partial class InventorBackend : IVerifyBackend
     {
+        /// <summary>Inventor computes verifications on its single UI thread; the server's own limit is below this, so the answer normally arrives first.</summary>
+        internal static readonly TimeSpan VerifyTimeout = TimeSpan.FromSeconds(75);
+
         public async Task<InterferenceReport> CheckInterferenceAsync(DocumentState state, IReadOnlyList<string> occurrenceIds, CancellationToken ct) =>
             InterferenceReport.FromJson(await _mcp.CallToolAsync("inventor_check_interference_xr", new JObject
             {
                 ["document_id"] = state.DocumentId, ["expected_revision"] = state.Revision,
                 ["occurrence_ids"] = occurrenceIds == null || occurrenceIds.Count == 0 ? null : new JArray(occurrenceIds.Cast<object>().ToArray()),
-            }, ct));
+            }, ct, VerifyTimeout));
 
         public async Task<DistanceReport> MeasureMinDistanceAsync(DocumentState state, string aOccurrenceId, string bOccurrenceId, CancellationToken ct) =>
             DistanceReport.FromJson(await _mcp.CallToolAsync("inventor_measure_min_distance_xr", new JObject
             {
                 ["document_id"] = state.DocumentId, ["expected_revision"] = state.Revision,
                 ["a_occurrence_id"] = aOccurrenceId, ["b_occurrence_id"] = bOccurrenceId,
-            }, ct));
+            }, ct, VerifyTimeout));
 
         public async Task<HealthReport> GetAssemblyHealthAsync(DocumentState state, CancellationToken ct) =>
             HealthReport.FromJson(await _mcp.CallToolAsync("inventor_assembly_health_xr", new JObject
             {
                 ["document_id"] = state.DocumentId, ["expected_revision"] = state.Revision,
-            }, ct));
+            }, ct, VerifyTimeout));
     }
 }
