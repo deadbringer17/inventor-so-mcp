@@ -58,7 +58,7 @@ namespace InventorXrSo.Tests
             _workspace.OtherWorkspaceActive = () => _other;
             _workspace.HudMessage += _hud.Add;
             _workspace.Initialize(_view, visuals, _ray, eye.transform, _env);
-            _catalog = new ActionCatalog(new SpacesActions(() => { }, () => { }, () => { }, () => { }, () => { }, () => true, () => true, () => true, () => true));
+            _catalog = new ActionCatalog(TestDocs.Create());
             _shell = UiShell.Create(left.transform, eye.transform, _catalog);
             _roots.Add(_shell.gameObject); _roots.Add(_shell.CommitBar.Canvas.gameObject); _roots.Add(_shell.Hud.Canvas.gameObject);
             _xr = Child("XrInput").AddComponent<XrInput>(); _xr.Source = new SyntheticInputSource();
@@ -132,7 +132,7 @@ namespace InventorXrSo.Tests
         public void TabsAreMeasureSectionViewVisibilityVerifyWithAtMostEightActionsEachAndUniqueIds()
         {
             CollectionAssert.AreEqual(new[] { "misura", "sezione", "vista", "visibilita", "verifica" }, _workspace.Tabs.Select(t => t.Id).ToArray());
-            CollectionAssert.AreEqual(new[] { "Misura", "Sezione", "Vista", "Visibilità", "Verifica", "Spazi" }, _catalog.Tabs.Select(t => t.Label).ToArray());
+            CollectionAssert.AreEqual(new[] { "Misura", "Sezione", "Vista", "Visibilità", "Verifica", "Documento" }, _catalog.Tabs.Select(t => t.Label).ToArray());
             foreach (var tab in _workspace.Tabs)
             {
                 var list = _catalog.Palette(tab.Id);

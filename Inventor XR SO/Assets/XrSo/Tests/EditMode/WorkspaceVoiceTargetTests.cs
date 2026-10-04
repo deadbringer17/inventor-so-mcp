@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using InventorXrSo.Core.Navigation;
 using InventorXrSo.Core.Ui;
 using InventorXrSo.Core.Voice;
 using InventorXrSo.Xr;
@@ -41,14 +42,16 @@ namespace InventorXrSo.Tests
 
         private static ActionCatalog CatalogWith(Provider provider, Action<string> openSpace = null, bool inSession = true)
         {
-            Action open(string name) => () => openSpace?.Invoke(name);
-            var spaces = new SpacesActions(open("inspect"), open("design"), open("lamiera"), open("assembly"), open("connection"),
-                () => inSession, () => true, () => true, () => true);
-            var catalog = new ActionCatalog(spaces);
+            Action act(string name) => () => openSpace?.Invoke(name);
+            var stack = new NavigationStack();
+            stack.Reset(new NavLevel("a", DocContext.Assembly, "A.iam"));
+            stack.Push(new NavLevel("p", DocContext.Part, "P.ipt", "o"));
+            var document = TestDocs.Create(stack, goBack: act("back"), save: act("save"), inSession: () => inSession,
+                openConnection: act("connection"), leaveSession: act("exit"));
+            var catalog = new ActionCatalog(document);
             catalog.SetActive(provider);
             return catalog;
         }
-
         [Test]
         public void Catalog_actions_resolve_by_label_and_synonym_and_apply_is_never_voiced()
         {
@@ -90,20 +93,19 @@ namespace InventorXrSo.Tests
         }
 
         [Test]
-        public void Workspace_spaces_are_selected_through_the_catalog_actions()
+        public void Document_tab_actions_are_selected_through_the_catalog()
         {
             var opened = new List<string>();
             var target = new WorkspaceVoiceTarget(null) { InSession = true, Catalog = CatalogWith(new Provider(), opened.Add) };
-            Assert.IsTrue(target.TryResolveAction("progettazione", out var action));
-            Assert.AreEqual("act:spaces.design", action.Id);
+            Assert.IsTrue(target.TryResolveAction("torna", out var action));
+            Assert.AreEqual("act:doc.back", action.Id);
             Assert.IsTrue(target.Invoke(action.Id));
-            Assert.IsTrue(target.TryResolveAction("assemblaggio", out var assembly));
-            Assert.IsTrue(target.Invoke(assembly.Id));
-            Assert.IsTrue(target.TryResolveAction("ispeziona", out var inspect));
-            Assert.IsTrue(target.Invoke(inspect.Id));
-            CollectionAssert.AreEqual(new[] { "design", "assembly", "inspect" }, opened);
+            Assert.IsTrue(target.TryResolveAction("salva", out var save));
+            Assert.IsTrue(target.Invoke(save.Id));
+            Assert.IsTrue(target.TryResolveAction("connessione", out var connection));
+            Assert.IsTrue(target.Invoke(connection.Id));
+            CollectionAssert.AreEqual(new[] { "back", "save", "connection" }, opened);
         }
-
         [Test]
         public void Catalog_actions_are_refused_outside_a_session_or_without_a_catalog()
         {

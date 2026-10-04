@@ -1125,7 +1125,7 @@ namespace InventorXrSo.Tests
 
         private ActionCatalog CatalogFor()
         {
-            var spaces = new SpacesActions(() => { }, () => { }, () => { }, () => { }, () => { }, () => true, () => true, () => true, () => true);
+            var spaces = TestDocs.Create();
             var catalog = new ActionCatalog(spaces); catalog.SetActive(_workspace); return catalog;
         }
 
@@ -1144,7 +1144,7 @@ namespace InventorXrSo.Tests
             Assert.False(_workspace.Actions.Any(a => a.Label.StartsWith("Blocca") || a.Label == "Ispeziona" || a.Label == "Dettagli errore"), state);
             foreach (var action in _workspace.Actions.Where(a => !a.Enabled)) Assert.False(string.IsNullOrEmpty(action.DisabledReason), state + ": reason of " + action.Id);
             CollectionAssert.AreEqual(new[] { "lamiera", "schizzo", "sviluppo", "vista" }, _workspace.Tabs.Where(t => !t.Hidden).Select(t => t.Id).ToArray(), state);
-            Assert.AreEqual(new[] { "Lamiera", "Schizzo", "Sviluppo", "Vista", "Spazi" }, catalog.Tabs.Select(t => t.Label).ToArray(), state);
+            Assert.AreEqual(new[] { "Lamiera", "Schizzo", "Sviluppo", "Vista", "Documento" }, catalog.Tabs.Select(t => t.Label).ToArray(), state);
         }
 
         [Test] public void ActionIdsAreUniqueAndEveryTabHasAtMostEightActionsInEveryState()
@@ -1270,7 +1270,7 @@ namespace InventorXrSo.Tests
 
         private UiShell AttachShell(out Workbench bench)
         {
-            var catalog = new ActionCatalog(new SpacesActions(() => { }, () => { }, () => { }, () => { }, () => { }, () => true, () => true, () => true, () => true));
+            var catalog = new ActionCatalog(TestDocs.Create());
             var shell = UiShell.Create(Child("Left").transform, _root.transform.Find("Eye"), catalog);
             _roots.Add(shell.gameObject); _roots.Add(shell.CommitBar.Canvas.gameObject); _roots.Add(shell.Hud.Canvas.gameObject);
             bench = Child("Bench").AddComponent<Workbench>();
@@ -1287,7 +1287,7 @@ namespace InventorXrSo.Tests
             shell.Palette.SelectTab(+1); Assert.AreEqual("schizzo", shell.Palette.CurrentTab);
             shell.Palette.SelectTab(+1); Assert.AreEqual("sviluppo", shell.Palette.CurrentTab);
             shell.Palette.SelectTab(+1); Assert.AreEqual("vista", shell.Palette.CurrentTab);
-            shell.Palette.SelectTab(+1); Assert.AreEqual("spazi", shell.Palette.CurrentTab);
+            shell.Palette.SelectTab(+1); Assert.AreEqual("documento", shell.Palette.CurrentTab);
             shell.Palette.SelectTab(+1); Assert.AreEqual("lamiera", shell.Palette.CurrentTab);
             _backend.ExtraRules = 8; Start(_backend);
             Do(Rule);

@@ -49,8 +49,8 @@ namespace InventorXrSo.Tests
         private static ActionCatalog Catalog(out Provider spaces)
         {
             spaces = new Provider();
-            spaces.TabList.Add(new XrTab(ActionCatalog.SpacesTab, "Spazi"));
-            spaces.All.Add(A("spaces.inspect", "Ispeziona", ActionCatalog.SpacesTab));
+            spaces.TabList.Add(new XrTab(ActionCatalog.DocumentTab, "Documento"));
+            spaces.All.Add(A("spaces.inspect", "Ispeziona", ActionCatalog.DocumentTab));
             return new ActionCatalog(spaces);
         }
 
@@ -62,7 +62,7 @@ namespace InventorXrSo.Tests
         {
             var shell = Shell(Catalog(out _));
             Assert.AreSame(_anchor.transform, shell.Palette.Canvas.transform.parent);
-            Assert.AreEqual(ActionCatalog.SpacesTab, shell.Palette.CurrentTab);
+            Assert.AreEqual(ActionCatalog.DocumentTab, shell.Palette.CurrentTab);
             CollectionAssert.Contains(Labels(shell.Palette), "Ispeziona");
         }
 
@@ -93,7 +93,7 @@ namespace InventorXrSo.Tests
             shell.Palette.GetComponentsInChildren<Button>().First(b => b.GetComponentInChildren<TextMeshProUGUI>().text == "Crea schizzo").onClick.Invoke();
             Assert.AreEqual(1, runs);
             shell.Palette.SelectTab(+1);
-            Assert.AreEqual(ActionCatalog.SpacesTab, shell.Palette.CurrentTab);
+            Assert.AreEqual(ActionCatalog.DocumentTab, shell.Palette.CurrentTab);
             shell.Palette.SelectTab(+1);
             Assert.AreEqual("sketch", shell.Palette.CurrentTab);
         }
@@ -180,7 +180,7 @@ namespace InventorXrSo.Tests
         public void PaletteFitsTheCanvasWithMinimumTargetsInTabAndKeypadModes()
         {
             var catalog = Catalog(out var spaces);
-            for (int i = 0; i < 7; i++) spaces.All.Add(A("s" + i, "Azione " + i, ActionCatalog.SpacesTab));
+            for (int i = 0; i < 7; i++) spaces.All.Add(A("s" + i, "Azione " + i, ActionCatalog.DocumentTab));
             var shell = Shell(catalog);
             catalog.NotifyChanged();
             Assert.AreEqual(8, shell.Palette.GetComponentsInChildren<Button>(false).Length);
@@ -225,7 +225,7 @@ namespace InventorXrSo.Tests
         {
             var catalog = Catalog(out var spaces);
             foreach (var l in new[] { "Progettazione", "Lamiera", "Assieme", "Connessione", "Crea schizzo", "Aggiorna riferimenti", "Estrusione" })
-                spaces.All.Add(A("x" + l, l, ActionCatalog.SpacesTab));
+                spaces.All.Add(A("x" + l, l, ActionCatalog.DocumentTab));
             var shell = Shell(catalog);
             catalog.NotifyChanged();
             AssertLabelsNeverTruncated(shell.Palette, 8);

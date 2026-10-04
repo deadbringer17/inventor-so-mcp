@@ -17,18 +17,18 @@ namespace InventorXrSo.Core.Ui
         public string Reason { get; }
     }
 
-    /// <summary>Azioni del workspace attivo piu la scheda fissa "Spazi".</summary>
+    /// <summary>Azioni del workspace attivo piu la scheda fissa "Documento".</summary>
     public sealed class ActionCatalog
     {
-        public const string SpacesTab = "spazi";
+        public const string DocumentTab = "documento";
         public const string CommitTab = "_commit";
         public const int MaxPalette = 8;
         public const int MaxContext = 6;
 
-        private readonly IActionProvider _spaces;
+        private readonly IActionProvider _document;
         private IActionProvider _active;
 
-        public ActionCatalog(IActionProvider spaces) { _spaces = spaces ?? throw new ArgumentNullException(nameof(spaces)); }
+        public ActionCatalog(IActionProvider document) { _document = document ?? throw new ArgumentNullException(nameof(document)); }
 
         public event Action Changed;
         public IActionProvider Active => _active;
@@ -37,7 +37,7 @@ namespace InventorXrSo.Core.Ui
         {
             if (provider != null)
             {
-                var ids = provider.Actions.Concat(_spaces.Actions).Select(a => a.Id).ToList();
+                var ids = provider.Actions.Concat(_document.Actions).Select(a => a.Id).ToList();
                 var dup = ids.GroupBy(i => i).FirstOrDefault(g => g.Count() > 1);
                 if (dup != null) throw new InvalidOperationException("Id azione duplicato: " + dup.Key);
             }
@@ -49,11 +49,11 @@ namespace InventorXrSo.Core.Ui
         public void NotifyChanged() => Changed?.Invoke();
 
         public IReadOnlyList<XrTab> Tabs =>
-            (_active?.Tabs ?? Array.Empty<XrTab>()).Concat(_spaces.Tabs).Where(t => !t.Hidden).ToArray();
+            (_active?.Tabs ?? Array.Empty<XrTab>()).Concat(_document.Tabs).Where(t => !t.Hidden).ToArray();
 
         /// <summary>Scheda per id, anche se nascosta (schede di elenco dinamiche del workspace).</summary>
         public XrTab FindTab(string id) =>
-            (_active?.Tabs ?? Array.Empty<XrTab>()).Concat(_spaces.Tabs).FirstOrDefault(t => t.Id == id);
+            (_active?.Tabs ?? Array.Empty<XrTab>()).Concat(_document.Tabs).FirstOrDefault(t => t.Id == id);
 
         public IReadOnlyList<XrAction> Palette(string tabId)
         {
@@ -86,7 +86,7 @@ namespace InventorXrSo.Core.Ui
             return new VoiceMatch(VoiceMatchKind.NotFound, null, Array.Empty<XrAction>(), "");
         }
 
-        private IEnumerable<XrAction> All() => (_active?.Actions ?? Enumerable.Empty<XrAction>()).Concat(_spaces.Actions);
+        private IEnumerable<XrAction> All() => (_active?.Actions ?? Enumerable.Empty<XrAction>()).Concat(_document.Actions);
 
         private static HashSet<string> Names(XrAction a)
         {

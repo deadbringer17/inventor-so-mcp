@@ -394,7 +394,7 @@ namespace InventorXrSo.Xr
             Check(ReferenceEquals(Catalog.Active, workspace), name + ": the catalog serves the workspace that was opened");
             var tabs = Catalog.Tabs.Select(t => t.Id).ToList();
             foreach (var tab in expectedTabs) Check(tabs.Contains(tab), name + ": palette tab '" + tab + "' is present");
-            Check(tabs.Contains(ActionCatalog.SpacesTab), name + ": the Spazi tab is on every workspace");
+            Check(tabs.Contains(ActionCatalog.DocumentTab), name + ": the Spazi tab is on every workspace");
             Check(!tabs.Contains(ActionCatalog.CommitTab), name + ": the commit tab is hidden from the palette");
             var counts = new List<string>();
             foreach (var id in tabs)
@@ -421,7 +421,7 @@ namespace InventorXrSo.Xr
 
         private void CheckSpacesTab()
         {
-            var spaces = Catalog.Palette(ActionCatalog.SpacesTab).ToDictionary(a => a.Id);
+            var spaces = Catalog.Palette(ActionCatalog.DocumentTab).ToDictionary(a => a.Id);
             foreach (var id in new[] { SpacesInspect, SpacesDesign, SpacesLamiera, SpacesAssembly })
             {
                 Check(spaces.ContainsKey(id), "the Spazi tab offers " + id);

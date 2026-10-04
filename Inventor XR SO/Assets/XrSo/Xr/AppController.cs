@@ -1,9 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using InventorXrSo.Core.Backend;
 using InventorXrSo.Core.Mcp;
+using InventorXrSo.Core.Navigation;
 using InventorXrSo.Core.Net;
 using InventorXrSo.Core.Pairing;
 using InventorXrSo.Core.Selection;
@@ -55,6 +58,12 @@ namespace InventorXrSo.Xr
         private LamieraWorkspace _lamiera;
         private VoiceRig _voice;
         private WorkspaceVoiceTarget _voiceTarget;
+        private DocumentActions _document;
+        private InventorBackend _backend;
+        private IReadOnlyList<OpenDocument> _openDocuments = new OpenDocument[0];
+
+        /// <summary>Pila di navigazione Assieme › Sub › Parte (la guida del router arriva con il collegamento completo).</summary>
+        public NavigationStack Navigation { get; } = new NavigationStack();
 
         public void Configure(CadSceneView view, SelectionVisuals visuals, ControllerRay controllerRay, EnvironmentModeController env, Transform centerEye, QrScanner scanner)
         {
@@ -83,9 +92,14 @@ namespace InventorXrSo.Xr
             _design.CanEnter = () => !_assembly.RequiresCadReview && !_lamiera.RequiresCadReview;
             _assembly.CanEnter = () => !_design.RequiresCadReview && !_lamiera.RequiresCadReview;
             _lamiera.CanEnter = () => !_design.RequiresCadReview && !_assembly.RequiresCadReview;
-            _catalog = new ActionCatalog(new SpacesActions(OpenInspection, OpenDesign, OpenLamiera, OpenAssembly, LeaveSession,
-                () => _inSession, () => _design.CanEnter(), () => _lamiera.CanEnter(), () => _assembly.CanEnter()));
+            _document = new DocumentActions(Navigation, GoBack, SaveDocument, RecenterWorkbench, CalibrateDesk,
+                LeaveSession, LeaveSession, () => _inSession,
+                () => _design.CanEnter() && _lamiera.CanEnter() && _assembly.CanEnter(),
+                () => _openDocuments, ActivateDocument);
+            _catalog = new ActionCatalog(_document);
+            _document.Changed = _catalog.NotifyChanged;
             _shell = UiShell.Create(left, head, _catalog);
+            _document.Attach(_shell.Palette);
             XrUi.MakeInteractive(_shell.Palette.Canvas, head.GetComponent<Camera>());
             XrUi.MakeInteractive(_shell.CommitBar.Canvas, head.GetComponent<Camera>());
             _badge = _shell.Hud;
@@ -186,6 +200,8 @@ namespace InventorXrSo.Xr
             }
             if (_selection != null) _selection.Changed -= selectionVisuals.Show;
             _session = null;
+            _backend = null;
+            _openDocuments = new OpenDocument[0];
             _selection = null;
             _picking?.Cancel();
             _picking?.Dispose();
@@ -296,6 +312,7 @@ namespace InventorXrSo.Xr
             var transport = new UnityHttpTransport(ServerTrust.Pinned(_server.CertSha256));
             var backend = new InventorBackend(transport, _server,
                 new FileAssetCache(Path.Combine(Application.persistentDataPath, "assets")));
+            _backend = backend;
             _session = new SessionController(backend, new TaskDelay());
             _selection = new SelectionService(backend);
             _inspect.Bind(backend, _selection);
@@ -344,6 +361,7 @@ namespace InventorXrSo.Xr
             _assembly.SetScene(scene);
             _lamiera.SetScene(scene);
             if (scene != null && _inSession && !_placed) Place();
+            RefreshOpenDocuments();
             _design.RefreshWorkbench();
             _lamiera.RefreshWorkbench();
             _assembly.RefreshWorkbench();
@@ -431,6 +449,58 @@ namespace InventorXrSo.Xr
         }
 
         private void NotifyVoiceModeChanged() { _voice?.NotifyModeChanged(); }
+
+        // --- scheda Documento ---
+
+        /// <summary>Torna al livello superiore. Il collegamento al router arriva con il passo successivo di M9: per ora non cambia il documento.</summary>
+        public void GoBack() { if (Navigation.CanPop) _badge?.Flash("Torna a " + Navigation.Parent.Name + ": non ancora collegato.", 4f); }
+
+        private void SaveDocument() { _badge?.Flash("Salvataggio dal visore non ancora disponibile.", 4f); }
+
+        private void RecenterWorkbench()
+        {
+            if (_design.Active) _design.RecenterView();
+            else if (_assembly.Active) _assembly.RecenterView();
+            else if (_lamiera.Active) _lamiera.RecenterView();
+            else _inspect.Recenter();
+        }
+
+        /// <summary>Calibrazione del piano: l'altezza del controller diventa l'altezza del piano di lavoro dal prossimo ricentraggio.</summary>
+        private void CalibrateDesk()
+        {
+            if (_workbench == null || ray == null || ray.Origin == null) { _badge?.Flash("Controller non tracciato.", 4f); return; }
+            _workbench.SetDeskHeight(ray.Origin.position.y);
+            RecenterWorkbench();
+            _badge?.Flash("Piano calibrato all'altezza del controller.", 4f);
+        }
+
+        private async void RefreshOpenDocuments()
+        {
+            var backend = _backend;
+            var ct = _run?.Token ?? CancellationToken.None;
+            if (backend == null) return;
+            try
+            {
+                var docs = await backend.ListOpenAsync(ct);
+                if (backend != _backend) return;
+                _openDocuments = docs.Where(d => d.Kind == "kPartDocumentObject" || d.Kind == "kAssemblyDocumentObject").ToArray();
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { Debug.Log("[XrSession] open documents: " + ex.Message); }
+        }
+
+        private async void ActivateDocument(string documentId)
+        {
+            var backend = _backend;
+            if (backend == null || string.IsNullOrEmpty(documentId)) return;
+            try
+            {
+                await backend.ActivateOpenAsync(documentId, _run?.Token ?? CancellationToken.None);
+                _badge?.Flash("Documento attivato. Attendo la scena da Inventor…", 4f);
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { _badge?.Flash(UiText.Error(ex), 6f); }
+        }
 
         private void LeaveSession()
         {

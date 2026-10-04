@@ -24,8 +24,8 @@ namespace XrSo.Core.Tests.Ui
         private static Provider Spaces()
         {
             var p = new Provider();
-            p.TabList.Add(new XrTab(ActionCatalog.SpacesTab, "Spazi"));
-            p.All.Add(A("spaces.inspect", "Ispeziona", ActionCatalog.SpacesTab));
+            p.TabList.Add(new XrTab(ActionCatalog.DocumentTab, "Documento"));
+            p.All.Add(A("doc.save", "Ispeziona", ActionCatalog.DocumentTab));
             return p;
         }
 
@@ -37,15 +37,15 @@ namespace XrSo.Core.Tests.Ui
             design.TabList.Add(new XrTab(ActionCatalog.CommitTab, "commit"));
             var c = new ActionCatalog(Spaces());
             c.SetActive(design);
-            Assert.Equal(new[] { "sketch", ActionCatalog.SpacesTab }, c.Tabs.Select(t => t.Id));
+            Assert.Equal(new[] { "sketch", ActionCatalog.DocumentTab }, c.Tabs.Select(t => t.Id));
         }
 
         [Fact]
         public void Without_active_provider_only_spaces_is_shown()
         {
             var c = new ActionCatalog(Spaces());
-            Assert.Equal(new[] { ActionCatalog.SpacesTab }, c.Tabs.Select(t => t.Id));
-            Assert.Single(c.Palette(ActionCatalog.SpacesTab));
+            Assert.Equal(new[] { ActionCatalog.DocumentTab }, c.Tabs.Select(t => t.Id));
+            Assert.Single(c.Palette(ActionCatalog.DocumentTab));
         }
 
         [Fact]
@@ -73,7 +73,7 @@ namespace XrSo.Core.Tests.Ui
         public void Duplicate_ids_between_provider_and_spaces_are_rejected()
         {
             var p = new Provider();
-            p.All.Add(A("spaces.inspect", "Altro", "t"));
+            p.All.Add(A("doc.save", "Altro", "t"));
             var c = new ActionCatalog(Spaces());
             Assert.Throws<InvalidOperationException>(() => c.SetActive(p));
         }

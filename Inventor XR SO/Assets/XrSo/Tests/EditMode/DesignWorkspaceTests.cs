@@ -332,7 +332,7 @@ namespace InventorXrSo.Tests
 
         private ActionCatalog CatalogFor()
         {
-            var spaces=new SpacesActions(()=>{},()=>{},()=>{},()=>{},()=>{},()=>true,()=>true,()=>true,()=>true);
+            var spaces=TestDocs.Create();
             var catalog=new ActionCatalog(spaces); catalog.SetActive(_workspace); return catalog;
         }
         private void AssertCatalogIsValid(string state)
@@ -558,7 +558,7 @@ namespace InventorXrSo.Tests
 
         private UiShell AttachShell(out Workbench bench, out SketchSheetView sheet)
         {
-            var catalog=new ActionCatalog(new SpacesActions(()=>{},()=>{},()=>{},()=>{},()=>{},()=>true,()=>true,()=>true,()=>true));
+            var catalog=new ActionCatalog(TestDocs.Create());
             var shell=UiShell.Create(Child("Left").transform,_root.transform.Find("Eye"),catalog);
             _roots.Add(shell.gameObject); _roots.Add(shell.CommitBar.Canvas.gameObject); _roots.Add(shell.Hud.Canvas.gameObject);
             bench=Child("Bench").AddComponent<Workbench>();

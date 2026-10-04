@@ -137,7 +137,7 @@ namespace InventorXrSo.Tests
 
         private ActionCatalog CatalogFor()
         {
-            var catalog = new ActionCatalog(new SpacesActions(() => { }, () => { }, () => { }, () => { }, () => { }, () => true, () => true, () => true, () => true));
+            var catalog = new ActionCatalog(TestDocs.Create());
             catalog.SetActive(_workspace); return catalog;
         }
         private XrAction Act(string id) => _workspace.Actions.Single(a => a.Id == id);
@@ -178,7 +178,7 @@ namespace InventorXrSo.Tests
 
         private UiShell AttachShell(out Workbench bench, out ActionCatalog catalog)
         {
-            catalog = new ActionCatalog(new SpacesActions(() => { }, () => { }, () => { }, () => { }, () => { }, () => true, () => true, () => true, () => true));
+            catalog = new ActionCatalog(TestDocs.Create());
             var shell = UiShell.Create(Child("Left").transform, _eye.transform, catalog);
             _roots.Add(shell.gameObject); _roots.Add(shell.CommitBar.Canvas.gameObject); _roots.Add(shell.Hud.Canvas.gameObject);
             bench = Child("Bench").AddComponent<Workbench>();
@@ -370,7 +370,7 @@ namespace InventorXrSo.Tests
         [Test] public async Task EveryTabHasAtMostEightActionsAndListsAreSplitIntoPickerTabs()
         {
             _backend.ExtraOccurrences = 20; Start();
-            var catalog = new ActionCatalog(new SpacesActions(() => { }, () => { }, () => { }, () => { }, () => { }, () => true, () => true, () => true, () => true));
+            var catalog = new ActionCatalog(TestDocs.Create());
             catalog.SetActive(_workspace);   // throws on a duplicate id
             foreach (var tab in catalog.Tabs) Assert.LessOrEqual(catalog.Palette(tab.Id).Count, ActionCatalog.MaxPalette, tab.Id);
             Do(AssemblyWorkspace.IdComponents);
@@ -798,7 +798,7 @@ namespace InventorXrSo.Tests
             Assert.AreEqual("componenti", shell.Palette.CurrentTab);
             shell.Palette.SelectTab(+1); Assert.AreEqual("vincoli", shell.Palette.CurrentTab);
             shell.Palette.SelectTab(+1); Assert.AreEqual("vista", shell.Palette.CurrentTab);
-            shell.Palette.SelectTab(+1); Assert.AreEqual("spazi", shell.Palette.CurrentTab);
+            shell.Palette.SelectTab(+1); Assert.AreEqual("documento", shell.Palette.CurrentTab);
             shell.Palette.SelectTab(+1); Assert.AreEqual("componenti", shell.Palette.CurrentTab);
             _backend.ExtraOccurrences = 8; Start();
             Do(AssemblyWorkspace.IdComponents);
