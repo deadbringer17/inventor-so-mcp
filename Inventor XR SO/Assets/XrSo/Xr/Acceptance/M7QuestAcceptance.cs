@@ -122,13 +122,27 @@ namespace InventorXrSo.Xr
             var health = session.Health.Result;
             Check(health.Issues.Any(i => i.Name == "M7_Sick"), "M7_Sick is reported as failing");
             Check(health.Unconstrained.Select(u => u.Name).SequenceEqual(new[] { "M7_D" }), "M7_D is the only unconstrained cube");
-            Check(health.BomIssues.Any(b => b.Code == "PART_NUMBER_MISSING"), "the BOM reports the blank part number");
+            // get_assembly_bom reports a blank part number as the file name, so the fixture's BOM finding is the blank description (a warning).
+            Check(health.BomIssues.Any(b => b.Code == "DESCRIPTION_MISSING"), "the BOM reports the blank description");
             var findings = Read<IReadOnlyList<VerifyFinding>>(inspect, "_findings");
             Check(findings.Any(f => f.Title == "Vincolo in errore: M7_Sick"), "the results list carries the failing constraint");
             var sick = health.Issues.First(i => i.Name == "M7_Sick");
             if (sick.AOccurrenceId == null && sick.BOccurrenceId == null)
                 NotCovered("M7-04", "Inventor did not expose the occurrences of M7_Sick: its row has no highlight");
-            Pass("M7-04", "M7_Sick failing, M7_D unconstrained, PART_NUMBER_MISSING; " + findings.Count + " rows");
+            else
+            {
+                RunAction(InspectWorkspace.IdResults);
+                PickRow("M7_Sick");
+                string idB = Node(context, "M7_B").OccurrenceId, idC = Node(context, "M7_C").OccurrenceId;
+                Check(visibility.Get(idB) == OccurrenceVisibility.Normal && visibility.Get(idC) == OccurrenceVisibility.Normal,
+                    "the M7_Sick row keeps its two occurrences M7_B and M7_C visible");
+                Check(view.Instances.Where(i => i.OccurrenceId != idB && i.OccurrenceId != idC).All(i => visibility.Get(i.OccurrenceId) == OccurrenceVisibility.Ghost),
+                    "the M7_Sick row ghosts the other two cubes");
+                await CaptureScreenshot("health-focus", ct);
+                inspect.Back();
+                Check(!visibility.AnyChanged, "Back restores the visibility after the M7_Sick row");
+            }
+            Pass("M7-04", "M7_Sick failing and focused from the list, M7_D unconstrained, DESCRIPTION_MISSING; " + findings.Count + " rows");
 
             // M7-05: stale (synthetic revision), ignore and refusal of a concurrent run.
             var state = Read<DocumentState>(inspect, "_documentState");
