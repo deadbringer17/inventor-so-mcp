@@ -264,6 +264,7 @@ internal static class Fixtures
         var reference = def.WorkPlanes.AddByPlaneAndOffset(def.WorkPlanes[3], 1.0, false);   // z = 10 mm
         reference.Name = "M7_Ref";
         cube.PropertySets["Design Tracking Properties"]["Part Number"].Value = "";
+        cube.PropertySets["Design Tracking Properties"]["Description"].Value = "";   // get_assembly_bom reports a blank part number as the file name: the BOM finding is a missing description
         var cubePath = Path.Combine(directory, "XR_M7_Quest_Acceptance_Cube.ipt");
         cube.SaveAs(cubePath, false);
 
@@ -304,7 +305,7 @@ internal static class Fixtures
         {
             ["occurrences"] = 4, ["interference_pairs"] = 1, ["interference_volume_mm3"] = 2000,
             ["distance_a_c_mm"] = 30, ["unconstrained"] = new JArray("M7_D"), ["failing_constraint"] = "M7_Sick",
-            ["bom_finding"] = "PART_NUMBER_MISSING", ["fixture_documents"] = 2,
+            ["bom_finding"] = "DESCRIPTION_MISSING", ["fixture_documents"] = 2,
         };
         return new JObject
         {

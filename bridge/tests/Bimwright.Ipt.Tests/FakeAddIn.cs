@@ -72,6 +72,10 @@ public sealed class FakeAddIn : System.IAsyncDisposable
     }
 
     public string Revision { get { lock (_gate) return "fake:" + _sequence; } }
+
+    /// <summary>One-shot: the next get_assembly_bom advances the revision after answering, as an edit landing mid-read would.</summary>
+    public bool BumpRevisionOnNextBom { get { lock (_gate) return _bumpOnBom; } set { lock (_gate) _bumpOnBom = value; } }
+    private bool _bumpOnBom;
     private string Visual { get { lock (_gate) return "fake:v" + _visual; } }
 
     /// <summary>Simulate an edit in Inventor: advances the revision (and the visual revision for geometry) and journals it.</summary>
@@ -217,11 +221,13 @@ public sealed class FakeAddIn : System.IAsyncDisposable
                         new JObject { ["name"] = "Plate:1", ["occurrence_id"] = "ent_occ_3", ["suppressed"] = false, ["grounded"] = true, ["dof_translation"] = 0, ["dof_rotation"] = 0, ["unconstrained"] = false }),
                 });
             case "get_assembly_bom":
+                lock (_gate) { if (_bumpOnBom) { _bumpOnBom = false; _sequence++; } }
+                // Mirrors the real handler: a blank part number is reported as the file name, the description stays blank.
                 return Ok(new JObject
                 {
                     ["truncated"] = false,
                     ["bom"] = new JArray(
-                        new JObject { ["part_number"] = "", ["path"] = "C:\\fake\\Bolt.ipt", ["qty"] = 2, ["description"] = "Bolt" },
+                        new JObject { ["part_number"] = "Bolt", ["path"] = "C:\\fake\\Bolt.ipt", ["qty"] = 2, ["description"] = "" },
                         new JObject { ["part_number"] = "PL-1", ["path"] = "C:\\fake\\Plate.ipt", ["qty"] = 1, ["description"] = "Plate" }),
                 });
             case "get_display_mesh":
