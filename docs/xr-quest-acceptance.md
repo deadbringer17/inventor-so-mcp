@@ -1,4 +1,4 @@
-# Test automatici sul Quest 3 — standard M1–M6
+# Test automatici sul Quest 3 — standard M1–M7
 
 Standard nato con M4 ([collaudo M4](xr-m4-collaudo.md)) ed esteso il 29 settembre
 2026 a M1, M2, M3 e M5 ([piano](superpowers/plans/2026-09-29-quest-acceptance-runners.md)).
@@ -11,9 +11,9 @@ reale, su un documento di prova dedicato, e scrive log e screenshot come evidenz
 | Pezzo | Percorso |
 |---|---|
 | Base comune (intent Android, log, attese, riflessione, screenshot, guardia fixture) | `Inventor XR SO/Assets/XrSo/Xr/Acceptance/QuestAcceptanceRunner.cs` |
-| Runner M1, M2, M3, M5, M6 | `Inventor XR SO/Assets/XrSo/Xr/Acceptance/M{1,2,3,5,6}QuestAcceptance.cs` |
+| Runner M1, M2, M3, M5, M6, M7 | `Inventor XR SO/Assets/XrSo/Xr/Acceptance/M{1,2,3,5,6,7}QuestAcceptance.cs` |
 | Runner M4 (stessi passi del collaudo del 28 settembre, ora sulla base comune) | `Inventor XR SO/Assets/XrSo/Xr/M4QuestAcceptance.cs` |
-| Fixture Inventor M1, M2, M3, M5, M6 | `bridge/tests/QuestAcceptanceFixtures/` |
+| Fixture Inventor M1, M2, M3, M5, M6, M7 | `bridge/tests/QuestAcceptanceFixtures/` |
 | Fixture Inventor M4 | `bridge/tests/M4LiveProbe -- --prepare-quest / --restore-quest` |
 | Orchestrazione ADB | `scripts/run-quest-acceptance.ps1` |
 | Test di contratto (campi/metodi letti per riflessione, runner esclusi dall'APK ordinario) | `Inventor XR SO/Assets/XrSo/Tests/EditMode/QuestAcceptanceContractTests.cs` |
@@ -75,6 +75,25 @@ tenute aperte): `--prepare-quest m6`, poi `-Milestone m6` (l'esecuzione dura fin
 `--restore-quest m6`. Il runner M6 **non è di sola lettura**: esegue un `Apply`
 reale di estrusione sul blocco e lo annulla con l'Undo XR; alla fine riattiva
 l'assieme. Dopo un run interrotto, riattivare l'assieme a mano prima del restore.
+
+Per M7 (Ispeziona, verifica ingegneristica) la fixture è `XR_M7_Quest_Acceptance.iam` (`m7`):
+quattro cubi `M7_A`…`M7_D`, A e B in interferenza (2000 mm³), C a 30 mm da A, D libero, un
+vincolo in errore `M7_Sick` e un numero di parte vuoto. Il runner è di sola lettura (nessuna
+transazione); lo script usa 480 s di timeout se non si passa `-TimeoutSeconds`. Sequenza:
+
+```bash
+dotnet run --project bridge/tests/QuestAcceptanceFixtures -- --prepare-quest m7
+# run-quest-acceptance.ps1 -Milestone m7 -Apk <apk QA> -OrdinaryApk <apk ordinario>
+dotnet run --project bridge/tests/QuestAcceptanceFixtures -- --inspect-quest m7
+dotnet run --project bridge/tests/QuestAcceptanceFixtures -- --restore-quest m7
+```
+
+La workstation non ha PowerShell 7: si usa la copia per PS 5.1, come nelle run M6; `adb` non è
+nel PATH; il visore deve essere sveglio. Tutte le azioni sono invocate per id sul catalogo
+(input **sintetico**); le risposte di Inventor sono reali. Il runner M7 è scritto, **non ancora
+eseguito** sul Quest (stato NOT RUN). Restano NOT COVERED M7-06 (offline e documenti parte,
+coperti da EditMode), M7-07 (tempi su un assieme reale: sonda PC `--probe-active`) e M7-08
+(leggibilità fisica da seduto).
 
 Per M4 la fixture si prepara con
 `dotnet run --project bridge/tests/M4LiveProbe -- --prepare-quest` (e
