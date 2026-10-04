@@ -127,10 +127,10 @@ namespace InventorXrSo.Tests
         // ---------------------------------------------------------------- catalog contract
 
         [Test]
-        public void TabsAreMeasureSectionViewWithAtMostEightActionsEachAndUniqueIds()
+        public void TabsAreMeasureSectionViewVisibilityVerifyWithAtMostEightActionsEachAndUniqueIds()
         {
-            CollectionAssert.AreEqual(new[] { "misura", "sezione", "vista" }, _workspace.Tabs.Select(t => t.Id).ToArray());
-            CollectionAssert.AreEqual(new[] { "Misura", "Sezione", "Vista", "Spazi" }, _catalog.Tabs.Select(t => t.Label).ToArray());
+            CollectionAssert.AreEqual(new[] { "misura", "sezione", "vista", "visibilita", "verifica" }, _workspace.Tabs.Select(t => t.Id).ToArray());
+            CollectionAssert.AreEqual(new[] { "Misura", "Sezione", "Vista", "Visibilità", "Verifica", "Spazi" }, _catalog.Tabs.Select(t => t.Label).ToArray());
             foreach (var tab in _workspace.Tabs)
             {
                 var list = _catalog.Palette(tab.Id);
@@ -203,7 +203,7 @@ namespace InventorXrSo.Tests
             Assert.True(_workspace.Measuring); Assert.True(Enabled(InspectWorkspace.IdMeasureCancel));
             Pick(Vector3.zero); Assert.True(_workspace.Measuring);
             Pick(Vector3.right); Assert.False(_workspace.Measuring);
-            Assert.NotNull(Measure.DistanceMm); StringAssert.Contains("approssimata", AllHud());
+            Assert.NotNull(Measure.DistanceMm); StringAssert.Contains("Punto-punto (locale)", AllHud());
             Do(InspectWorkspace.IdMeasurePin);
             Assert.AreEqual(1, Measure.PinnedCount); Assert.True(Enabled(InspectWorkspace.IdMeasureClear));
             Do(InspectWorkspace.IdMeasure); Do(InspectWorkspace.IdMeasureCancel);

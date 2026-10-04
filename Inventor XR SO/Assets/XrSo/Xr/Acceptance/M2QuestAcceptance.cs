@@ -90,11 +90,11 @@ namespace InventorXrSo.Xr
             Record("Actions are invoked by id through the catalog and numbers typed on the keypad entry (synthetic input)");
             Check(inspect.Active && ReferenceEquals(Catalog.Active, inspect), "Ispeziona is the active workspace of the palette");
             var tabs = Catalog.Tabs.Select(t => t.Label).ToList();
-            Check(tabs.SequenceEqual(new[] { "Misura", "Sezione", "Vista", "Spazi" }), "palette tabs are " + string.Join(" / ", tabs));
+            Check(tabs.SequenceEqual(new[] { "Misura", "Sezione", "Vista", "Visibilità", "Verifica", "Spazi" }), "palette tabs are " + string.Join(" / ", tabs));
             foreach (var id in new[] { InspectWorkspace.IdBrowse, InspectWorkspace.IdProperties, InspectWorkspace.IdMeasure, InspectWorkspace.IdSection,
                 InspectWorkspace.IdScale, InspectWorkspace.IdEnvironment, InspectWorkspace.IdDocuments })
                 Check(Catalog.Find(id) != null, "the catalog declares '" + id + "'");
-            Pass("M2-Inspect", "Ispeziona on the palette with tabs Misura, Sezione, Vista; Esplora, Proprieta, Misura, Sezione, Scala and the environment switch are declared actions");
+            Pass("M2-Inspect", "Ispeziona on the palette with tabs Misura, Sezione, Vista, Visibilita, Verifica; Esplora, Proprieta, Misura, Sezione, Scala and the environment switch are declared actions");
 
             // M2-Browser: fixture hierarchy as a picker list of the Vista tab.
             RunAction(InspectWorkspace.IdBrowse);

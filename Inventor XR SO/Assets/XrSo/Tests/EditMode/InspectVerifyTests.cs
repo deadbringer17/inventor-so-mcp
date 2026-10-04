@@ -1,0 +1,259 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
+using InventorXrSo.Core.Backend;
+using InventorXrSo.Core.Selection;
+using InventorXrSo.Core.Ui;
+using InventorXrSo.Core.Verify;
+using InventorXrSo.Unity.Scene;
+using InventorXrSo.Unity.Ui;
+using InventorXrSo.Xr;
+using InventorXrSo.Xr.Input;
+using Newtonsoft.Json.Linq;
+using NUnit.Framework;
+using UnityEngine;
+using Object = UnityEngine.Object;
+
+namespace InventorXrSo.Tests
+{
+    /// <summary>M7 in Ispeziona: Visibilita and Verifica tabs, results list, focus and the two-selection distance flow (synthetic input, FakeAddIn-style backend).</summary>
+    public class InspectVerifyTests
+    {
+        private static readonly BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic;
+
+        private GameObject _root;
+        private InspectWorkspace _workspace;
+        private CadSceneView _view;
+        private ControllerRay _ray;
+        private EnvironmentModeController _env;
+        private ActionCatalog _catalog;
+        private UiShell _shell;
+        private XrInput _xr;
+        private XrInputFrame _frame;
+        private float _clock;
+        private readonly List<string> _hud = new List<string>();
+        private readonly List<GameObject> _roots = new List<GameObject>();
+
+        [SetUp]
+        public void SetUp()
+        {
+            _hud.Clear();
+            _root = new GameObject("Test rig");
+            var eye = Child("Eye").AddComponent<Camera>();
+            eye.transform.position = new Vector3(0, 1.6f, 0);
+            var left = Child("Left"); var right = Child("Right");
+            _ray = right.AddComponent<ControllerRay>(); _ray.Configure(right.transform, right.AddComponent<LineRenderer>());
+            _view = Child("Model").AddComponent<CadSceneView>();
+            var visuals = _view.gameObject.AddComponent<SelectionVisuals>(); visuals.Configure(_view, null, null);
+            _env = Child("Environment").AddComponent<EnvironmentModeController>(); _env.Configure(eye, null);
+            _workspace = Child("Workspace").AddComponent<InspectWorkspace>();
+            _workspace.OtherWorkspaceActive = () => false;
+            _workspace.HudMessage += _hud.Add;
+            _workspace.Initialize(_view, visuals, _ray, eye.transform, _env);
+            _catalog = new ActionCatalog(new SpacesActions(() => { }, () => { }, () => { }, () => { }, () => { }, () => true, () => true, () => true, () => true));
+            _shell = UiShell.Create(left.transform, eye.transform, _catalog);
+            _roots.Add(_shell.gameObject); _roots.Add(_shell.CommitBar.Canvas.gameObject); _roots.Add(_shell.Hud.Canvas.gameObject);
+            _xr = Child("XrInput").AddComponent<XrInput>(); _xr.Source = new SyntheticInputSource();
+            Assert.True(_xr.Synthetic, "the runner log must call this input synthetic");
+            _frame = new XrInputFrame { PenTracked = true, PaletteTracked = true };
+            _workspace.Attach(_shell, _xr);
+            _catalog.SetActive(_workspace);
+            var scene = CadSceneViewTests.BoltScene(); _view.Show(scene); _workspace.SetScene(scene);
+            _workspace.SetVisible(true);
+            _xr.Poll(_frame, _clock += 0.016f);
+        }
+
+        private GameObject Child(string name) { var go = new GameObject(name); go.transform.SetParent(_root.transform); return go; }
+
+        [TearDown]
+        public void TearDown()
+        {
+            foreach (var r in _roots) if (r != null) Object.DestroyImmediate(r);
+            _roots.Clear();
+            Object.DestroyImmediate(_root);
+        }
+
+        private XrAction Act(string id) => _workspace.Actions.Single(a => a.Id == id);
+        private bool Enabled(string id) => _workspace.Actions.Any(a => a.Id == id && a.Enabled);
+        private void Do(string id) { var a = Act(id); Assert.True(a.Enabled, id + ": " + a.DisabledReason); Assert.True(a.TryInvoke(), id); }
+        private string AllHud() => string.Join("\n", _hud);
+
+        private sealed class VerifyBackend : IInspectionBackend, IVerifyBackend
+        {
+            public TaskCompletionSource<InterferenceReport> Interference = new TaskCompletionSource<InterferenceReport>();
+            public IReadOnlyList<string> LastScope;
+            public string LastA, LastB;
+            public DistanceReport Distance = DistanceReport.FromJson(new JObject { ["revision"] = "r1", ["distance_mm"] = 30.0,
+                ["point_a"] = new JArray(0, 0, 0), ["point_b"] = new JArray(30, 0, 0) });
+            public HealthReport Health = HealthReport.FromJson(new JObject { ["revision"] = "r1", ["healthy"] = false,
+                ["failing_constraints"] = new JArray(new JObject { ["name"] = "M7_Sick", ["health"] = "kInconsistentHealth", ["a_occurrence_id"] = "ent_occ_1" }),
+                ["bom"] = new JObject { ["valid"] = true } });
+
+            public Task<InspectionInfo> InspectAsync(DocumentState state, string occurrenceId, CancellationToken ct) => Task.FromResult(InspectionInfo.FromJson(new JObject()));
+            public Task<IReadOnlyList<OpenDocument>> ListOpenAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<OpenDocument>>(Array.Empty<OpenDocument>());
+            public Task ActivateOpenAsync(string documentId, CancellationToken ct) => Task.CompletedTask;
+            public Task<InterferenceReport> CheckInterferenceAsync(DocumentState state, IReadOnlyList<string> ids, CancellationToken ct) { LastScope = ids; return Interference.Task; }
+            public Task<DistanceReport> MeasureMinDistanceAsync(DocumentState state, string a, string b, CancellationToken ct) { LastA = a; LastB = b; return Task.FromResult(Distance); }
+            public Task<HealthReport> GetAssemblyHealthAsync(DocumentState state, CancellationToken ct) => Task.FromResult(Health);
+        }
+
+        private static InterferenceReport OnePair() => InterferenceReport.FromJson(new JObject
+        {
+            ["revision"] = "r1", ["analyzed"] = 2, ["count"] = 1, ["total_volume_mm3"] = 2000.0,
+            ["pairs"] = new JArray(new JObject { ["a_occurrence_id"] = "ent_occ_1", ["b_occurrence_id"] = "ent_occ_2", ["a_name"] = "Bolt:1", ["b_name"] = "Bolt:2",
+                ["volume_mm3"] = 2000.0, ["boxes"] = new JArray(new JObject { ["min_mm"] = new JArray(0, 0, 0), ["max_mm"] = new JArray(5, 5, 5) }) }),
+        });
+
+        private VerifyBackend Online()
+        {
+            var backend = new VerifyBackend();
+            _workspace.Bind(backend, null);
+            var scene = CadSceneViewTests.BoltScene(); _view.Show(scene); _workspace.SetScene(scene);
+            _workspace.SetOnline(true);
+            return backend;
+        }
+
+        private void Select(string occurrenceId) =>
+            typeof(InspectWorkspace).GetField("_selected", Flags).SetValue(_workspace,
+                ((BrowserContext)typeof(InspectWorkspace).GetField("_context", Flags).GetValue(_workspace)).Find(occurrenceId));
+
+        private T Field<T>(string name) => (T)typeof(InspectWorkspace).GetField(name, Flags).GetValue(_workspace);
+
+        /// <summary>The async void continuation of the workspace may need a few turns of the loop in EditMode.</summary>
+        private static async Task Until(Func<bool> condition)
+        {
+            for (int i = 0; i < 10 && !condition(); i++) await Task.Yield();
+        }
+
+        [Test]
+        public void TabsAddVisibilityAndVerifyAfterViewWithAtMostEightActions()
+        {
+            CollectionAssert.AreEqual(new[] { "misura", "sezione", "vista", "visibilita", "verifica" }, _workspace.Tabs.Select(t => t.Id).ToArray());
+            CollectionAssert.AreEqual(new[] { "Misura", "Sezione", "Vista", "Visibilità", "Verifica", "Spazi" }, _catalog.Tabs.Select(t => t.Label).ToArray());
+            foreach (var tab in _workspace.Tabs) Assert.That(_catalog.Palette(tab.Id).Count, Is.InRange(1, 8), tab.Id);
+            Assert.True(_workspace.Actions.Where(a => a.Id.StartsWith("inspect.verify.") || a.Id.StartsWith("inspect.visibility.")).All(a => !a.VoiceInvokes));
+        }
+
+        [Test]
+        public void VisibilityWorksOnTheSelectionWithoutBackendCalls()
+        {
+            var backend = Online(); Select("ent_occ_1"); _workspace.SetOnline(false);
+            Do(InspectWorkspace.IdXRay);
+            var visibility = Field<ComponentVisibility>("_visibility");
+            Assert.AreEqual(OccurrenceVisibility.Ghost, visibility.Get("ent_occ_1"));
+            Do(InspectWorkspace.IdHide);
+            Assert.AreEqual(OccurrenceVisibility.Hidden, visibility.Get("ent_occ_1"));
+            Do(InspectWorkspace.IdIsolate);
+            Assert.AreEqual(OccurrenceVisibility.Ghost, visibility.Get("ent_occ_2"));
+            Do(InspectWorkspace.IdShowAll);
+            Assert.False(visibility.AnyChanged);
+            Assert.IsNull(backend.LastScope, "no Inventor call");
+        }
+
+        [Test]
+        public void InventorVerificationsAreDisabledWithAReasonOfflineOrOnAPart()
+        {
+            Online(); _workspace.SetOnline(false);
+            foreach (var id in new[] { InspectWorkspace.IdInterference, InspectWorkspace.IdHealth, InspectWorkspace.IdDistance })
+            {
+                Assert.False(Enabled(id), id);
+                Assert.False(string.IsNullOrEmpty(Act(id).DisabledReason), id);
+            }
+        }
+
+        [Test]
+        public async Task InterferenceRunsOnceListsResultsAndFocusesARow()
+        {
+            var backend = Online();
+            Do(InspectWorkspace.IdInterference);
+            Assert.False(Enabled(InspectWorkspace.IdHealth), "one Inventor verification at a time");
+            Assert.True(Enabled(InspectWorkspace.IdIgnore));
+            backend.Interference.SetResult(OnePair());
+            await Until(() => Field<IReadOnlyList<VerifyFinding>>("_findings").Count > 0);
+            var findings = Field<IReadOnlyList<VerifyFinding>>("_findings");
+            Assert.AreEqual(1, findings.Count);
+            Assert.That(AllHud(), Does.Contain("1 interferenze su 2 occorrenze"));
+            Do(InspectWorkspace.IdResults);
+            var row = _workspace.Actions.First(a => a.Id.StartsWith(InspectWorkspace.IdPickPrefix) && a.Label.Contains("Bolt:1 ↔ Bolt:2"));
+            Assert.True(row.TryInvoke());
+            Assert.AreEqual(1, Field<VerifyOverlay>("_overlay").BoxCount);
+            Assert.AreEqual(OccurrenceVisibility.Normal, Field<ComponentVisibility>("_visibility").Get("ent_occ_1"));
+            _workspace.Back();
+            Assert.AreEqual(0, Field<VerifyOverlay>("_overlay").BoxCount, "Back leaves the focus and restores the visibility");
+            Assert.False(Field<ComponentVisibility>("_visibility").AnyChanged);
+        }
+
+        [Test]
+        public async Task ScopeSelectionSendsTheSelectedOccurrence()
+        {
+            var backend = Online(); Select("ent_occ_1");
+            Do(InspectWorkspace.IdScope);
+            Do(InspectWorkspace.IdInterference);
+            CollectionAssert.AreEqual(new[] { "ent_occ_1" }, backend.LastScope);
+            backend.Interference.SetResult(OnePair());
+            await Until(() => Field<IReadOnlyList<VerifyFinding>>("_findings").Count > 0);
+        }
+
+        [Test]
+        public async Task ANewRevisionMarksTheResultsStale()
+        {
+            var backend = Online();
+            Do(InspectWorkspace.IdInterference);
+            backend.Interference.SetResult(OnePair());
+            await Until(() => Field<IReadOnlyList<VerifyFinding>>("_findings").Count > 0);
+            var state = Field<DocumentState>("_documentState");
+            _workspace.SetDocumentState(new DocumentState(state.DocumentId, "r2", state.VisualRevision));
+            Assert.True(Field<bool>("_findingsStale"));
+            Do(InspectWorkspace.IdResults);
+            Assert.True(_workspace.Actions.Any(a => a.Id.StartsWith(InspectWorkspace.IdPickPrefix) && a.Label.StartsWith("[obsoleto]")));
+        }
+
+        [Test]
+        public async Task IgnoreDropsTheAnswer()
+        {
+            var backend = Online();
+            Do(InspectWorkspace.IdInterference);
+            Do(InspectWorkspace.IdIgnore);
+            backend.Interference.SetResult(OnePair());
+            for (int i = 0; i < 5; i++) await Task.Yield();
+            Assert.AreEqual(0, Field<IReadOnlyList<VerifyFinding>>("_findings").Count);
+        }
+
+        [Test]
+        public async Task DistanceTakesTwoSelectionsAndDrawsTheInventorLine()
+        {
+            var backend = Online();
+            Select("ent_occ_1"); Do(InspectWorkspace.IdDistance);
+            Select("ent_occ_2"); Do(InspectWorkspace.IdDistance);
+            await Until(() => Field<VerifyOverlay>("_overlay").HasDistance);
+            Assert.AreEqual("ent_occ_1", backend.LastA); Assert.AreEqual("ent_occ_2", backend.LastB);
+            var overlay = Field<VerifyOverlay>("_overlay");
+            Assert.True(overlay.HasDistance);
+            Assert.AreEqual("30 mm", overlay.DistanceLabel);
+            Assert.That(AllHud(), Does.Contain("Distanza minima (Inventor): 30 mm"));
+        }
+
+        [Test]
+        public async Task WithoutInventorPointsTheLineIsIndicative()
+        {
+            var backend = Online();
+            backend.Distance = DistanceReport.FromJson(new JObject { ["revision"] = "r1", ["distance_mm"] = 30.0 });
+            Select("ent_occ_1"); Do(InspectWorkspace.IdDistance);
+            Select("ent_occ_2"); Do(InspectWorkspace.IdDistance);
+            await Until(() => Field<VerifyOverlay>("_overlay").HasDistance);
+            Assert.AreEqual("30 mm (linea indicativa)", Field<VerifyOverlay>("_overlay").DistanceLabel);
+        }
+
+        [Test]
+        public void TheLocalMeasureIsCalledPointToPoint()
+        {
+            Online();
+            Do(InspectWorkspace.IdMeasure);
+            Assert.That(AllHud(), Does.Contain("Punto-punto (locale)"));
+            Assert.That(AllHud(), Does.Not.Contain("approssimata"));
+        }
+    }
+}
