@@ -276,7 +276,7 @@ Assieme di primo livello con:
 - due blocchi a distanza nota;
 - un vincolo in errore costruito apposta;
 - un componente non vincolato;
-- una riga BOM senza numero di parte.
+- una riga BOM senza descrizione (`DESCRIPTION_MISSING`: `get_assembly_bom` sostituisce un numero di parte vuoto con il nome del file, quindi `PART_NUMBER_MISSING` non si verifica su file reali; la fixture azzera la Description).
 
 Il runner controlla questi valori noti, non la sola assenza di errori.
 Tolleranze: volume di interferenza ±1% del valore costruito; distanza minima
@@ -293,7 +293,7 @@ precedente. Un timeout di avvio non è un fallimento del test.
 | M7-01 | X-Ray, isola, nascondi e mostra tutto funzionano senza backend; il raggio attraversa un componente nascosto e colpisce uno in fantasma | EditMode + runner |
 | M7-02 | Sulla fixture trova esattamente la coppia attesa con volume entro tolleranza; rosso e box in scena; la riga mette a fuoco la coppia | runner + Inventor |
 | M7-03 | Distanza minima uguale al valore noto entro tolleranza; linea tra i punti con etichetta corretta (Inventor o indicativa) | runner + Inventor |
-| M7-04 | Salute: vincolo in errore, componente non vincolato e riga BOM senza numero rilevati; righe navigabili | runner + Inventor |
+| M7-04 | Salute: vincolo in errore, componente non vincolato e riga BOM senza descrizione (`DESCRIPTION_MISSING`) rilevati; righe navigabili | runner + Inventor |
 | M7-05 | Dopo una modifica del documento il risultato è `Stale`; "Ignora risultato" scarta la risposta; la seconda richiesta viene rifiutata | core + runner |
 | M7-06 | Offline o su una parte: sezioni Inventor disabilitate con motivo; le due misure hanno etichette distinte | EditMode |
 | M7-07 | Tempi di interferenze e salute misurati sulla fixture e su un assieme reale; comportamento corretto oltre i 30 s | Inventor reale |

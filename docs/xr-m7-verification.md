@@ -68,3 +68,12 @@ come `a = M7_B`, `b = M7_A` (ordine non garantito: il codice di produzione non d
 - Punti distanza: chiavi `ClosestPointOne` / `ClosestPointTwo` (Point in cm), piu' `IntersectionFound`, `ClosestEntityOne`, `ClosestEntityTwo`. Coincidono con i default del codice.
 - Occorrenze del vincolo: sì (`OccurrenceOne` = `M7_B`, `OccurrenceTwo` = `M7_C` leggibili su `M7_Sick`).
 - Due insiemi: sì (`AnalyzeInterference(set1, set2)` funziona; `M7_B` contro gli altri: 1 corpo).
+
+### Revisione finale: verifica BOM (DESCRIPTION_MISSING)
+
+Il gate M7-04 non cerca piu' `PART_NUMBER_MISSING`. `get_assembly_bom` (stabile, non modificato da M7) sostituisce un numero di
+parte vuoto con il nome del file: su file reali `PART_NUMBER_MISSING` non puo' comparire. La fixture azzera quindi la
+`Description` del cubo (manifest `bom_finding = DESCRIPTION_MISSING`), FakeAddIn rispecchia l'handler reale (riga `Bolt` con
+descrizione vuota) e il runner controlla `DESCRIPTION_MISSING` (avviso: `BomValid` resta vero). La fixture va rigenerata
+(`prepare m7`) prima del prossimo run sul Quest: i documenti preparati prima di questa modifica hanno ancora la Description.
+Il runner apre inoltre la riga `M7_Sick` di Risultati e controlla visibilita' (M7_B e M7_C normali, gli altri due fantasma).

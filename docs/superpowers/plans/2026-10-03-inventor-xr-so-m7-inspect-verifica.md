@@ -94,7 +94,7 @@ Prima del codice di produzione si costruisce la fixture e si misurano i quattro 
 - Nuovo: `docs/xr-m7-verification.md`
 
 **Interfacce:**
-- Produce: fixture `XR_M7_Quest_Acceptance.iam` con occorrenze `M7_A`, `M7_B`, `M7_C`, `M7_D` di `XR_M7_Quest_Acceptance_Cube.ipt` (cubo 20 mm) e vincolo `M7_Sick`. Valori attesi: 1 interferenza `M7_A`–`M7_B` da 2000 mm³; distanza minima `M7_A`–`M7_C` = 30 mm; unico non vincolato `M7_D`; vincolo in errore `M7_Sick`; BOM con `PART_NUMBER_MISSING`.
+- Produce: fixture `XR_M7_Quest_Acceptance.iam` con occorrenze `M7_A`, `M7_B`, `M7_C`, `M7_D` di `XR_M7_Quest_Acceptance_Cube.ipt` (cubo 20 mm) e vincolo `M7_Sick`. Valori attesi: 1 interferenza `M7_A`–`M7_B` da 2000 mm³; distanza minima `M7_A`–`M7_C` = 30 mm; unico non vincolato `M7_D`; vincolo in errore `M7_Sick`; BOM con `DESCRIPTION_MISSING` (riga BOM senza descrizione: `get_assembly_bom` sostituisce il numero di parte vuoto con il nome del file).
 
 - [ ] **Passo 1: aggiungi la fixture `m7` a `Fixtures.cs`**
 
