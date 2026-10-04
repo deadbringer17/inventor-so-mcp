@@ -162,7 +162,7 @@ namespace InventorXrSo.Tests
         {
             var body=_view.Instances[0].Bodies[0];
             var range=body.Primitive.FaceMap.FaceAtTriangle(0);
-            var state=new DocumentState("doc_bolt",staleScene ? "r2" : "r","v");
+            var state=new DocumentState("doc_bolt",staleScene ? "r2" : "r",staleScene ? "v2" : "v");
             var context=DesignContext.Parse(new JObject {
                 ["document_id"]=state.DocumentId,["revision"]=state.Revision,["kind"]="part",
                 ["faces"]=new JArray(new JObject { ["id"]="ent_different_context",["body_index"]=body.Primitive.BodyIndex,
@@ -176,6 +176,25 @@ namespace InventorXrSo.Tests
             Assert.True(body.GetComponentsInChildren<MeshFilter>().Length>1,"Picked face is highlighted using its mesh id.");
             Do(Create);
             Assert.AreEqual("ent_different_context",_backend.PreviewPlane);
+        }
+        [Test] public void NonVisualRevisionBumpKeepsTheSceneCurrentForFacePicking()
+        {
+            var body=_view.Instances[0].Bodies[0];
+            var range=body.Primitive.FaceMap.FaceAtTriangle(0);
+            // The scene reloads only on a visual revision change: the revision alone moves on (context is read at the new revision).
+            var state=new DocumentState("doc_bolt","r_non_visual","v");
+            var context=DesignContext.Parse(new JObject {
+                ["document_id"]=state.DocumentId,["revision"]=state.Revision,["kind"]="part",
+                ["faces"]=new JArray(new JObject { ["id"]="ent_face_nv",["body_index"]=body.Primitive.BodyIndex,
+                    ["face_ordinal"]=range.Ordinal,["point_mm"]=new JArray(0,0,10),["normal"]=new JArray(0,0,1) }) },state);
+            SetField("_context",context); SetField("_state",state);
+            typeof(DesignWorkspace).GetMethod("SelectPlanarFace",Flags).Invoke(_workspace,new object[]{body,0,Vector3.zero});
+            Assert.AreEqual("ent_face_nv",Field<Selection>("_faceSelection")?.EntityId);
+            // A context of an older revision is still rejected (revision-bound).
+            SetField("_faceSelection",null);
+            SetField("_context",DesignContext.Parse(new JObject { ["document_id"]=state.DocumentId,["revision"]="r_old",["kind"]="part",["faces"]=new JArray() },new DocumentState(state.DocumentId,"r_old","v")));
+            typeof(DesignWorkspace).GetMethod("SelectPlanarFace",Flags).Invoke(_workspace,new object[]{body,0,Vector3.zero});
+            Assert.IsNull(Field<Selection>("_faceSelection"));
         }
         [TestCase("ent_face",true)][TestCase("ent_stale",false)]
         public void CreateSketchUsesOnlyCurrentPlanarSelection(string face,bool valid)

@@ -1115,7 +1115,7 @@ namespace InventorXrSo.Xr
         {
             if (_context == null || _state == null || _context.State.DocumentId != _state.DocumentId
                 || _context.State.Revision != _state.Revision || _sceneState?.DocumentId != _state.DocumentId
-                || _sceneState?.Revision != _state.Revision || body.Instance.DefinitionId != _state.DocumentId) return;
+                || _sceneState?.VisualRevision != _state.VisualRevision || body.Instance.DefinitionId != _state.DocumentId) return;
             var range = body.Primitive.FaceMap.FaceAtTriangle(triangle);
             // Inventor reference contexts may differ for the same face. The mesh and Design
             // context enumerate the same B-rep bodies/faces at this document revision.

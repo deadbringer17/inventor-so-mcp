@@ -802,7 +802,8 @@ namespace InventorXrSo.Xr
 
         private bool Idle => Active && !_busy && _pendingMutations == 0 && _session != null && _session.CanEdit
             && _session.Status != DesignStatus.Previewing && _mode.CanWrite && SceneCurrent;
-        private bool SceneCurrent => _state != null && _sceneState != null && _state.DocumentId == _sceneState.DocumentId && _state.Revision == _sceneState.Revision;
+        /// <summary>The drawn scene matches the document geometry. The scene reloads only on a visual revision change, so a non-visual revision bump keeps it current (context reads and Apply stay revision-bound).</summary>
+        private bool SceneCurrent => _state != null && _sceneState != null && _state.DocumentId == _sceneState.DocumentId && _state.VisualRevision == _sceneState.VisualRevision;
 
         /// <summary>Shared by the palette actions, the commit bar and the voice layer: the same command id, the same enablement.</summary>
         public bool IsEnabled(string commandId)

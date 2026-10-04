@@ -1017,6 +1017,28 @@ namespace InventorXrSo.Tests
             Assert.AreEqual(0, _backend.Commits);
         }
 
+        [Test] public void NonVisualRevisionBumpKeepsTheSceneCurrentButAVisualOneDoesNot()
+        {
+            var body = _view.Instances[0].Bodies[0]; var range = body.Primitive.FaceMap.FaceAtTriangle(0);
+            bool PickAt(DocumentState state)
+            {
+                _workspace.SetDocumentState(state);
+                typeof(LamieraWorkspace).GetField("_designContext", Flags).SetValue(_workspace, DesignContext.Parse(new JObject
+                {
+                    ["document_id"] = state.DocumentId, ["revision"] = state.Revision, ["kind"] = "part",
+                    ["faces"] = new JArray(new JObject { ["id"] = "ent_planar", ["body_index"] = body.Primitive.BodyIndex, ["face_ordinal"] = range.Ordinal,
+                        ["point_mm"] = new JArray(0, 0, 10), ["normal"] = new JArray(0, 0, 1) }),
+                }, state));
+                return InvokeSelectPlanarFace(body, 0);
+            }
+            // The scene reloads only on a visual revision change: the revision alone moves on.
+            Assert.True(PickAt(new DocumentState("doc_bolt", "r_non_visual", "v")), "a non-visual bump keeps the scene current");
+            Assert.True(typeof(LamieraWorkspace).GetProperty("SceneCurrent", Flags).GetValue(_workspace) as bool?);
+            // A visual change without a scene reload is stale.
+            Assert.False(PickAt(new DocumentState("doc_bolt", "r_visual", "v_new")));
+            Assert.False(typeof(LamieraWorkspace).GetProperty("SceneCurrent", Flags).GetValue(_workspace) as bool?);
+        }
+
         [Test] public void IdleTriggerRayOnAnEdgeOpensTheRing()
         {
             UseInput(); AttachShell(out _);
