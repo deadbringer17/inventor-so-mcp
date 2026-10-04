@@ -27,6 +27,8 @@ namespace InventorXrSo.Xr
         private SceneNode _distanceA;
         private (string a, string b)? _distancePending;
         private IReadOnlyDictionary<string, OccurrenceVisibility> _focusSnapshot;
+        private bool _inStaleBatch, _wasCoolingDown;
+        private int _staleBatch;
         private float _runningSince;
         private int _runningShown = -1;
 
@@ -56,6 +58,25 @@ namespace InventorXrSo.Xr
             _distanceA = null; _distancePending = null; _focusSnapshot = null;
             _overlay?.Clear(); _visibility?.ShowAll();
         }
+
+        private const string StaleNotice = "Modello cambiato: rilancia la verifica.";
+
+        /// <summary>A newer revision of the same document: Done results become Stale, announced once however many jobs went stale.</summary>
+        private void PropagateRevision(DocumentState state)
+        {
+            _staleBatch = 0; _inStaleBatch = true;
+            try { _verifySession.OnDocumentState(state); }
+            finally { _inStaleBatch = false; }
+            if (_staleBatch > 0 && Active) SetNotice(StaleNotice);
+        }
+
+        private void AnnounceStale(string single)
+        {
+            if (_inStaleBatch) _staleBatch++;
+            else SetNotice(single);
+        }
+
+        private bool Outdated(string revision) => _documentState != null && revision != _documentState.Revision;
 
         /// <summary>Leaving Ispeziona: the scene goes back to normal; results stay listed.</summary>
         private void LeaveVerifyView()
@@ -169,7 +190,11 @@ namespace InventorXrSo.Xr
             if (!Active)
             {
                 // Left Ispeziona: keep the bookkeeping, announce and draw nothing.
-                if (job.Status == VerifyStatus.Done) { _findings = rows(job.Result); _findingsJob = job; _findingsStale = false; }
+                if (job.Status == VerifyStatus.Done)
+                {
+                    _findings = rows(job.Result); _findingsJob = job; _findingsStale = false;
+                    if (Outdated(job.Revision)) job.OnDocumentState(_documentState);   // re-enters as Stale
+                }
                 else if (job.Status == VerifyStatus.Stale && _findingsJob == job) _findingsStale = true;
                 return;
             }
@@ -177,12 +202,14 @@ namespace InventorXrSo.Xr
             {
                 case VerifyStatus.Done:
                     _findings = rows(job.Result); _findingsJob = job; _findingsStale = false;
+                    // Computed on a revision the document has already left (it moved while this ran): never shown as fresh.
+                    if (Outdated(job.Revision)) { job.OnDocumentState(_documentState); return; }
                     SetNotice(summary(job.Result) + (_findings.Count > 0 ? "\nApri Risultati per vederli uno a uno." : ""));
                     break;
                 case VerifyStatus.Failed: SetNotice(job.ErrorMessage); break;
                 case VerifyStatus.Stale:
                     if (_findingsJob == job) _findingsStale = true;
-                    SetNotice("Modello cambiato: rilancia la verifica.");
+                    AnnounceStale(StaleNotice);
                     break;
             }
             Refresh();
@@ -194,6 +221,12 @@ namespace InventorXrSo.Xr
             if (!Active)
             {
                 if (job.Status != VerifyStatus.Running) { _distancePending = null; _distanceA = null; }
+                return;
+            }
+            if (job.Status == VerifyStatus.Done && Outdated(job.Revision))
+            {
+                _distancePending = null; _distanceA = null;
+                job.OnDocumentState(_documentState);   // re-enters as Stale: the line is not drawn
                 return;
             }
             switch (job.Status)
@@ -212,14 +245,20 @@ namespace InventorXrSo.Xr
                     break;
                 }
                 case VerifyStatus.Failed: SetNotice(job.ErrorMessage); _distanceA = null; _distancePending = null; break;
-                case VerifyStatus.Stale: _overlay.ClearDistance(); SetNotice("Modello cambiato: rilancia la distanza minima."); break;
+                case VerifyStatus.Stale:
+                    _overlay.ClearDistance(); _distanceA = null; _distancePending = null;
+                    AnnounceStale("Modello cambiato: rilancia la distanza minima.");
+                    break;
             }
             Refresh();
         }
 
-        /// <summary>HUD clock while Inventor computes.</summary>
+        /// <summary>HUD clock while Inventor computes; the actions come back when the post-timeout cooldown ends.</summary>
         private void TickVerify()
         {
+            bool cooling = _verifySession.Gate.CoolingDown;
+            if (_wasCoolingDown && !cooling) Refresh();
+            _wasCoolingDown = cooling;
             if (!Active || _verifySession.Running == null) return;
             int seconds = (int)(Time.unscaledTime - _runningSince);
             if (seconds == _runningShown) return;

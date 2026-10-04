@@ -5,6 +5,8 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using InventorXrSo.Core.Backend;
+using InventorXrSo.Core.Glb;
+using InventorXrSo.Core.Session;
 using InventorXrSo.Core.Selection;
 using InventorXrSo.Core.Ui;
 using InventorXrSo.Core.Verify;
@@ -88,9 +90,9 @@ namespace InventorXrSo.Tests
             public IReadOnlyList<string> LastScope;
             public string LastA, LastB;
             public TaskCompletionSource<DistanceReport> DistanceHold;
-            public DistanceReport Distance = DistanceReport.FromJson(new JObject { ["revision"] = "r1", ["distance_mm"] = 30.0,
+            public DistanceReport Distance = DistanceReport.FromJson(new JObject { ["revision"] = "r", ["distance_mm"] = 30.0,
                 ["point_a"] = new JArray(0, 0, 0), ["point_b"] = new JArray(30, 0, 0) });
-            public HealthReport Health = HealthReport.FromJson(new JObject { ["revision"] = "r1", ["healthy"] = false,
+            public HealthReport Health = HealthReport.FromJson(new JObject { ["revision"] = "r", ["healthy"] = false,
                 ["failing_constraints"] = new JArray(new JObject { ["name"] = "M7_Sick", ["health"] = "kInconsistentHealth", ["a_occurrence_id"] = "ent_occ_1" }),
                 ["bom"] = new JObject { ["valid"] = true } });
 
@@ -104,7 +106,7 @@ namespace InventorXrSo.Tests
 
         private static InterferenceReport OnePair() => InterferenceReport.FromJson(new JObject
         {
-            ["revision"] = "r1", ["analyzed"] = 2, ["count"] = 1, ["total_volume_mm3"] = 2000.0,
+            ["revision"] = "r", ["analyzed"] = 2, ["count"] = 1, ["total_volume_mm3"] = 2000.0,
             ["pairs"] = new JArray(new JObject { ["a_occurrence_id"] = "ent_occ_1", ["b_occurrence_id"] = "ent_occ_2", ["a_name"] = "Bolt:1", ["b_name"] = "Bolt:2",
                 ["volume_mm3"] = 2000.0, ["boxes"] = new JArray(new JObject { ["min_mm"] = new JArray(0, 0, 0), ["max_mm"] = new JArray(5, 5, 5) }) }),
         });
@@ -167,6 +169,20 @@ namespace InventorXrSo.Tests
         }
 
         [Test]
+        public void InventorVerificationsOnAPartDocumentSayAnAssemblyIsNeeded()
+        {
+            Online();
+            var graph = SceneGraph.FromJson(JObject.Parse(@"{""document_id"":""doc_part"",""kind"":""part"",""revision"":""r"",""visual_revision"":""v"",
+                ""definition_document_ids"":[],""root"":{""name"":""Part.ipt"",""definition_kind"":""part"",""children"":[]}}"));
+            _workspace.SetScene(new LoadedScene(graph, new Dictionary<string, GlbModel>(), new Dictionary<string, string>(), new List<string>()));
+            foreach (var id in new[] { InspectWorkspace.IdInterference, InspectWorkspace.IdHealth, InspectWorkspace.IdDistance })
+            {
+                Assert.False(Enabled(id), id);
+                Assert.AreEqual("Serve un assieme.", Act(id).DisabledReason, id);
+            }
+        }
+
+        [Test]
         public async Task InterferenceRunsOnceListsResultsAndFocusesARow()
         {
             var backend = Online();
@@ -211,6 +227,63 @@ namespace InventorXrSo.Tests
             Assert.True(Field<bool>("_findingsStale"));
             Do(InspectWorkspace.IdResults);
             Assert.True(_workspace.Actions.Any(a => a.Id.StartsWith(InspectWorkspace.IdPickPrefix) && a.Label.StartsWith("[obsoleto]")));
+        }
+
+        [Test]
+        public async Task ASceneOfANewRevisionMarksTheResultsStaleBeforeTheDocumentStateArrives()
+        {
+            var backend = Online();
+            Do(InspectWorkspace.IdInterference);
+            backend.Interference.SetResult(OnePair());
+            await Until(() => Field<IReadOnlyList<VerifyFinding>>("_findings").Count > 0);
+            // SessionController: SceneLoaded (SetScene) comes first, DocumentStateChanged after.
+            var scene = CadSceneViewTests.BoltScene("r2"); _view.Show(scene); _workspace.SetScene(scene);
+            Assert.True(Field<bool>("_findingsStale"));
+            Assert.AreEqual("Modello cambiato: rilancia la verifica.", _hud.Last());
+            _workspace.SetDocumentState(scene.Graph.State);
+            Assert.AreEqual("Modello cambiato: rilancia la verifica.", _hud.Last(), "the generic notice does not overwrite it");
+            Do(InspectWorkspace.IdResults);
+            Assert.True(_workspace.Actions.Any(a => a.Id.StartsWith(InspectWorkspace.IdPickPrefix) && a.Label.StartsWith("[obsoleto]")));
+        }
+
+        [Test]
+        public async Task ANewRevisionClearsAPendingDistanceTogetherWithTheSelection()
+        {
+            var backend = Online();
+            Select("ent_occ_1"); Do(InspectWorkspace.IdDistance);
+            Assert.NotNull(Field<SceneNode>("_distanceA"));
+            var scene = CadSceneViewTests.BoltScene("r2"); _view.Show(scene); _workspace.SetScene(scene);
+            Assert.Null(Field<SceneNode>("_distanceA"));
+            await Task.Yield();
+        }
+
+        [Test]
+        public async Task AnAnswerComputedBeforeTheRevisionMovedIsShownStaleNotFresh()
+        {
+            var backend = Online();
+            Do(InspectWorkspace.IdInterference);
+            var state = Field<DocumentState>("_documentState");
+            _workspace.SetDocumentState(new DocumentState(state.DocumentId, "r2", state.VisualRevision));   // while the request runs
+            backend.Interference.SetResult(OnePair());   // computed on "r"
+            await Until(() => Field<IReadOnlyList<VerifyFinding>>("_findings").Count > 0);
+            Assert.True(Field<bool>("_findingsStale"));
+            Assert.AreEqual(VerifyStatus.Stale, Field<VerifySession>("_verifySession").Interference.Status);
+            Assert.AreEqual("Modello cambiato: rilancia la verifica.", _hud.Last());
+        }
+
+        [Test]
+        public async Task ADistanceAnsweredOnAnOlderRevisionIsNotDrawn()
+        {
+            var backend = Online();
+            backend.DistanceHold = new TaskCompletionSource<DistanceReport>();
+            Select("ent_occ_1"); Do(InspectWorkspace.IdDistance);
+            Select("ent_occ_2"); Do(InspectWorkspace.IdDistance);
+            var state = Field<DocumentState>("_documentState");
+            _workspace.SetDocumentState(new DocumentState(state.DocumentId, "r2", state.VisualRevision));
+            backend.DistanceHold.SetResult(backend.Distance);
+            await Until(() => Field<VerifySession>("_verifySession").Gate.CanStart);
+            Assert.False(Field<VerifyOverlay>("_overlay").HasDistance);
+            Assert.That(AllHud(), Does.Contain("Modello cambiato"));
         }
 
         [Test]
@@ -271,7 +344,7 @@ namespace InventorXrSo.Tests
         public async Task WithoutInventorPointsTheLineIsIndicative()
         {
             var backend = Online();
-            backend.Distance = DistanceReport.FromJson(new JObject { ["revision"] = "r1", ["distance_mm"] = 30.0 });
+            backend.Distance = DistanceReport.FromJson(new JObject { ["revision"] = "r", ["distance_mm"] = 30.0 });
             Select("ent_occ_1"); Do(InspectWorkspace.IdDistance);
             Select("ent_occ_2"); Do(InspectWorkspace.IdDistance);
             await Until(() => Field<VerifyOverlay>("_overlay").HasDistance);

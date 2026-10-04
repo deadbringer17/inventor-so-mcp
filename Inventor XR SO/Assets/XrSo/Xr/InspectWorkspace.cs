@@ -161,14 +161,17 @@ namespace InventorXrSo.Xr
             bool changedDocument = _scene?.Graph.DocumentId != scene?.Graph.DocumentId;
             CancelRequests(); EndGrabs();
             _measure.ClearAll(); _section.SetActive(false); _selected = null; _info = null;
+            _distanceA = null; _distancePending = null;
             CloseKeypad(); ClosePicker(false);
             _scene = scene; _context.SetGraph(scene?.Graph);
+            _notice = "";
+            // SessionController announces the new scene before DocumentStateChanged, so this is where a geometry edit makes Done results stale.
+            if (!changedDocument && scene != null) PropagateRevision(scene.Graph.State);
             _documentState = scene?.Graph.State;
             if (changedDocument) { _scaleMode = ModelScaleMode.OneToOne; _view.transform.localScale = Vector3.one; }
             else if (scene != null) InspectionGeometry.ApplyScale(_view.transform, ScenePlacement.LocalBounds(_view.transform), _scaleMode, _roomExtent);
             _section.ResetPlane(ScenePlacement.LocalBounds(_view.transform));
             if (changedDocument) ResetVerify(); else { _overlay?.Clear(); _focusSnapshot = null; }
-            _notice = "";
             if (scene != null && TooBig()) SetNotice(OversizeNotice);
             Refresh();
         }
@@ -185,14 +188,16 @@ namespace InventorXrSo.Xr
         {
             if (_documentState?.DocumentId == state?.DocumentId && _documentState?.Revision == state?.Revision
                 && _documentState?.VisualRevision == state?.VisualRevision) return;
-            if (_documentState?.DocumentId != state?.DocumentId) ResetVerify();
-            else _verifySession.OnDocumentState(state);
+            bool sameDocument = _documentState?.DocumentId == state?.DocumentId;
+            if (!sameDocument) ResetVerify();
             CancelRequests();
             _documentState = state;
             _info = null; _selected = null; _selection?.ResetLocal();
-            _measure.ClearAll(); _section.SetActive(false); _distanceA = null;
+            _measure.ClearAll(); _section.SetActive(false); _distanceA = null; _distancePending = null;
             ClosePicker(false);
             SetNotice("Documento aggiornato. Seleziona nuovamente o aggiorna le proprietà.");
+            // After the generic notice, so "Modello cambiato: rilancia la verifica." is the last word.
+            if (sameDocument) PropagateRevision(state);
             Refresh();
         }
 

@@ -17,15 +17,15 @@ namespace InventorXrSo.Tests
         [TearDown]
         public void TearDown() { if (_root != null) Object.DestroyImmediate(_root); }
 
-        internal static LoadedScene BoltScene()
+        internal static LoadedScene BoltScene(string revision = "r")
         {
             var bolt = GlbModel.Parse(File.ReadAllBytes(CoreInUnityTests.BoltFixture));
-            var graph = SceneGraph.FromJson(JObject.Parse(@"{""document_id"":""doc_asm"",""kind"":""assembly"",""revision"":""r"",""visual_revision"":""v"",
+            var graph = SceneGraph.FromJson(JObject.Parse(@"{""document_id"":""doc_asm"",""kind"":""assembly"",""revision"":""REV"",""visual_revision"":""v"",
                 ""definition_document_ids"":[""doc_bolt""],
                 ""root"":{""name"":""Fake.iam"",""definition_kind"":""assembly"",""children"":[
                   {""name"":""Bolt:1"",""occurrence_id"":""ent_occ_1"",""definition_document_id"":""doc_bolt"",""definition_kind"":""part"",""children"":[]},
                   {""name"":""Bolt:2"",""occurrence_id"":""ent_occ_2"",""definition_document_id"":""doc_bolt"",""definition_kind"":""part"",
-                   ""matrix_gltf"":[1,0,0,0,0,1,0,0,0,0,1,0,0.03,0,0,1],""children"":[]}]}}"));
+                   ""matrix_gltf"":[1,0,0,0,0,1,0,0,0,0,1,0,0.03,0,0,1],""children"":[]}]}}".Replace("REV", revision)));
             return new LoadedScene(graph,
                 new Dictionary<string, GlbModel> { ["doc_bolt"] = bolt },
                 new Dictionary<string, string> { ["doc_bolt"] = "a_bolt" },
