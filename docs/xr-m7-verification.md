@@ -7,14 +7,34 @@ Piano: [M7](superpowers/plans/2026-10-03-inventor-xr-so-m7-inspect-verifica.md).
 
 | Gate | Esito | Evidenza |
 |---|---|---|
-| M7-01 | PASS EditMode; runner Quest aperto | `artifacts/m7-verification/editmode.xml`: visibilità 6/6, overlay 5/5, azioni Ispeziona 17/17 |
-| M7-02 | PASS backend Inventor reale su PC; runner Quest aperto | `artifacts/m7-verification/live-smoke.json`: 1 coppia, 2000 mm³; scena verificata in EditMode |
-| M7-03 | PASS backend Inventor reale su PC; runner Quest aperto | `live-smoke.json`: 30 mm, `points_source = inventor` |
-| M7-04 | PASS backend Inventor reale su PC; runner Quest aperto | `live-smoke.json`: `M7_Sick`, 1 occorrenza libera, `DESCRIPTION_MISSING` |
-| M7-05 | PASS core/FakeAddIn; runner Quest aperto | `artifacts/m7-verification/m7-core.trx`: 467/467; revisione invariata nella sonda PC |
+| M7-01 | PASS EditMode + runner Quest sintetico | Manifest `quest-acceptance-run-20261004-145650.json`: nascondi, X-Ray, isola, mostra tutto e raycast |
+| M7-02 | PASS runner Quest + Inventor reale | Stesso manifest: coppia M7_A/M7_B, 2000 mm³, 1 box, focus riga e ritorno; 101 ms |
+| M7-03 | PASS runner Quest + Inventor reale | Stesso manifest: 30 mm, linea dai punti forniti da Inventor |
+| M7-04 | PASS runner Quest + Inventor reale | Stesso manifest: `M7_Sick` e focus della riga, solo M7_D libero, `DESCRIPTION_MISSING`, 3 righe |
+| M7-05 | PASS core/FakeAddIn + runner Quest sintetico | Stesso manifest: revisione sintetica → Stale, rifiuto concorrente, risposta ignorata scartata; cambio CAD reale non esercitato sul visore |
 | M7-06 | PASS EditMode | `InspectVerifyTests` 17/17, incluse abilitazione offline/su parte ed etichette delle misure |
-| M7-07 | APERTO | |
+| M7-07 | PASS fixture; APERTO assieme reale e limite 30 s dal vivo | Manifest: interferenza 101 ms; durata salute e assieme reale non misurate dal runner, timeout coperto dai test core |
 | M7-08 | APERTO (prova fisica) | |
+
+## Runner Quest — 4 ottobre 2026, 14:57 Europe/Rome
+
+**PASS COMPLETE**, input sintetico tramite il catalogo reale dell'app, backend
+Inventor reale su HTTPS pinnato. Manifest e log in `artifacts/m7-verification/`:
+`quest-acceptance-run-20261004-145650.json` e
+`quest-acceptance-20261004-145650-m7-acceptance.txt`; tre screenshot (`interference`,
+`distance`, `health-focus`) con lo stesso prefisso. Il visore era `Awake` e il
+runner è partito regolarmente, senza timeout.
+
+Tutti i sottocasi M7-01…M7-05 previsti dal runner sono passati. M7-05 usa una
+revisione sintetica sul client: non è una prova di modifica desktop reale.
+Il runner dichiara `NOT COVERED` M7-06 (offline/parte, verificati in EditMode),
+M7-07 su assieme reale e M7-08 fisico. Nessun PASS del runner certifica
+leggibilità, ergonomia o tracking fisico.
+
+Ispezione nativa finale: fixture pulita (`dirty=false`), quattro occorrenze e
+valori attesi invariati. Fixture chiusa senza salvare; documento precedente
+assente. APK ordinario reinstallato e hash verificato dallo script. Nessuna
+promozione dei tool dal tier sperimentale effettuata in questa esecuzione.
 
 ## Finalizzazione Windows — 4 ottobre 2026
 

@@ -40,10 +40,13 @@ contro la fixture Inventor reale: interferenza 2000 mm³, distanza 30 mm con
 punti nativi, vincolo non sano, componente libero e `DESCRIPTION_MISSING`,
 con revisione invariata. Evidenze nel verbale M7.
 
-Aperti: esecuzione dei tre tool tramite l'host HTTPS e il runner M7
-sul Quest (gate M7-02…M7-05), durata su un assieme reale (M7-07)
-e prova fisica M7-08. I tool restano sperimentali finché
-M7-02, M7-03 e M7-04 non passano dal vivo.
+Runner Quest del 4 ottobre, 14:57 Europe/Rome: **PASS COMPLETE** su HTTPS e
+Inventor reale, con input sintetico; sottocasi M7-01…M7-05 passati (Stale con
+revisione sintetica). Manifest `quest-acceptance-run-20261004-145650.json`.
+Fixture ripristinata e APK ordinario reinstallato. Aperti: misure dei tempi
+su assieme reale e comportamento oltre 30 s dal vivo (M7-07), modifica desktop
+reale per Stale e prova fisica M7-08. Tool ancora sperimentali: nessuna
+promozione eseguita in questa sessione di collaudo.
 
 ## Host remoto: segue il riavvio di Inventor — 2026-09-30
 

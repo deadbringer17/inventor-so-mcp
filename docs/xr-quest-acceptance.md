@@ -88,10 +88,12 @@ dotnet run --project bridge/tests/QuestAcceptanceFixtures -- --inspect-quest m7
 dotnet run --project bridge/tests/QuestAcceptanceFixtures -- --restore-quest m7
 ```
 
-La workstation non ha PowerShell 7: si usa la copia per PS 5.1, come nelle run M6; `adb` non è
-nel PATH; il visore deve essere sveglio. Tutte le azioni sono invocate per id sul catalogo
-(input **sintetico**); le risposte di Inventor sono reali. Il runner M7 è scritto, **non ancora
-eseguito** sul Quest (stato NOT RUN). Restano NOT COVERED M7-06 (offline e documenti parte,
+PowerShell 7 è disponibile nel runtime Codex; `adb` non è nel PATH e viene
+configurato dal wrapper `artifacts/m7-verification/run-m7.ps1`. Il visore deve
+essere sveglio. Tutte le azioni sono invocate per id sul catalogo (input
+**sintetico**); le risposte di Inventor sono reali. Il runner M7 ha raggiunto
+**PASS COMPLETE** il 4 ottobre 2026, 14:57 Europe/Rome (manifest
+`quest-acceptance-run-20261004-145650.json`). Restano NOT COVERED M7-06 (offline e documenti parte,
 coperti da EditMode), M7-07 (tempi su un assieme reale: sonda PC `--probe-active`) e M7-08
 (leggibilità fisica da seduto).
 
