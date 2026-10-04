@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
@@ -17,6 +18,9 @@ namespace InventorXrSo.Editor
         private static void Build(bool acceptance)
         {
             XrSoProjectSetup.ValidateXr();
+            var theme = InventorXrSo.Unity.Ui.UiThemeAssets.Current;
+            if (theme == null || theme.Medium == null || theme.Bold == null || theme.RoundedPanel == null || theme.FontLicense == null || theme.FallbackFontLicense == null)
+                throw new BuildFailedException("M8 theme assets/license missing: run XrSoThemeAssets.GenerateBatch before building.");
             var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
             {
                 scenes = new[] { XrSoSceneBuilder.ScenePath },
@@ -48,6 +52,21 @@ namespace InventorXrSo.Editor
                 Debug.LogException(ex);
                 EditorApplication.Exit(1);
             }
+        }
+
+        public static void BuildM8ApksBatch()
+        {
+            try
+            {
+                var output = Path.GetFullPath("../artifacts/m8-verification");
+                Directory.CreateDirectory(output);
+                Build(true);
+                File.Copy(ApkPath, Path.Combine(output, "InventorXrSo-m8-acceptance.apk"), true);
+                Build(false);
+                File.Copy(ApkPath, Path.Combine(output, "InventorXrSo-m8-ordinary.apk"), true);
+                EditorApplication.Exit(0);
+            }
+            catch (Exception ex) { Debug.LogException(ex); EditorApplication.Exit(1); }
         }
     }
 }

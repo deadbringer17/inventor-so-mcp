@@ -15,7 +15,7 @@ internal sealed class PairingForm : Form
     private readonly ComboBox _targets = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
     private readonly ComboBox _addresses = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
     private readonly Label _endpoint = new() { AutoSize = true, Text = "Seleziona un indirizzo LAN." };
-    private readonly PictureBox _qr = new() { Dock = DockStyle.Fill, SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.White, AccessibleName = "QR per associare il visore" };
+    private readonly PictureBox _qr = new() { Dock = DockStyle.Fill, MinimumSize = new Size(200, 200), SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.White, AccessibleName = "QR per associare il visore" };
     private readonly Label _code = new() { AutoSize = true, Text = "Codice non generato", Font = new Font("Segoe UI", 24, FontStyle.Bold) };
     private readonly Label _ttl = new() { AutoSize = true };
     private readonly TextBox _fingerprint = new() { ReadOnly = true, Multiline = true, Dock = DockStyle.Fill, Height = 52, ScrollBars = ScrollBars.Vertical, AccessibleName = "Impronta SHA-256 del certificato" };
@@ -38,6 +38,7 @@ internal sealed class PairingForm : Form
     private bool _closing;
     private bool _allowClose;
     private Form? _zoom;
+    private readonly PairingTheme _theme = new();
 
     public PairingForm(string? callerTarget,
         Func<ControlRequest, CancellationToken, Task<ControlResponse>>? request = null,
@@ -56,12 +57,19 @@ internal sealed class PairingForm : Form
         Text = "Inventor SO — Connessione visore";
         Name = "InventorSoPairing";
         AutoScaleMode = AutoScaleMode.Dpi;
-        Font = new Font("Segoe UI", 10);
-        ClientSize = new Size(720, 830);
+        Font = _theme.Font(10);
+        _status.Font = _theme.Font(13, FontStyle.Bold);
+        _code.Font = _theme.Font(24, FontStyle.Bold);
+        Disposed += (_, _) => _theme.Dispose();
+        ClientSize = new Size(720, 960);
         MinimumSize = new Size(620, 750);
         StartPosition = FormStartPosition.CenterScreen;
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(24), ColumnCount = 1, RowCount = 12 };
-        for (var i = 0; i < 12; i++) layout.RowStyles.Add(new RowStyle(i == 5 ? SizeType.Percent : SizeType.AutoSize, i == 5 ? 100 : 0));
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(24), ColumnCount = 1, RowCount = 14 };
+        for (var i = 0; i < 14; i++) layout.RowStyles.Add(new RowStyle(i == 6 ? SizeType.Percent : SizeType.AutoSize, i == 6 ? 100 : 0));
+        var header = new Label { Name = "BrandHeader", Text = "Inventor SO  ·  Connessione visore", AutoSize = false,
+            Dock = DockStyle.Fill, Height = 54, Padding = new Padding(14, 0, 0, 0), TextAlign = ContentAlignment.MiddleLeft,
+            Font = _theme.Font(14, FontStyle.Bold) };
+        layout.Controls.Add(header);
         layout.Controls.Add(new Label { Text = "PC: " + Environment.MachineName, AutoSize = true });
         layout.Controls.Add(_status); layout.Controls.Add(_inventor); layout.Controls.Add(_caller);
         var choices = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 2 };
@@ -76,6 +84,10 @@ internal sealed class PairingForm : Form
         var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill };
         buttons.Controls.AddRange([_start, _generate, _cancel, _copy, _enlarge, _disconnect]); layout.Controls.Add(buttons);
         Controls.Add(layout);
+        _theme.Apply(this);
+        header.BackColor = PairingTheme.Navy;
+        header.ForeColor = PairingTheme.Paper;
+        _caller.ForeColor = PairingTheme.Error;
         void ResizeText()
         {
             foreach (var label in new[] { _ttl, _caller, _inventor, _endpoint }) label.MaximumSize = new Size(Math.Max(200, ClientSize.Width - 60), 0);

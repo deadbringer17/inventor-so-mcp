@@ -1,3 +1,4 @@
+using TMPro;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -88,7 +89,7 @@ namespace InventorXrSo.Xr
         public const double PrecisionFactor = 0.1;
         private const float DraftThrottleSeconds = 0.1f, ZoomRatePerSecond = 1.5f;
         private LineRenderer _handle;
-        private Text _cursorText;
+        private TextMeshProUGUI _cursorText;
         private Canvas _cursorCanvas;
         public bool Active { get; private set; }
         public bool RequiresCadReview => _reviewAfterRebind || _pendingMutations > 0 || _session?.Status == DesignStatus.Committing || _session?.Status == DesignStatus.RefreshRequired;

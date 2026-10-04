@@ -1,3 +1,4 @@
+using TMPro;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -12,8 +13,8 @@ namespace InventorXrSo.Unity.Ui
         private static readonly string[] Keys = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0",
             "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t",
             "u", "v", "w", "x", "y", "z", ".", ":", "-", "[", "]", UiText.KeyBack, UiText.KeyOk, UiText.Cancel };
-        private Text _title, _body, _entryText;
-        private RectTransform _actions, _keypad;
+        private TextMeshProUGUI _title, _body, _entryText;
+        private RectTransform _actions, _keypad, _background;
         private string _entry = "";
         private Action<string> _submit;
         private Action _cancel;
@@ -47,7 +48,7 @@ namespace InventorXrSo.Unity.Ui
                 {
                     var button = child.GetComponent<Button>();
                     if (button == null || !button.gameObject.activeInHierarchy) continue;
-                    var label = button.GetComponentInChildren<Text>()?.text;
+                    var label = button.GetComponentInChildren<TextMeshProUGUI>()?.text;
                     if (!string.IsNullOrWhiteSpace(label)) yield return (label, button.interactable);
                 }
             }
@@ -59,7 +60,7 @@ namespace InventorXrSo.Unity.Ui
             {
                 var button = child.GetComponent<Button>();
                 if (button != null && button.gameObject.activeInHierarchy && button.interactable
-                    && button.GetComponentInChildren<Text>()?.text == label)
+                    && button.GetComponentInChildren<TextMeshProUGUI>()?.text == label)
                 { button.onClick.Invoke(); return true; }
             }
             return false;
@@ -77,6 +78,7 @@ namespace InventorXrSo.Unity.Ui
         private void Build()
         {
             var background = UiFactory.Panel(transform, "Background", UiFactory.Background);
+            _background = background;
             UiFactory.Stretch(background);
             var layout = background.gameObject.AddComponent<VerticalLayoutGroup>();
             layout.padding = new RectOffset(32, 32, 28, 28);
@@ -85,14 +87,21 @@ namespace InventorXrSo.Unity.Ui
             layout.childControlHeight = true;
             layout.childForceExpandHeight = false;
             _title = UiFactory.Label(background, UiText.AppTitle, 40, FontStyle.Bold);
-            _body = UiFactory.Label(background, "", 26);
+            var bodyCard = UiFactory.Panel(background, "Contesto", UiTheme.Paper);
+            var bodyLayout = bodyCard.gameObject.AddComponent<VerticalLayoutGroup>();
+            bodyLayout.padding = new RectOffset(16, 16, 12, 12);
+            bodyLayout.childControlWidth = bodyLayout.childControlHeight = true;
+            bodyLayout.childForceExpandHeight = false;
+            _body = UiFactory.Label(bodyCard, "", 26);
+            _body.color = UiTheme.Ink;
             _entryText = UiFactory.Label(background, "", 44, FontStyle.Bold);
             _actions = Grid(background, "Actions", new Vector2(360, 72), 2);
-            _keypad = Grid(background, "Keypad", new Vector2(64, 50), 10);
+            _keypad = Grid(background, "Keypad", new Vector2(84, 50), 8);
             foreach (var key in Keys)
             {
                 var k = key;
-                UiFactory.Button(_keypad, key, key == UiText.KeyOk ? UiFactory.Accent : UiFactory.Key, key == UiText.Cancel ? 16 : 26, () => Press(k));
+                var button = UiFactory.Button(_keypad, key == UiText.KeyBack ? "←" : key, key == UiText.KeyOk ? UiFactory.Accent : UiFactory.Key, key == UiText.Cancel ? 20 : 26, () => Press(k));
+                button.name = key; // Stable input identity; Satoshi uses the supported arrow as its visible label.
             }
             HideEntry();
         }
@@ -114,6 +123,7 @@ namespace InventorXrSo.Unity.Ui
             _title.text = title;
             _body.text = body;
             HideEntry();
+            FitContent();
         }
 
         public void SetActions(params (string label, Action action)[] actions)
@@ -126,7 +136,9 @@ namespace InventorXrSo.Unity.Ui
                 if (Application.isPlaying) Destroy(child.gameObject);
                 else DestroyImmediate(child.gameObject);
             }
-            foreach (var (label, action) in actions) UiFactory.Button(_actions, label, UiFactory.Accent, 28, action);
+            for (int i = 0; i < actions.Length; i++)
+                UiFactory.Button(_actions, actions[i].label, i == 0 ? UiFactory.Accent : UiFactory.Key, 28, actions[i].action);
+            FitContent();
         }
 
         public void PromptText(string title, string hint, string initial, Action<string> onSubmit, Action onCancel,
@@ -144,6 +156,7 @@ namespace InventorXrSo.Unity.Ui
             SetActions();
             _entryText.gameObject.SetActive(true);
             _keypad.gameObject.SetActive(true);
+            FitContent();
         }
 
         public void Press(string key)
@@ -169,6 +182,7 @@ namespace InventorXrSo.Unity.Ui
             }
             else if (_entry.Length < 64) _entry += key;
             _entryText.text = _entry;
+            FitContent();
         }
 
         private void HideEntry()
@@ -178,6 +192,17 @@ namespace InventorXrSo.Unity.Ui
             _cancel = null;
             _entryText.gameObject.SetActive(false);
             _keypad.gameObject.SetActive(false);
+            FitContent();
+        }
+
+        private void FitContent()
+        {
+            if (_background == null) return;
+            // Grow only when a pairing hint/keyboard needs it; no essential text is clipped or shrunk.
+            LayoutRebuilder.ForceRebuildLayoutImmediate(_background);
+            ((RectTransform)Canvas.transform).SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical,
+                Mathf.Max(620, LayoutUtility.GetPreferredHeight(_background)));
+            LayoutRebuilder.ForceRebuildLayoutImmediate(_background);
         }
     }
 }

@@ -109,6 +109,12 @@ Su Linux falliscono per costruzione i test di semantica dei path Windows
 (elenco in `bridge/CLAUDE.md`). Add-in, test Unity, APK e smoke test in
 `scripts/` richiedono Windows, Inventor 2027 e/o Unity.
 
+M8 **grapics** adotta il design system HIVE/EnerBot nella UI Unity e nel pairing
+Windows: spec `docs/superpowers/specs/2026-10-04-m8-grapics-design.md`, piano
+`docs/superpowers/plans/2026-10-04-m8-grapics.md`, esiti `docs/xr-m8-verification.md`.
+Software implementato, verifica dispositivo/performance e prova fisica aperte.
+Il runner M8 usa la fixture dedicata **M6** (guardia esplicita), con log M8.
+
 ## Regole trasversali
 
 - Per ogni gate XR, porta nel runner automatico sul Quest tutti i passaggi

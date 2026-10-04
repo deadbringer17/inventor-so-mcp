@@ -10,6 +10,7 @@ namespace InventorXrSo.Unity.Ui
     {
         public const float TextMm = 14f;
         private Image _background;
+        private Image _marker;
         private TextMeshProUGUI _message;
         private RectTransform _buttons;
 
@@ -17,7 +18,7 @@ namespace InventorXrSo.Unity.Ui
 
         public static CommitBarView Create(Transform parent)
         {
-            var canvas = UiFactory.WorldCanvas(parent, "Barra di conferma", new Vector2(360, 60));
+            var canvas = UiFactory.WorldCanvas(parent, "Barra di conferma", new Vector2(560, 68));
             var view = canvas.gameObject.AddComponent<CommitBarView>();
             view.Canvas = canvas;
             var bg = UiFactory.Panel(canvas.transform, "Sfondo", UiFactory.Background);
@@ -27,6 +28,10 @@ namespace InventorXrSo.Unity.Ui
             row.padding = new RectOffset(8, 8, 6, 6);
             row.spacing = 6;
             row.childControlWidth = row.childControlHeight = true;
+            row.childForceExpandWidth = false;
+            var marker = UiFactory.Panel(bg, "Indicatore stato", UiTheme.SecondaryText);
+            marker.gameObject.AddComponent<LayoutElement>().preferredWidth = 4;
+            view._marker = marker.GetComponent<Image>();
             view._message = UiFactory.Text(bg, "", TextMm);
             view._message.alignment = TextAlignmentOptions.MidlineLeft;
             view._message.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1;
@@ -34,7 +39,7 @@ namespace InventorXrSo.Unity.Ui
             var buttons = view._buttons.gameObject.AddComponent<HorizontalLayoutGroup>();
             buttons.spacing = 6;
             buttons.childControlWidth = buttons.childControlHeight = true;
-            view._buttons.gameObject.AddComponent<LayoutElement>().preferredWidth = 230;
+            view._buttons.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1;
             canvas.gameObject.SetActive(false);
             return view;
         }
@@ -44,7 +49,8 @@ namespace InventorXrSo.Unity.Ui
             bool visible = state != null && state.Phase != CommitBarPhase.Empty;
             Canvas.gameObject.SetActive(visible);
             if (!visible) return;
-            _background.color = UiStyle.For(state.Phase);
+            _background.color = UiFactory.Background;
+            _marker.color = UiStyle.For(state.Phase);
             _message.text = Message(state);
             UiFactory.ClearChildren(_buttons);
             if (state.RecoveryLabel != null) Add(catalog, CommitIds.Recover, state.RecoveryLabel);
@@ -57,7 +63,8 @@ namespace InventorXrSo.Unity.Ui
         {
             var action = catalog.Find(id);
             if (action == null) return;
-            var b = UiFactory.TextButton(_buttons, labelOverride ?? action.Label, UiFactory.Key, TextMm, () => action.TryInvoke());
+            var b = UiFactory.TextButton(_buttons, labelOverride ?? action.Label,
+                id == CommitIds.Apply ? UiFactory.Accent : UiFactory.Key, TextMm, () => action.TryInvoke());
             b.interactable = action.Enabled;
         }
 

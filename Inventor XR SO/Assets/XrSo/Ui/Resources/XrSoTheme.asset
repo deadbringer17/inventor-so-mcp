@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5e8f3613173950498e5e899b5a2b410, type: 3}
+  m_Name: XrSoTheme
+  m_EditorClassIdentifier: InventorXrSo.Unity::InventorXrSo.Unity.Ui.UiThemeAssets
+  Medium: {fileID: 11400000, guid: c42648e1468175246807b808c1e7fa97, type: 2}
+  Bold: {fileID: 11400000, guid: 10ea93844bf83d24ab02ad7a1acc1d5d, type: 2}
+  RoundedPanel: {fileID: 21300000, guid: 25f9b89280198c146b51ab4f39889325, type: 3}
+  FontLicense: {fileID: 4900000, guid: 7fef91ff0ba683e4196b086b8cc211b7, type: 3}
+  FallbackFontLicense: {fileID: 4900000, guid: 6e59c59b81ab47f9b6ec5781fa725d2c, type: 3}

@@ -10,3 +10,6 @@
 *.psd filter=lfs diff=lfs merge=lfs -text
 *.fbx filter=lfs diff=lfs merge=lfs -text
 *.wav filter=lfs diff=lfs merge=lfs -text
+
+# Tiny UI asset kept as a plain blob: the public fork accepts no new LFS objects.
+Assets/XrSo/Ui/Resources/RoundedPanel.png -filter -diff -merge binary

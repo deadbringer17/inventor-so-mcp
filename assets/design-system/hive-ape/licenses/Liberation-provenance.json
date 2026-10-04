@@ -1,0 +1,7 @@
+{
+  "source": "Inventor XR SO/Assets/TextMesh Pro/Fonts/LiberationSans.ttf",
+  "sha256": "e5b0af421ea2bfbc1ac8d251d647268087ae82786234c57f757d1f0b90fa8b49",
+  "license": "Inventor XR SO/Assets/TextMesh Pro/Fonts/LiberationSans - OFL.txt",
+  "license_sha256": "a130e89b7b2326b599c4b2bbd873eaae63feda407541a2899cb8acb306723de6",
+  "processing": "Existing bundled TMP font binary unchanged; dedicated local dynamic SDF fallback, no changes to global TMP fallback assets."
+}

@@ -113,7 +113,11 @@ namespace InventorXrSo.Xr
         private bool Editable => Active && !_busy && _context != null && _session?.CanEdit == true && SceneCurrent;
         private bool Locked => _session != null && (_session.Status == DesignStatus.Previewing || _session.Status == DesignStatus.Committing || _mutations > 0);
         private bool Idle => Editable && !Locked;
-        private bool SceneCurrent => _state != null && _sceneState != null && _state.DocumentId == _sceneState.DocumentId && _state.Revision == _sceneState.Revision;
+        /// <summary>
+        /// The drawn scene matches the document geometry. SessionController reloads the scene only when the visual revision changes,
+        /// so a non-visual revision bump (e.g. after returning from a part edit) must not leave the workspace blocked forever.
+        /// </summary>
+        private bool SceneCurrent => _state != null && _sceneState != null && _state.DocumentId == _sceneState.DocumentId && _state.VisualRevision == _sceneState.VisualRevision;
         /// <summary>A command (move, constraint, joint) is being drafted: Preview, Apply and Cancel live on the commit bar.</summary>
         private bool InDraft => _command != null;
         private bool IsMove => _command == "assembly_move";

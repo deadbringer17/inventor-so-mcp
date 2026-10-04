@@ -233,6 +233,19 @@ namespace InventorXrSo.Tests
             Assert.AreEqual(CommitBarPhase.Applied, _workspace.CommitBar.Phase, "MarkApplied after a successful apply");
         }
 
+        [Test] public async Task NonVisualRevisionBumpKeepsTheSceneCurrentAndTheActionsEnabled()
+        {
+            await Select(); Assert.True(Enabled(AssemblyWorkspace.IdComponents));
+            // The session reloads the scene only when the visual revision changes: the revision alone moves on.
+            _workspace.SetDocumentState(new DocumentState("doc_bolt", "r_non_visual", "v"));
+            await Task.Yield();
+            Assert.True(Enabled(AssemblyWorkspace.IdComponents), Act(AssemblyWorkspace.IdComponents).DisabledReason);
+            // A visual change without a scene reload is still stale.
+            _workspace.SetDocumentState(new DocumentState("doc_bolt", "r_visual", "v_new"));
+            await Task.Yield();
+            Assert.False(Enabled(AssemblyWorkspace.IdComponents));
+        }
+
         [Test] public async Task RebuildingSameRevisionSceneRevokesPreviewUntilRenderedAgain()
         {
             await Select(); _workspace.BeginMove(); await _workspace.PreviewAsync();

@@ -45,11 +45,12 @@ namespace InventorXrSo.Tests
             preview.Show(new DesignPreview("dimension","doc_bolt","r",DateTimeOffset.UtcNow.AddMinutes(1),model,new[] { snapshot }));
             var labels=view.GetComponentsInChildren<SketchDimensionLabel>(); Assert.AreEqual(1,labels.Length);
             Assert.That(Vector3.Distance(labels[0].transform.localPosition,CadCoordinates.ToLocal(new CadPoint(10,25,37))),Is.LessThan(0.000001));
-            Assert.That(labels[0].transform.lossyScale.x,Is.EqualTo(0.0005f).Within(0.000001));
-            var text=labels[0].GetComponentInChildren<UnityEngine.UI.Text>();
+            Assert.That(labels[0].transform.lossyScale.x,Is.EqualTo(0.001f).Within(0.000001));
+            var text=labels[0].GetComponentInChildren<TMPro.TextMeshProUGUI>();
             Assert.AreEqual("d0 = 12 mm",text.text); Assert.False(text.raycastTarget);
+            Assert.GreaterOrEqual(InventorXrSo.Unity.Ui.UiTypography.CapHeight(text) * text.transform.lossyScale.x * 1000, 14f);
             view.transform.localScale=Vector3.one; labels[0].Refresh();
-            Assert.That(labels[0].transform.lossyScale.x,Is.EqualTo(0.0005f).Within(0.000001));
+            Assert.That(labels[0].transform.lossyScale.x,Is.EqualTo(0.001f).Within(0.000001));
             preview.Clear(); Assert.AreEqual(0,view.GetComponentsInChildren<SketchDimensionLabel>().Length);
         }
 

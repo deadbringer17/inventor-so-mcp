@@ -30,6 +30,33 @@ namespace InventorXrSo.Tests
         private static Button[] Buttons(RingView r) => r.Canvas.GetComponentsInChildren<Button>(false);
 
         [Test]
+        public void OperationalLabelsFitAtFourteenMillimetresWithoutOverlappingHitTargets()
+        {
+            var ring = Ring();
+            var labels = new[] { "Progettazione", "Crea schizzo", "Estrusione", "Raccordo", "Smusso", "Proprietà" };
+            ring.Show(Vector3.zero, labels.Select(s => new XrAction(s, s, "t", () => true, () => { })).ToArray(), null);
+            Canvas.ForceUpdateCanvases();
+            var buttons = Buttons(ring);
+            foreach (var button in buttons)
+            {
+                var text = button.GetComponentInChildren<TextMeshProUGUI>();
+                text.ForceMeshUpdate();
+                Assert.GreaterOrEqual(UiTypography.CapHeight(text), 14f - 0.01f);
+                Assert.IsFalse(text.enableAutoSizing);
+                if (text.text == "Progettazione") Assert.AreEqual(1, text.textInfo.lineCount, "avoid breaking a workspace name inside a word");
+                Assert.LessOrEqual(text.textBounds.size.x, text.rectTransform.rect.width + 0.01f, text.text);
+                Assert.LessOrEqual(text.textBounds.size.y, text.rectTransform.rect.height + 0.01f, text.text);
+                var rect = (RectTransform)button.transform;
+                var bounds = new Rect(rect.anchoredPosition - rect.rect.size / 2, rect.rect.size);
+                foreach (var other in buttons.Where(b => b != button))
+                {
+                    var otherRect = (RectTransform)other.transform;
+                    Assert.IsFalse(bounds.Overlaps(new Rect(otherRect.anchoredPosition - otherRect.rect.size / 2, otherRect.rect.size)), "ring hit targets overlap");
+                }
+            }
+        }
+
+        [Test]
         public void ShowsUpToSixActionsAroundThePoint()
         {
             var ring = Ring();

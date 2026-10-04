@@ -1,3 +1,4 @@
+using TMPro;
 using InventorXrSo.Core.Voice;
 using InventorXrSo.Unity.Ui;
 using UnityEngine;
@@ -13,12 +14,12 @@ namespace InventorXrSo.Xr.Voice
     public sealed class VoicePanel : MonoBehaviour
     {
         private static readonly Vector3 Offset = new Vector3(0f, -0.26f, 0.85f);
-        private static readonly Color ErrorColor = new Color(1f, 0.62f, 0.25f, 1f);
-        private static readonly Color ListeningColor = new Color(0.45f, 0.85f, 0.55f, 1f);
+        private static readonly Color ErrorColor = UiTheme.Error;
+        private static readonly Color ListeningColor = UiTheme.Success;
 
         private Transform _head;
         private Canvas _canvas;
-        private Text _title, _transcript, _command, _detail, _error, _confirmLabel;
+        private TextMeshProUGUI _title, _transcript, _command, _detail, _error, _confirmLabel;
         private GameObject _buttons;
         private VoiceCommandBridge _bridge;
         private float _noticeUntil;
@@ -70,7 +71,7 @@ namespace InventorXrSo.Xr.Voice
             h.childForceExpandWidth = true;
             row.AddComponent<LayoutElement>().preferredHeight = 68;
             var confirm = UiFactory.Button(row.transform, "Conferma", UiFactory.Accent, 28, () => _bridge?.ConfirmPendingAny());
-            _confirmLabel = confirm.GetComponentInChildren<Text>();
+            _confirmLabel = confirm.GetComponentInChildren<TextMeshProUGUI>();
             UiFactory.Button(row.transform, "Annulla", UiFactory.Key, 28, () => _bridge?.CancelPendingAny());
             _buttons = row;
             _buttons.SetActive(false);
@@ -113,7 +114,7 @@ namespace InventorXrSo.Xr.Voice
             SetActive(_error, _error.text);
         }
 
-        private static void SetActive(Text t, string value) { t.gameObject.SetActive(!string.IsNullOrEmpty(value)); }
+        private static void SetActive(TextMeshProUGUI t, string value) { t.gameObject.SetActive(!string.IsNullOrEmpty(value)); }
 
         private void LateUpdate()
         {

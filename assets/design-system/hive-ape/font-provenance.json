@@ -1,0 +1,18 @@
+{
+  "url": "https://api.fontshare.com/v2/fonts/download/satoshi",
+  "retrieved_date": "2026-10-04",
+  "archive_sha256": "f85fbf11864b796aafd242089e31b5113a08d0c4280cde88e03aebeae598ca4b",
+  "processing": "Official static binaries extracted byte-for-byte; no derivatives of font software.",
+  "files": [
+    {
+      "entry": "Satoshi_Complete/Fonts/WEB/fonts/Satoshi-Medium.ttf",
+      "path": "Inventor XR SO/Assets/XrSo/Ui/Fonts/Satoshi-Medium.ttf",
+      "sha256": "1b8add8dd01432467171646ee43f56ef035190f6f5002f80bc1766f03aa0f024"
+    },
+    {
+      "entry": "Satoshi_Complete/Fonts/WEB/fonts/Satoshi-Bold.ttf",
+      "path": "Inventor XR SO/Assets/XrSo/Ui/Fonts/Satoshi-Bold.ttf",
+      "sha256": "4b7a5e6f7673cf13e96ec2b8dd20897a6a1ac2e548f1bb78b475ebc4c787deaa"
+    }
+  ]
+}

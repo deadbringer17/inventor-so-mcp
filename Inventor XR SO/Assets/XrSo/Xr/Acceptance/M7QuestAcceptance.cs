@@ -84,7 +84,7 @@ namespace InventorXrSo.Xr
             // M7-02: interference against the real fixture.
             Check(!session.Gate.Busy, "no verification is running");
             RunAction(InspectWorkspace.IdInterference);
-            await WaitUntil(() => session.Interference.Status != VerifyStatus.Running, ct);
+            await WaitUntil(() => session.Interference.Status != VerifyStatus.Running, ct, 180);
             Check(session.Interference.Status == VerifyStatus.Done, "interference finished: " + session.Interference.ErrorMessage);
             var interference = session.Interference.Result;
             Check(interference.Count == 1, "exactly one interfering pair, found " + interference.Count);
@@ -106,7 +106,7 @@ namespace InventorXrSo.Xr
             RunAction(InspectWorkspace.IdDistance);
             await SelectByBrowser(inspect, "M7_C", ct);
             RunAction(InspectWorkspace.IdDistance);
-            await WaitUntil(() => session.Distance.Status != VerifyStatus.Running, ct);
+            await WaitUntil(() => session.Distance.Status != VerifyStatus.Running, ct, 180);
             Check(session.Distance.Status == VerifyStatus.Done, "distance finished: " + session.Distance.ErrorMessage);
             var distance = session.Distance.Result;
             Check(Math.Abs(distance.DistanceMm - DistanceMm) <= 0.01, "distance 30 mm +/- 0.01, found " + F(distance.DistanceMm));
@@ -117,7 +117,7 @@ namespace InventorXrSo.Xr
 
             // M7-04: health and BOM.
             RunAction(InspectWorkspace.IdHealth);
-            await WaitUntil(() => session.Health.Status != VerifyStatus.Running, ct);
+            await WaitUntil(() => session.Health.Status != VerifyStatus.Running, ct, 180);
             Check(session.Health.Status == VerifyStatus.Done, "health finished: " + session.Health.ErrorMessage);
             var health = session.Health.Result;
             Check(health.Issues.Any(i => i.Name == "M7_Sick"), "M7_Sick is reported as failing");

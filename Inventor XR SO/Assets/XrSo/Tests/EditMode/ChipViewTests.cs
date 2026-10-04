@@ -51,13 +51,28 @@ namespace InventorXrSo.Tests
             var chip = Chip(new NumericEntry("w", QuantityUnit.Millimeters, 25, 0, 500));
             var normal = chip.BorderColor;
             chip.SetModified(true);
-            Assert.AreEqual(UiFactory.Accent, chip.BorderColor);
+            Assert.AreEqual(UiTheme.Preview, chip.BorderColor);
             chip.SetModified(false);
             Assert.AreEqual(normal, chip.BorderColor);
             chip.Armed = true;
             Assert.IsTrue(chip.Armed);
             Assert.AreNotEqual(normal, chip.BorderColor);
             Assert.AreNotEqual(ChipView.Fill, chip.FillColor);
+        }
+
+        [Test]
+        public void RayFocusDoesNotChangeTheDraftValueAndRestoresItsStateColour()
+        {
+            var entry = new NumericEntry("w", QuantityUnit.Millimeters, 25, 0, 500);
+            var chip = Chip(entry);
+            chip.SetModified(true);
+            var position = chip.transform.position;
+            chip.OnPointerEnter(null);
+            Assert.AreEqual(UiTheme.Signal, chip.BorderColor);
+            Assert.AreEqual(25, entry.Value);
+            Assert.AreEqual(position, chip.transform.position);
+            chip.OnPointerExit(null);
+            Assert.AreEqual(UiTheme.Preview, chip.BorderColor);
         }
 
         [Test]
@@ -70,7 +85,7 @@ namespace InventorXrSo.Tests
             Assert.AreEqual(1, taps);
             var size = ((RectTransform)chip.Canvas.transform).sizeDelta;
             Assert.GreaterOrEqual(Mathf.Min(size.x, size.y), 25f);
-            Assert.GreaterOrEqual(chip.GetComponentInChildren<TMPro.TextMeshProUGUI>().fontSize * UiFactory.CapHeightRatio, 14f - 0.01f);
+            Assert.GreaterOrEqual(UiTypography.CapHeight(chip.GetComponentInChildren<TMPro.TextMeshProUGUI>()), 14f - 0.01f);
         }
 
         [Test]

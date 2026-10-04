@@ -81,6 +81,7 @@ public sealed class PairingWindowTests
                 await UntilAsync(() => store.Status().State == "cancelled");
                 Assert.Null(Find<PictureBox>(form, "PairingQr").Image);
                 Assert.False(store.Redeem(old.OneTimeToken).Ok);
+                await UntilAsync(() => Find<Label>(form, "ManualAddress").Text == "192.168.2.20:8443");
                 Assert.Equal("192.168.2.20:8443", Find<Label>(form, "ManualAddress").Text);
                 Assert.Equal("192.168.2.20", File.ReadAllText(Path.Combine(root, "last-address.txt")));
             });
@@ -168,6 +169,51 @@ public sealed class PairingWindowTests
             Assert.Null(Find<PictureBox>(form, "PairingQr").Image);
             Assert.Equal("Codice non generato", Find<Label>(form, "ManualCode").Text);
             Assert.Equal(id, store.Status().Window!.Id);
+        });
+    }
+
+    [Fact]
+    public async Task ThemeLoadsLocalSatoshiAndKeepsQrWhiteAndControlsReadable()
+    {
+        var status = new ControlResponse { Addresses = [new("192.168.1.20", "Fixture Ethernet")], Port = 8443 };
+        await RunWindowAsync(() => new PairingForm(null, (_, _) => Task.FromResult(status),
+            _ => Task.FromResult<ControlResponse?>(status), listenForActivation: false), async form =>
+        {
+            await UntilAsync(() => Find<Button>(form, "GenerateCode").Enabled);
+            Assert.Contains("Satoshi", form.Font.Name);
+            Assert.Equal(PairingTheme.Navy, Find<Label>(form, "BrandHeader").BackColor);
+            Assert.Equal(Color.White, Find<PictureBox>(form, "PairingQr").BackColor);
+            var generate = Find<Button>(form, "GenerateCode");
+            Assert.Equal(PairingTheme.Signal, generate.BackColor);
+            Assert.Equal(PairingTheme.Ink, generate.ForeColor);
+            Assert.Equal(PairingTheme.Paper, generate.FlatAppearance.MouseDownBackColor);
+            generate.Enabled = false;
+            Assert.Equal(PairingTheme.Ink, generate.ForeColor);
+            Assert.NotEqual(PairingTheme.Signal, generate.BackColor);
+            // Synthetic layout scaling is not an actual monitor DPI change.
+            var evidence = Environment.GetEnvironmentVariable("INVENTOR_SO_PAIRING_TEST_ARTIFACTS");
+            float previous = 1;
+            foreach (float scale in new[] { 1f, 1.5f, 2f })
+            {
+                form.Scale(new SizeF(scale / previous, scale / previous));
+                previous = scale;
+                form.PerformLayout();
+                Assert.True(Find<PictureBox>(form, "PairingQr").Height >= 40 * scale);
+                foreach (var name in new[] { "GenerateCode", "ManualCode", "CertificateFingerprint", "BrandHeader" })
+                {
+                    var control = form.Controls.Find(name, true).Single();
+                    var origin = form.PointToClient(control.PointToScreen(Point.Empty));
+                    Assert.True(origin.X >= 0 && origin.Y >= 0, name);
+                    Assert.True(origin.X + control.Width <= form.ClientSize.Width + 2, name);
+                }
+                if (!string.IsNullOrWhiteSpace(evidence))
+                {
+                    Directory.CreateDirectory(evidence);
+                    using var bitmap = new Bitmap(form.Width, form.Height);
+                    form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
+                    bitmap.Save(Path.Combine(evidence, $"pairing-theme-synthetic-scale-{scale * 100:0}.png"));
+                }
+            }
         });
     }
 

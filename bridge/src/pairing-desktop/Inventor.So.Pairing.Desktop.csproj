@@ -9,6 +9,9 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="../../../Inventor XR SO/Assets/XrSo/Ui/Fonts/Satoshi-Medium.ttf" LogicalName="Inventor.So.Pairing.Satoshi-Medium.ttf" />
+    <EmbeddedResource Include="../../../Inventor XR SO/Assets/XrSo/Ui/Fonts/Satoshi-Bold.ttf" LogicalName="Inventor.So.Pairing.Satoshi-Bold.ttf" />
+    <Content Include="../../../Inventor XR SO/Assets/XrSo/Ui/Fonts/FFL.txt" Link="licenses/Satoshi-FFL.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <InternalsVisibleTo Include="Inventor.So.Pairing.Desktop.Tests" />
     <ProjectReference Include="..\pairing-control\Inventor.So.Pairing.Control.csproj" />
     <PackageReference Include="QRCoder" Version="1.6.0" />

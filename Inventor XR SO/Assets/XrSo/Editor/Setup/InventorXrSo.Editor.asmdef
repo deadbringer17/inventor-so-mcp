@@ -10,6 +10,7 @@
     "Unity.RenderPipelines.Universal.Runtime",
     "Unity.RenderPipelines.Core.Runtime",
     "UnityEngine.UI",
+    "Unity.TextMeshPro",
     "Unity.XR.Management",
     "Unity.XR.Management.Editor",
     "Unity.XR.Oculus"

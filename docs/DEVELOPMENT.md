@@ -2,6 +2,21 @@
 
 Target: Inventor 2027 x64. Full functional scope remains the 80-point assessment in `analisi-spec-inventor-so-mcp.md`; the work below does not replace it with a smaller goal.
 
+## M8 grapics — tema HIVE A.P.E. — 2026-10-04
+
+Preparati [spec di adattamento](superpowers/specs/2026-10-04-m8-grapics-design.md)
+e [piano di sviluppo](superpowers/plans/2026-10-04-m8-grapics.md) per adottare
+il design system EnerBot usato da HIVE nel client Quest e nella finestra Windows
+di associazione. Snapshot selettivo di dieci file, incluso Satoshi, fissato al
+commit GitHub e verificato: [fonti](../assets/design-system/hive-ape/README.md).
+Tema Unity uGUI/TMP e pairing Windows implementati sul branch `codex/m8-grapics`:
+Satoshi statico ufficiale con licenza locale, palette navy/teal/giallo, focus,
+stati semantici, Home/liste e voce migrati a TMP. Runner M8 registrato usando
+la fixture nativa M6. Core **467/467**, backend **985/985**, pairing **9/9**.
+Unity **416/416**, prime build QA riuscite, distribuzione pairing Windows Release
+con FFL riuscita. Build finale QA/ordinaria e collaudo dispositivo in corso;
+performance e prova fisica ancora aperte: [verbale M8](xr-m8-verification.md).
+
 ## Pairing Windows e pulsante Inventor — 2026-10-04
 
 Implementati controllo locale su Named Pipe con ACL utente e rifiuto dei logon di rete,

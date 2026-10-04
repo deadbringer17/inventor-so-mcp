@@ -8,11 +8,9 @@ namespace InventorXrSo.Unity.Ui
     /// <summary>Plain uGUI built in code: no prefabs to keep in sync.</summary>
     public static class UiFactory
     {
-        public static readonly Color Background = new Color(0.08f, 0.09f, 0.11f, 0.92f);
-        public static readonly Color Accent = new Color(0.20f, 0.45f, 0.85f, 1f);
-        public static readonly Color Key = new Color(0.22f, 0.24f, 0.28f, 1f);
-
-        public static Font Font => Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        public static readonly Color Background = UiTheme.Navy;
+        public static readonly Color Accent = UiTheme.Signal;
+        public static readonly Color Key = UiTheme.Teal;
 
         /// <summary>World-space canvas; 1 canvas unit = 1 mm.</summary>
         public static Canvas WorldCanvas(Transform parent, string name, Vector2 sizeMm)
@@ -21,9 +19,12 @@ namespace InventorXrSo.Unity.Ui
             go.transform.SetParent(parent, false);
             var canvas = go.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.WorldSpace;
+            canvas.referencePixelsPerUnit = 1;
             ((RectTransform)go.transform).sizeDelta = sizeMm;
             go.transform.localScale = Vector3.one * 0.001f;
-            go.AddComponent<CanvasScaler>().dynamicPixelsPerUnit = 3;
+            var scaler = go.AddComponent<CanvasScaler>();
+            scaler.dynamicPixelsPerUnit = 3;
+            scaler.referencePixelsPerUnit = 1;
             return canvas;
         }
 
@@ -31,7 +32,14 @@ namespace InventorXrSo.Unity.Ui
         {
             var go = new GameObject(name, typeof(RectTransform), typeof(Image));
             go.transform.SetParent(parent, false);
-            go.GetComponent<Image>().color = color;
+            var image = go.GetComponent<Image>();
+            image.color = color;
+            image.raycastTarget = false;
+            if (color.a > 0 && UiThemeAssets.Current != null)
+            {
+                image.sprite = UiThemeAssets.Current.RoundedPanel;
+                image.type = Image.Type.Sliced;
+            }
             return (RectTransform)go.transform;
         }
 
@@ -43,45 +51,16 @@ namespace InventorXrSo.Unity.Ui
             rect.offsetMax = Vector2.zero;
         }
 
-        public static Text Label(Transform parent, string text, int size, FontStyle style = FontStyle.Normal)
+        public static TextMeshProUGUI Label(Transform parent, string text, int size, FontStyle style = FontStyle.Normal)
         {
-            var go = new GameObject("Label", typeof(RectTransform));
-            go.transform.SetParent(parent, false);
-            var label = go.AddComponent<Text>();
-            label.font = Font;
-            label.fontSize = size;
-            label.fontStyle = style;
-            label.color = Color.white;
-            label.text = text;
-            label.horizontalOverflow = HorizontalWrapMode.Wrap;
-            label.verticalOverflow = VerticalWrapMode.Overflow;
-            return label;
+            var fontStyle = style == FontStyle.Bold ? FontStyles.Bold : FontStyles.Normal;
+            return Text(parent, text, Mathf.Max(14, size * UiTypography.CapRatio(UiTypography.Font(fontStyle))), fontStyle);
         }
 
         public static Button Button(Transform parent, string text, Color color, int fontSize, Action onClick)
         {
-            var go = new GameObject(text, typeof(RectTransform), typeof(Image));
-            go.transform.SetParent(parent, false);
-            var image = go.GetComponent<Image>();
-            image.color = Color.white;
-            var button = go.AddComponent<Button>();
-            button.targetGraphic = image;
-            var colors = button.colors;
-            colors.normalColor = color;
-            colors.highlightedColor = new Color(0.35f, 0.65f, 0.95f);
-            colors.pressedColor = new Color(0.12f, 0.35f, 0.65f);
-            colors.selectedColor = color;
-            button.colors = colors;
-            button.navigation = new Navigation { mode = Navigation.Mode.None };
-            button.onClick.AddListener(() => onClick());
-            var label = Label(go.transform, text, fontSize, FontStyle.Bold);
-            label.alignment = TextAnchor.MiddleCenter;
-            Stretch(label.rectTransform);
-            return button;
+            return TextButton(parent, text, color, Mathf.Max(14, fontSize * UiTypography.CapRatio(UiTypography.Font(FontStyles.Bold))), onClick);
         }
-
-        /// <summary>Rapporto tra altezza delle maiuscole e fontSize per il font SDF di default.</summary>
-        public const float CapHeightRatio = 0.7f;
 
         /// <summary>Testo TextMeshPro; capHeightMm e l'altezza delle maiuscole (canvas: 1 unita = 1 mm).</summary>
         public static TextMeshProUGUI Text(Transform parent, string text, float capHeightMm, FontStyles style = FontStyles.Normal)
@@ -89,37 +68,52 @@ namespace InventorXrSo.Unity.Ui
             var go = new GameObject("Text", typeof(RectTransform));
             go.transform.SetParent(parent, false);
             var label = go.AddComponent<TextMeshProUGUI>();
-            label.font = TMP_Settings.defaultFontAsset;
-            label.fontSize = capHeightMm / CapHeightRatio;
-            label.fontStyle = style;
-            label.color = Color.white;
+            label.font = UiTypography.Font(style);
+            label.fontSize = capHeightMm / UiTypography.CapRatio(label.font);
+            // Bold is a real local face; do not apply synthetic emboldening a second time.
+            label.fontStyle = style & ~FontStyles.Bold;
+            label.color = UiTheme.Text;
             label.text = text;
             label.textWrappingMode = TextWrappingModes.Normal;
-            label.overflowMode = TextOverflowModes.Ellipsis;
+            label.overflowMode = TextOverflowModes.Overflow;
+            label.enableAutoSizing = false;
+            label.richText = false;
             label.raycastTarget = false;
             return label;
         }
 
         public static Button TextButton(Transform parent, string text, Color color, float capHeightMm, Action onClick)
         {
-            var go = new GameObject(text, typeof(RectTransform), typeof(Image));
-            go.transform.SetParent(parent, false);
-            var image = go.GetComponent<Image>();
+            var rect = Panel(parent, text, Color.white);
+            var go = rect.gameObject;
+            var border = go.GetComponent<Image>();
+            border.raycastTarget = true;
+            var fill = Panel(rect, "Fill", Color.white);
+            Stretch(fill);
+            fill.offsetMin = Vector2.one;
+            fill.offsetMax = -Vector2.one;
+            var image = fill.GetComponent<Image>();
             image.color = Color.white;
-            var button = go.AddComponent<Button>();
+            var button = go.AddComponent<ThemedButton>();
             button.targetGraphic = image;
+            button.Border = border;
+            button.Primary = color == Accent;
             var colors = button.colors;
             colors.normalColor = color;
-            colors.highlightedColor = UiStyle.Hover;
-            colors.pressedColor = new Color(0.12f, 0.35f, 0.65f);
+            colors.highlightedColor = button.Primary ? UiTheme.Signal : UiTheme.TealHover;
+            colors.pressedColor = button.Primary ? UiTheme.Paper : UiTheme.Surface;
             colors.selectedColor = color;
             colors.disabledColor = UiStyle.Disabled;
+            colors.fadeDuration = UiTheme.MicroSeconds;
             button.colors = colors;
             button.navigation = new Navigation { mode = Navigation.Mode.None };
             button.onClick.AddListener(() => onClick());
             var label = Text(go.transform, text, capHeightMm, FontStyles.Bold);
             label.alignment = TextAlignmentOptions.Center;
             Stretch(label.rectTransform);
+            label.margin = new Vector4(2, 0, 2, 0);
+            label.color = button.Primary ? UiTheme.Ink : UiTheme.Text;
+            button.Label = label;
             return button;
         }
 

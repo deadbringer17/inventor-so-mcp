@@ -1,0 +1,82 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0d2030">
+  <title>{% block title %}A.P.E. Platform{% endblock %}</title>
+  <link rel="icon" href="{% static 'images/web/favicon.svg' %}" type="image/svg+xml">
+  <link rel="icon" href="{% static 'images/web/favicon.ico' %}" sizes="32x32">
+  <link rel="apple-touch-icon" href="{% static 'images/web/apple-touch-icon.png' %}">
+  <link rel="stylesheet" href="{% static 'enerbot-design-system-ffcaf531-f3c5-4ef1-b439-d62f1d1551ef/colors_and_type.css' %}?v={{ asset_version }}">
+  <link rel="stylesheet" href="{% static 'app-overrides.css' %}?v={{ asset_version }}">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <header class="eb-header">
+    <div class="eb-header-inner">
+      <a class="eb-logo" href="/">
+        <img src="{% static 'images/web/Logo_mark.svg' %}" alt="EnerBot">
+        <span class="eb-logo-name">EnerBot</span>
+        <span class="eb-logo-tag eb-hide-sm">Operational&nbsp;workspace</span>
+      </a>
+
+      {% if user.is_authenticated %}
+      <nav class="eb-nav" id="eb-nav">
+        <a href="{% url 'dashboard' %}" {% if request.path == '/dashboard/' %}aria-current="page"{% endif %}>Dashboard</a>
+        <a href="{% url 'hive-installation-list' %}" {% if '/hive/' in request.path %}aria-current="page"{% endif %}>HIVE</a>
+        <a href="{% url 'twincells-site-list' %}" {% if '/twincells/' in request.path %}aria-current="page"{% endif %}>TwinCells</a>
+        {% if hub_access %}<a href="{% url 'hub-dashboard' %}" {% if '/hub/' in request.path %}aria-current="page"{% endif %}>Hub</a>{% endif %}
+        <a href="{% url 'api-tokens' %}" {% if '/dashboard/api-tokens' in request.path %}aria-current="page"{% endif %}>API</a>
+        <a href="/">Sito pubblico</a>
+      </nav>
+      <div class="eb-header-actions">
+        <div class="eb-user-pill">
+          <div class="eb-user-avatar">
+            {% if user.customer %}{{ user.customer.name|slice:":1"|upper }}{% else %}{{ user.username|slice:":1"|upper }}{% endif %}
+          </div>
+          <div class="eb-user-meta">
+            <div class="eb-user-name">{% if user.customer %}{{ user.customer.name }}{% else %}{{ user.username }}{% endif %}</div>
+            <div class="eb-user-role">{% if user.is_enerbot_admin %}Admin{% else %}Operatore{% endif %}</div>
+          </div>
+        </div>
+        <form action="{% url 'logout' %}" method="post" style="margin:0">
+          {% csrf_token %}
+          <button type="submit" class="eb-logout">Logout</button>
+        </form>
+        <button type="button" class="eb-burger" id="eb-burger" aria-label="Apri menu" aria-expanded="false" aria-controls="eb-nav">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+      {% else %}
+      <a class="eb-btn eb-btn-primary eb-btn-sm" href="{% url 'login' %}">Login</a>
+      {% endif %}
+    </div>
+  </header>
+
+  <main class="eb-main">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script>
+    (() => {
+      const burger = document.getElementById('eb-burger');
+      const nav = document.getElementById('eb-nav');
+      if (!burger || !nav) return;
+      const setOpen = open => {
+        nav.classList.toggle('open', open);
+        burger.setAttribute('aria-expanded', String(open));
+        burger.setAttribute('aria-label', open ? 'Chiudi menu' : 'Apri menu');
+        document.body.classList.toggle('eb-no-scroll', open);
+      };
+      burger.addEventListener('click', () => setOpen(!nav.classList.contains('open')));
+      document.addEventListener('keydown', e => { if (e.key === 'Escape') setOpen(false); });
+      // Tornando sopra il breakpoint la nav torna orizzontale: lo stato "open" va azzerato
+      // o il body resta bloccato allo scroll.
+      matchMedia('(max-width: 900px)').addEventListener('change', e => { if (!e.matches) setOpen(false); });
+    })();
+  </script>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

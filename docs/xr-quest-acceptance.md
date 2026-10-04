@@ -1,4 +1,4 @@
-# Test automatici sul Quest 3 — standard M1–M7
+# Test automatici sul Quest 3 — standard M1–M8
 
 Standard nato con M4 ([collaudo M4](xr-m4-collaudo.md)) ed esteso il 29 settembre
 2026 a M1, M2, M3 e M5 ([piano](superpowers/plans/2026-09-29-quest-acceptance-runners.md)).
@@ -11,7 +11,7 @@ reale, su un documento di prova dedicato, e scrive log e screenshot come evidenz
 | Pezzo | Percorso |
 |---|---|
 | Base comune (intent Android, log, attese, riflessione, screenshot, guardia fixture) | `Inventor XR SO/Assets/XrSo/Xr/Acceptance/QuestAcceptanceRunner.cs` |
-| Runner M1, M2, M3, M5, M6, M7 | `Inventor XR SO/Assets/XrSo/Xr/Acceptance/M{1,2,3,5,6,7}QuestAcceptance.cs` |
+| Runner M1, M2, M3, M5, M6, M7, M8 | `Inventor XR SO/Assets/XrSo/Xr/Acceptance/M{1,2,3,5,6,7,8}QuestAcceptance.cs` |
 | Runner M4 (stessi passi del collaudo del 28 settembre, ora sulla base comune) | `Inventor XR SO/Assets/XrSo/Xr/M4QuestAcceptance.cs` |
 | Fixture Inventor M1, M2, M3, M5, M6, M7 | `bridge/tests/QuestAcceptanceFixtures/` |
 | Fixture Inventor M4 | `bridge/tests/M4LiveProbe -- --prepare-quest / --restore-quest` |
@@ -27,6 +27,7 @@ Regole:
 - Prima di ogni mutazione verificano che il documento attivo inizi con
   `XR_MN_Quest_Acceptance`. Dopo ogni preview controllano, tramite il backend,
   che documento e revisione di Inventor non siano cambiati.
+  M8 riusa esplicitamente la fixture **M6**, non un documento M8 o dell'utente.
 - Usano gli oggetti reali costruiti da `AppController`: workspace, `DesignSession`,
   backend su TLS pinnato. I percorsi sono gli stessi dei pulsanti UI.
 - Evidenza nell'area persistente dell'app: `mN-acceptance.txt` e
@@ -38,6 +39,14 @@ Regole:
   sotto. I gate fisici restano aperti finché non vengono provati sul visore.
 
 ## Procedura sulla postazione Windows
+
+M8 grapics: `scripts/run-m8-acceptance.ps1 -Apk <qa.apk> -OrdinaryApk <ordinary.apk>
+-Serial <seriale>` verifica che il Quest sia sveglio prima di creare la fixture
+M6, esegue il runner M8 in un processo figlio e ripristina documento e APK nel
+`finally`. Richiede PowerShell 7, ADB sul PATH e Inventor 2027 con host connesso.
+Il runner M8 riusa i controlli nativi/input M6 (id M6 nel log) e aggiunge tema,
+font, contrasto, fit e 100 rebuild. Non certifica performance, reale DPI Windows,
+scansione QR o sessione fisica. Stato/evidenze in [verbale M8](xr-m8-verification.md).
 
 ```powershell
 # 1. Test EditMode (include il contratto dei runner) e APK di collaudo

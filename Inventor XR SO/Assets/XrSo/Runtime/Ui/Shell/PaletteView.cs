@@ -11,7 +11,7 @@ namespace InventorXrSo.Unity.Ui
     public sealed class PaletteView : MonoBehaviour
     {
         public const float TextMm = 7f;
-        public const float LineSpacing = -35f;
+        public const float LineSpacing = -52f;
         private static readonly string[] Keys = { "7", "8", "9", "4", "5", "6", "1", "2", "3", "-", "0", ",", "←", "Annulla", "OK" };
 
         private ActionCatalog _catalog;

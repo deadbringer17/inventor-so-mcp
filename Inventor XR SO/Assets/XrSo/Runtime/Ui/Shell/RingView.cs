@@ -6,11 +6,11 @@ using UnityEngine;
 
 namespace InventorXrSo.Unity.Ui
 {
-    /// <summary>Anello contestuale: al massimo 6 azioni a ~60 mm da un punto del modello, rivolto verso la testa.</summary>
+    /// <summary>Anello contestuale: al massimo 6 azioni a 172 mm da un punto del modello, rivolto verso la testa.</summary>
     public sealed class RingView : MonoBehaviour
     {
-        public const float RadiusMm = 60f, TextMm = 7f;
-        public static readonly Vector2 ButtonMm = new Vector2(56, 30);
+        public const float RadiusMm = 172f, TextMm = 14f;
+        public static readonly Vector2 ButtonMm = new Vector2(144, 50);
         private Transform _head;
 
         public Canvas Canvas { get; private set; }

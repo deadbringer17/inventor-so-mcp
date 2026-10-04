@@ -169,3 +169,13 @@ con collegamento alla specifica e ai probe riproducibili.
 Massimo 200 definizioni, con avviso sui componenti omessi; mesh oltre il limite backend sono omesse. Nessuna voce; modifica CAD disponibile in M3, con collaudo completato. Le misure M2 coprono la distanza tra due punti sulla mesh: angoli, raggi e distanze minime esatte B-Rep restano estensioni successive. Fit to room usa lo spazio impostato, senza scansione della stanza. Il Browser segue il scene graph (documenti/occurrence), non espone ancora l'albero completo delle feature. Le credenziali sono cifrate con Android Keystore sul visore; nell'Editor sono un file di sviluppo in chiaro sotto `Application.persistentDataPath`.
 
 La scansione mantiene il percorso WebCamTexture del piano M1, con entrambi i permessi CAMERA e HEADSET_CAMERA; non aggiunge MRUK. La [guida Meta alla migrazione](https://developers.meta.com/horizon/documentation/unity/unity-pca-migration-from-webcamtexture/) descrive anche il percorso MRUK, che richiede il solo HEADSET_CAMERA. Fotocamera, pairing e riutilizzo delle credenziali Keystore sono stati verificati sul Quest 3; gli esiti e le verifiche residue sono nel [verbale di collaudo](../docs/xr-m1-verification.md).
+## M8 grapics
+
+Tema HIVE/EnerBot applicato ai primitivi uGUI/TMP, Home, voce e workspace:
+Satoshi Medium/Bold locale, superfici navy/teal, focus e CTA gialli, card chiare
+per il contesto. Font ufficiali e FFL in `Assets/XrSo/Ui/Fonts`, asset locali
+in `Assets/XrSo/Ui/Resources`; nessun caricamento remoto di CSS o font.
+Il tema Windows di pairing usa gli stessi riferimenti. [Spec M8](../docs/superpowers/specs/2026-10-04-m8-grapics-design.md)
+e [verifica](../docs/xr-m8-verification.md): software in verifica, collaudo Quest
+e fisico aperto. Il runner M8 usa la fixture dedicata M6 attraverso
+`scripts/run-m8-acceptance.ps1` dalla radice del repository.

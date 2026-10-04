@@ -1,3 +1,4 @@
+using TMPro;
 using InventorXrSo.Core.Backend;
 using InventorXrSo.Unity.Ui;
 using UnityEngine;
@@ -13,7 +14,7 @@ namespace InventorXrSo.Unity.Scene
             var canvas=UiFactory.WorldCanvas(parent,"Sketch dimension",new Vector2(320,44));
             canvas.transform.localPosition=CadCoordinates.ToLocal(anchor);
             var label=UiFactory.Label(canvas.transform,text.Length>128 ? text.Substring(0,125)+"…" : text,24);
-            label.alignment=TextAnchor.MiddleCenter; label.raycastTarget=false; UiFactory.Stretch(label.rectTransform);
+            label.alignment=TextAlignmentOptions.Center; label.raycastTarget=false; UiFactory.Stretch(label.rectTransform);
             var view=canvas.gameObject.AddComponent<SketchDimensionLabel>(); view._head=head; view._model=model;
             view.Refresh(); return view;
         }
@@ -21,7 +22,7 @@ namespace InventorXrSo.Unity.Scene
         {
             if (_model==null) return;
             float scale=Mathf.Max(0.0001f,Mathf.Abs(_model.lossyScale.x));
-            transform.localScale=Vector3.one*(0.0005f/scale);
+            transform.localScale=Vector3.one*(0.001f/scale);
             if (_head!=null) transform.rotation=_head.rotation;
         }
         private void LateUpdate() => Refresh();

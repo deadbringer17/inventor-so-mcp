@@ -1,3 +1,4 @@
+using TMPro;
 using System.Collections.Generic;
 using System.Globalization;
 using InventorXrSo.Unity.Ui;
@@ -57,7 +58,7 @@ namespace InventorXrSo.Unity.Scene
             var canvas = UiFactory.WorldCanvas(_temporary.transform, "Quota", new Vector2(300, 38));
             canvas.transform.localPosition = (a + b) * 0.5f;
             var label = UiFactory.Label(canvas.transform, text, 24);
-            label.alignment = TextAnchor.MiddleCenter; label.raycastTarget = false;
+            label.alignment = TextAlignmentOptions.Center; label.raycastTarget = false;
             UiFactory.Stretch(label.rectTransform);
             UpdatePresentation(_temporary);
         }

@@ -1,3 +1,4 @@
+using TMPro;
 using System.Collections.Generic;
 using System.Linq;
 using InventorXrSo.Core.Backend;
@@ -83,7 +84,7 @@ namespace InventorXrSo.Unity.Scene
             var canvas = UiFactory.WorldCanvas(_distance.transform, "Distanza minima", new Vector2(420, 38));
             canvas.transform.localPosition = (aLocal + bLocal) * 0.5f;
             var text = UiFactory.Label(canvas.transform, label, 24);
-            text.alignment = TextAnchor.MiddleCenter; text.raycastTarget = false;
+            text.alignment = TextAlignmentOptions.Center; text.raycastTarget = false;
             UiFactory.Stretch(text.rectTransform);
             DistanceLabel = label;
         }

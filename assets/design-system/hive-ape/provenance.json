@@ -1,0 +1,89 @@
+{
+  "repository": "deadbringer17/APE_Hive",
+  "branch": "master",
+  "commit": "436a52a1450be2f3330c055670515df20696f031",
+  "retrieved_date": "2026-10-04",
+  "timezone": "Europe/Rome",
+  "files": [
+    {
+      "source_path": "static/enerbot-design-system-ffcaf531-f3c5-4ef1-b439-d62f1d1551ef/colors_and_type.css",
+      "local_path": "source/colors_and_type.css",
+      "git_blob_sha": "5e534173fbc610079f45835e07c2233b1a6fe3be",
+      "sha256": "747b649d6318e93865d9951c78e64773eb51a72a88650f2fe21584930fe8bf89",
+      "bytes": 4494,
+      "url": "https://github.com/deadbringer17/APE_Hive/blob/436a52a1450be2f3330c055670515df20696f031/static/enerbot-design-system-ffcaf531-f3c5-4ef1-b439-d62f1d1551ef/colors_and_type.css"
+    },
+    {
+      "source_path": "static/app-overrides.css",
+      "local_path": "source/app-overrides.css",
+      "git_blob_sha": "e01ffc3b8b2f30e1e5520ce4cd66569ee315decf",
+      "sha256": "5d55fa5412f036f6e7b037feb846e726c495163b88ececadf2cd0311e36ad1c0",
+      "bytes": 25413,
+      "url": "https://github.com/deadbringer17/APE_Hive/blob/436a52a1450be2f3330c055670515df20696f031/static/app-overrides.css"
+    },
+    {
+      "source_path": "templates/base.html",
+      "local_path": "reference/base.html",
+      "git_blob_sha": "c80f34e6ab95a1051e1511d2612ce22076d9934c",
+      "sha256": "82309454d47d9a48a99b7183349f358a8f6f615c66caddb4ac5e8c57fddfc486",
+      "bytes": 4075,
+      "url": "https://github.com/deadbringer17/APE_Hive/blob/436a52a1450be2f3330c055670515df20696f031/templates/base.html"
+    },
+    {
+      "source_path": "templates/hive/installation_list.html",
+      "local_path": "reference/hive-installation-list.html",
+      "git_blob_sha": "d1422fd9cca5a2f09b48b1f231f5d048f3e09443",
+      "sha256": "ddbd295afa2e178ef7cfff4fa19daa73ef965995fc2a56b66b88b30c2b43952e",
+      "bytes": 4443,
+      "url": "https://github.com/deadbringer17/APE_Hive/blob/436a52a1450be2f3330c055670515df20696f031/templates/hive/installation_list.html"
+    },
+    {
+      "source_path": "templates/hive/installation_detail.html",
+      "local_path": "reference/hive-installation-detail.html",
+      "git_blob_sha": "d812cd59d65666c8232dafa93a0260b218699e26",
+      "sha256": "9cc3f4a0c1162b3d9fe0507edbc18003a62f3c66504a31263064cf28030d5348",
+      "bytes": 10193,
+      "url": "https://github.com/deadbringer17/APE_Hive/blob/436a52a1450be2f3330c055670515df20696f031/templates/hive/installation_detail.html"
+    },
+    {
+      "source_path": "docs/superpowers/specs/2026-06-26-enerbot-ds-reskin-design.md",
+      "local_path": "reference/enerbot-ds-reskin-design.md",
+      "git_blob_sha": "c82d30af06ea946ddfddf7dceb245ef2c3c92c96",
+      "sha256": "dcc4c855a836a954f0836a3dd8f08cf4fd23b4b10625d27ad0019c30aa5a86ac",
+      "bytes": 8126,
+      "url": "https://github.com/deadbringer17/APE_Hive/blob/436a52a1450be2f3330c055670515df20696f031/docs/superpowers/specs/2026-06-26-enerbot-ds-reskin-design.md"
+    },
+    {
+      "source_path": "sitoweb/enerbot/project/_ds/enerbot-design-system-ffcaf531-f3c5-4ef1-b439-d62f1d1551ef/README.md",
+      "local_path": "reference/enerbot-ds-readme.md",
+      "git_blob_sha": "5592ddc79d403c230d4ddb53ac2af4399e817288",
+      "sha256": "66f348df82bfbcb3583ffaaaf3f0e6cd36ff718847f30eb248f90c141f6bf4e6",
+      "bytes": 16874,
+      "url": "https://github.com/deadbringer17/APE_Hive/blob/436a52a1450be2f3330c055670515df20696f031/sitoweb/enerbot/project/_ds/enerbot-design-system-ffcaf531-f3c5-4ef1-b439-d62f1d1551ef/README.md"
+    },
+    {
+      "source_path": "sitoweb/enerbot/project/_ds/enerbot-design-system-ffcaf531-f3c5-4ef1-b439-d62f1d1551ef/_ds_manifest.json",
+      "local_path": "reference/ds-manifest.json",
+      "git_blob_sha": "98f4064828530eab1d24944b57572420b979f09a",
+      "sha256": "bca8c7e08c3d7baa9a292e07d7ddd90194b7c52f6a057223c509b5ca927fe4a3",
+      "bytes": 9837,
+      "url": "https://github.com/deadbringer17/APE_Hive/blob/436a52a1450be2f3330c055670515df20696f031/sitoweb/enerbot/project/_ds/enerbot-design-system-ffcaf531-f3c5-4ef1-b439-d62f1d1551ef/_ds_manifest.json"
+    },
+    {
+      "source_path": "sitoweb/enerbot/project/_ds/enerbot-design-system-ffcaf531-f3c5-4ef1-b439-d62f1d1551ef/ui_kits/website/styles.css",
+      "local_path": "reference/website-styles.css",
+      "git_blob_sha": "bf16d0c5a2a7b81d4aae7e753f0248a265c1aa18",
+      "sha256": "e58cfa49c3591d0c0cc0048159fbd4e0ddf64095d5b69aa35452ff4a56fd8b52",
+      "bytes": 17755,
+      "url": "https://github.com/deadbringer17/APE_Hive/blob/436a52a1450be2f3330c055670515df20696f031/sitoweb/enerbot/project/_ds/enerbot-design-system-ffcaf531-f3c5-4ef1-b439-d62f1d1551ef/ui_kits/website/styles.css"
+    },
+    {
+      "source_path": "static/enerbot-design-system-ffcaf531-f3c5-4ef1-b439-d62f1d1551ef/fonts/Satoshi-Variable.ttf",
+      "local_path": "fonts/Satoshi-Variable.ttf",
+      "git_blob_sha": "976e85cb58307b184289e3cdb11ddfd3a530a3e3",
+      "sha256": "02ad131926aa46d282b6af73ad2bcaecb0ec6ef3b830a2f08dcabef44f1140ff",
+      "bytes": 127420,
+      "url": "https://github.com/deadbringer17/APE_Hive/blob/436a52a1450be2f3330c055670515df20696f031/static/enerbot-design-system-ffcaf531-f3c5-4ef1-b439-d62f1d1551ef/fonts/Satoshi-Variable.ttf"
+    }
+  ]
+}

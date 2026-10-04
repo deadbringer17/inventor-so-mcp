@@ -7,7 +7,7 @@ This script never touches Quest test properties (proximity, guardian).
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7')][string]$Milestone,
+    [Parameter(Mandatory)][ValidateSet('m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8')][string]$Milestone,
     [Parameter(Mandatory)][string]$Apk,
     [string]$Serial,
     [int]$TimeoutSeconds = 240,
@@ -21,6 +21,7 @@ Set-StrictMode -Version Latest
 
 # The M6 runner crosses four workspaces and two documents: it needs more than the default of the single-workspace runners.
 if ($Milestone -eq 'm6' -and -not $PSBoundParameters.ContainsKey('TimeoutSeconds')) { $TimeoutSeconds = 780 }
+if ($Milestone -eq 'm8' -and -not $PSBoundParameters.ContainsKey('TimeoutSeconds')) { $TimeoutSeconds = 900 }
 # The M7 runner waits for three Inventor computations on the fixture.
 if ($Milestone -eq 'm7' -and -not $PSBoundParameters.ContainsKey('TimeoutSeconds')) { $TimeoutSeconds = 480 }
 
@@ -109,7 +110,7 @@ while ([DateTime]::UtcNow -lt $deadline) {
     $finalLines = $lines
     for ($i = $seen; $i -lt $lines.Count; $i++) { Write-Host $lines[$i] }
     $seen = $lines.Count
-    if ($lines | Where-Object { $_ -match 'PASS COMPLETE' }) { $outcome = 'PASS'; break }
+    if ($lines | Where-Object { $_ -match '\] PASS COMPLETE;' }) { $outcome = 'PASS'; break }
     if ($lines | Where-Object { $_ -match '\] FAIL;| FAIL;' }) { $outcome = 'FAIL'; break }
 }
 $endUtc = [DateTime]::UtcNow

@@ -1,3 +1,4 @@
+using TMPro;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -37,7 +38,7 @@ namespace InventorXrSo.Unity.Scene
         private Bounds _bounds;
         private Canvas _label;
         private Image _labelBackground;
-        private Text _labelText;
+        private TextMeshProUGUI _labelText;
         private bool _presented;
         private WorkbenchFrame _frame;
         private Transform _proxy;

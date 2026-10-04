@@ -21,8 +21,7 @@ namespace InventorXrSo.Tests
             var text = UiFactory.Text(canvas.transform, "Estrusione", 14);
             Assert.IsNotNull(text.font, "TMP Essential Resources non importate");
             Assert.AreEqual("Estrusione", text.text);
-            // Cap height ~0,7 della dimensione del font: 14 mm di maiuscole = 20 unita canvas (mm).
-            Assert.AreEqual(20f, text.fontSize, 0.01f);
+            Assert.AreEqual(14f, UiTypography.CapHeight(text), 0.01f);
         }
 
         [Test]

@@ -28,7 +28,7 @@ namespace InventorXrSo.Xr
     /// the assembly, Progettazione on the block and Lamiera on the sheet, reached the way a user does (Apri in ... from the
     /// isolated component).
     /// </summary>
-    internal sealed class M6QuestAcceptance : QuestAcceptanceRunner
+    internal class M6QuestAcceptance : QuestAcceptanceRunner
     {
         internal static readonly string[] ReflectedMembers =
         {
@@ -187,6 +187,19 @@ namespace InventorXrSo.Xr
         }
 
         private bool ActionEnabled(string id) => Catalog.Find(id)?.Enabled == true;
+
+        /// <summary>WaitUntil that explains itself on timeout: the action's DisabledReason and whether Assieme is active.</summary>
+        private async Task WaitActionAsync(string id, Func<bool> also, CancellationToken ct)
+        {
+            try { await WaitUntil(() => also() && ActionEnabled(id), ct); }
+            catch (InvalidOperationException ex)
+            {
+                var reason = Catalog.Find(id)?.DisabledReason;
+                throw new InvalidOperationException(ex.Message + " [action '" + id + "' DisabledReason='" + reason + "', Assembly.Active=" + _assembly.Active
+                    + ", Assembly.RequiresCadReview=" + _assembly.RequiresCadReview + ", Design.RequiresCadReview=" + _design.RequiresCadReview
+                    + ", Lamiera.RequiresCadReview=" + _lamiera.RequiresCadReview + "]", ex);
+            }
+        }
 
         private static string F(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
 
@@ -463,7 +476,7 @@ namespace InventorXrSo.Xr
         private async Task CheckAssemblyAsync(CancellationToken ct)
         {
             RunAction(SpacesAssembly);
-            await WaitUntil(() => _assembly.Active && ActionEnabled(AssemblyWorkspace.IdComponents), ct);
+            await WaitActionAsync(AssemblyWorkspace.IdComponents, () => _assembly.Active, ct);
             var context = Read<AssemblyContext>(_assembly, "_context");
             Check(context != null && context.Occurrences.Count >= 2, "the assembly context lists at least two components");
             var block = context.Occurrences.FirstOrDefault(o => o.Name.IndexOf("Block", StringComparison.OrdinalIgnoreCase) >= 0);
@@ -553,7 +566,7 @@ namespace InventorXrSo.Xr
         private async Task SelectOccurrenceAsync(AssemblyOccurrence occurrence, CancellationToken ct)
         {
             if (Read<AssemblyOccurrence>(_assembly, "_occurrence")?.Id == occurrence.Id && ActionEnabled(AssemblyWorkspace.IdIsolate)) return;
-            await WaitUntil(() => ActionEnabled(AssemblyWorkspace.IdComponents), ct);
+            await WaitActionAsync(AssemblyWorkspace.IdComponents, () => true, ct);
             RunAction(AssemblyWorkspace.IdComponents);
             PickItem(_assembly, AssemblyWorkspace.IdPickPrefix, occurrence.Name, suffix: true);
             await WaitUntil(() => Read<AssemblyOccurrence>(_assembly, "_occurrence")?.Id == occurrence.Id
@@ -1089,39 +1102,51 @@ namespace InventorXrSo.Xr
         private async Task ActivateAssemblyDocumentAsync(CancellationToken ct)
         {
             var inspection = (IInspectionBackend)_backend;
+            Record("diag ActivateAssemblyDocumentAsync: listing open documents");
             var documents = await inspection.ListOpenAsync(ct);
             var assembly = documents.FirstOrDefault(d => d.Kind == "kAssemblyDocumentObject" && d.Name != null
                 && d.Name.StartsWith(FixturePrefix, StringComparison.Ordinal));
             Check(assembly != null, "the fixture assembly is still open in Inventor, found: "
                 + string.Join(", ", documents.Select(d => d.Name + "/" + d.Kind)));
+            Record("diag ActivateAssemblyDocumentAsync: activating " + assembly.Name);
             await inspection.ActivateOpenAsync(assembly.Id, ct);
+            Record("diag ActivateAssemblyDocumentAsync: waiting for the assembly scene to be online again");
             Check(await TryWaitUntil(() => Session.Scene?.Graph?.Kind == "assembly" && Session.Scene.Graph.DocumentId == _assemblyDocId
                 && Session.Status == SessionStatus.Online, 30, ct), "the assembly document is active again");
         }
 
         private async Task ReturnToAssemblyDocumentAsync(CancellationToken ct)
         {
+            Record("diag ReturnToAssemblyDocumentAsync: switching to the Inspect space");
             RunAction(SpacesInspect);
             await WaitUntil(() => ReferenceEquals(Catalog.Active, _inspect), ct);
+            Record("diag ReturnToAssemblyDocumentAsync: Inspect space active, activating the assembly document");
             await ActivateAssemblyDocumentAsync(ct);
             RequireFixture();
             await Task.Delay(500, ct);
+            Record("diag ReturnToAssemblyDocumentAsync: assembly document active");
         }
 
         private async Task OpenLamieraAsync(CancellationToken ct)
         {
+            Record("diag OpenLamieraAsync: returning to the assembly document");
             await ReturnToAssemblyDocumentAsync(ct);
+            Record("diag OpenLamieraAsync: switching to the Assembly space");
             RunAction(SpacesAssembly);
-            await WaitUntil(() => _assembly.Active && ActionEnabled(AssemblyWorkspace.IdComponents), ct);
+            await WaitActionAsync(AssemblyWorkspace.IdComponents, () => _assembly.Active, ct);
+            Record("diag OpenLamieraAsync: Assembly space ready, selecting the sheet-metal occurrence");
             var context = Read<AssemblyContext>(_assembly, "_context");
             var sheetMetal = context.Occurrences.FirstOrDefault(o => o.Name.IndexOf("Sheet", StringComparison.OrdinalIgnoreCase) >= 0);
             Check(sheetMetal != null, "the sheet-metal component is listed");
             await SelectOccurrenceAsync(sheetMetal, ct);
+            Record("diag OpenLamieraAsync: isolating and opening Lamiera");
             RunAction(AssemblyWorkspace.IdIsolate);
             RunAction(AssemblyWorkspace.IdOpenLamiera);
+            Record("diag OpenLamieraAsync: waiting for the Lamiera space");
             Check(await TryWaitUntil(() => _lamiera.Active && !_assembly.Active, 20, ct), "Lamiera opened from the isolated component");
             Check(await TryWaitUntil(() => Session.Scene?.Graph?.Kind == "part" && Session.Scene.Graph.DocumentId != _assemblyDocId, 30, ct),
                 "Inventor activated the sheet-metal part document");
+            Record("diag OpenLamieraAsync: waiting for the Lamiera design context");
             await WaitUntil(() => _lamiera.IsPrimary && !ReadBoolean(_lamiera, "_busy") && Read<DesignContext>(_lamiera, "_designContext") != null
                 && ActionEnabled(LamieraWorkspace.IdFlange), ct);
             RequireFixture();

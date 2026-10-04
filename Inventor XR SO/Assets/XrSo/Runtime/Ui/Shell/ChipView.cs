@@ -4,18 +4,19 @@ using InventorXrSo.Core.Voice;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 
 namespace InventorXrSo.Unity.Ui
 {
     /// <summary>Chip valore: etichetta, valore e passo di un NumericEntry, billboard verso la testa. Un tocco apre il tastierino.</summary>
-    public sealed class ChipView : MonoBehaviour
+    public sealed class ChipView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
     {
         public const float CapMm = 14f, TargetMinMm = 25f, BorderMm = 3f;
         public static readonly Vector2 SizeMm = new Vector2(200, 64);
-        public static readonly Color Border = new Color(0.30f, 0.32f, 0.36f, 1f);
-        public static readonly Color ArmedBorder = Color.white;
-        public static readonly Color Fill = new Color(0.08f, 0.09f, 0.11f, 0.92f);
-        public static readonly Color ArmedFill = new Color(0.20f, 0.22f, 0.28f, 0.98f);
+        public static readonly Color Border = UiTheme.Border;
+        public static readonly Color ArmedBorder = UiTheme.Signal;
+        public static readonly Color Fill = UiTheme.Navy;
+        public static readonly Color ArmedFill = UiTheme.Surface;
 
         private Image _border, _fill;
         private TextMeshProUGUI _value, _step;
@@ -44,6 +45,7 @@ namespace InventorXrSo.Unity.Ui
             UiFactory.Stretch(border);
             view._border = border.GetComponent<Image>();
             view.Button = border.gameObject.AddComponent<Button>();
+            view._border.raycastTarget = true;
             view.Button.targetGraphic = view._border;
             view.Button.transition = Selectable.Transition.None;
             view.Button.navigation = new Navigation { mode = Navigation.Mode.None };
@@ -101,9 +103,13 @@ namespace InventorXrSo.Unity.Ui
 
         private void Restyle()
         {
-            _border.color = _modified ? UiFactory.Accent : _armed ? ArmedBorder : Border;
+            _border.color = _hovered ? UiTheme.Signal : _modified ? UiTheme.Preview : _armed ? ArmedBorder : Border;
             _fill.color = _armed ? ArmedFill : Fill;
         }
+
+        private bool _hovered;
+        public void OnPointerEnter(PointerEventData eventData) { _hovered = true; Restyle(); }
+        public void OnPointerExit(PointerEventData eventData) { _hovered = false; Restyle(); }
 
         private void LateUpdate() { if (_head != null) FaceHead(); }
 

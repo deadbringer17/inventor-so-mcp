@@ -2,6 +2,7 @@
 using System;
 using System.IO;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,7 +21,8 @@ namespace InventorXrSo.Xr
         protected virtual int TimeoutSeconds => 180;
         protected virtual string CompletionNote => "physical controller input was not exercised by this runner";
         protected string Tag => "[" + Milestone.ToUpperInvariant() + "Quest]";
-        protected string FixturePrefix => "XR_" + Milestone.ToUpperInvariant() + "_Quest_Acceptance";
+        protected virtual string FixtureMilestone => Milestone;
+        protected string FixturePrefix => "XR_" + FixtureMilestone.ToUpperInvariant() + "_Quest_Acceptance";
         protected string LogPath { get; private set; }
 
         protected AppController App { get; private set; }
@@ -144,34 +146,49 @@ namespace InventorXrSo.Xr
             if (Call(target, method, args) is Task task) await task;
         }
 
-        protected static async Task<T> WaitFor<T>(Func<T> read, CancellationToken ct) where T : class
+        /// <summary>Default bound of a single wait: a wait that never resolves fails naming its caller instead of hanging until the global timeout.</summary>
+        protected const int DefaultWaitSeconds = 60;
+
+        private static InvalidOperationException WaitTimedOut(int timeoutSeconds, string caller, int line)
+            => new InvalidOperationException("wait timed out after " + timeoutSeconds + "s at " + caller + ":" + line);
+
+        protected static async Task<T> WaitFor<T>(Func<T> read, CancellationToken ct, int timeoutSeconds = DefaultWaitSeconds,
+            [CallerMemberName] string caller = "", [CallerLineNumber] int line = 0) where T : class
         {
+            var until = DateTime.UtcNow.AddSeconds(timeoutSeconds);
             while (true)
             {
                 ct.ThrowIfCancellationRequested();
                 var value = read();
                 if (value != null) return value;
+                if (DateTime.UtcNow >= until) throw WaitTimedOut(timeoutSeconds, caller, line);
                 await Task.Delay(100, ct);
             }
         }
 
-        protected static async Task<T> WaitFor<T>(Func<Task<T>> read, CancellationToken ct) where T : class
+        protected static async Task<T> WaitFor<T>(Func<Task<T>> read, CancellationToken ct, int timeoutSeconds = DefaultWaitSeconds,
+            [CallerMemberName] string caller = "", [CallerLineNumber] int line = 0) where T : class
         {
+            var until = DateTime.UtcNow.AddSeconds(timeoutSeconds);
             while (true)
             {
                 ct.ThrowIfCancellationRequested();
                 var value = await read();
                 if (value != null) return value;
+                if (DateTime.UtcNow >= until) throw WaitTimedOut(timeoutSeconds, caller, line);
                 await Task.Delay(200, ct);
             }
         }
 
-        protected static async Task WaitUntil(Func<bool> condition, CancellationToken ct)
+        protected static async Task WaitUntil(Func<bool> condition, CancellationToken ct, int timeoutSeconds = DefaultWaitSeconds,
+            [CallerMemberName] string caller = "", [CallerLineNumber] int line = 0)
         {
+            var until = DateTime.UtcNow.AddSeconds(timeoutSeconds);
             while (true)
             {
                 ct.ThrowIfCancellationRequested();
                 if (condition()) return;
+                if (DateTime.UtcNow >= until) throw WaitTimedOut(timeoutSeconds, caller, line);
                 await Task.Delay(100, ct);
             }
         }
@@ -192,11 +209,11 @@ namespace InventorXrSo.Xr
 
         protected async Task<LoadedScene> WaitForFixture(CancellationToken ct)
         {
-            App = await WaitFor(() => FindObjectOfType<AppController>(), ct);
-            Session = await WaitFor(() => Read<SessionController>(App, "_session"), ct);
+            App = await WaitFor(() => FindObjectOfType<AppController>(), ct, TimeoutSeconds);
+            Session = await WaitFor(() => Read<SessionController>(App, "_session"), ct, TimeoutSeconds);
             var session = Session;
             return await WaitFor(() => session.Status == SessionStatus.Online && HasFixtureRoot(session)
-                ? session.Scene : null, ct);
+                ? session.Scene : null, ct, TimeoutSeconds);
         }
 
         protected void RequireFixture()

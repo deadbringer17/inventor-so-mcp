@@ -1,3 +1,4 @@
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -8,7 +9,7 @@ namespace InventorXrSo.Unity.Ui
     {
         private static readonly Vector3 Offset = new Vector3(-0.28f, -0.22f, 0.9f);
         private Transform _head;
-        private Text _status, _flash;
+        private TextMeshProUGUI _status, _flash;
         private float _flashUntil;
 
         public static StatusBadge Create(Transform head)

@@ -1,7 +1,7 @@
 {
   "name": "InventorXrSo.Xr",
   "rootNamespace": "InventorXrSo.Xr",
-  "references": ["InventorXrSo.Core", "InventorXrSo.Unity", "Oculus.VR", "UnityEngine.UI"],
+  "references": ["InventorXrSo.Core", "InventorXrSo.Unity", "Oculus.VR", "UnityEngine.UI", "Unity.TextMeshPro"],
   "includePlatforms": [],
   "autoReferenced": true
 }

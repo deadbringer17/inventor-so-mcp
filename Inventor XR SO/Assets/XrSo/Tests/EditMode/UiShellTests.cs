@@ -146,7 +146,7 @@ namespace InventorXrSo.Tests
             Assert.AreEqual(1, applied);
             p.Bar.Update(new CommitBarInputs(true, false, true, false, true, false, null), 0);
             CollectionAssert.AreEquivalent(new[] { "Aggiorna documento" }, Labels(shell.CommitBar));
-            Assert.AreEqual(UiStyle.For(CommitBarPhase.Stale), shell.CommitBar.GetComponentInChildren<Image>().color);
+            Assert.AreEqual(UiStyle.For(CommitBarPhase.Stale), shell.CommitBar.transform.Find("Sfondo/Indicatore stato").GetComponent<Image>().color);
         }
 
         private static void AssertPaletteFits(PaletteView palette)
