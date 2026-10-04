@@ -17,6 +17,7 @@ namespace InventorXrSo.Xr
     public sealed partial class InspectWorkspace : IActionProvider
     {
         public const string TabMeasure = "misura", TabSection = "sezione", TabView = "vista";
+        public const string TabVisibility = "visibilita", TabVerify = "verifica";
         public const string PickTabPrefix = "_pick.";
 
         public const string IdMeasure = "inspect.measure", IdMeasurePin = "inspect.measure.pin", IdMeasureCancel = "inspect.measure.cancel",
@@ -29,10 +30,15 @@ namespace InventorXrSo.Xr
             IdScaleOne = "inspect.scale.one", IdScaleFit = "inspect.scale.fit", IdScaleTable = "inspect.scale.table",
             IdScaleRoom = "inspect.scale.room", IdScaleRecenter = "inspect.scale.recenter",
             IdPickPrefix = "inspect.pick.";
+        public const string IdXRay = "inspect.visibility.xray", IdIsolate = "inspect.visibility.isolate", IdHide = "inspect.visibility.hide",
+            IdShowAll = "inspect.visibility.showall",
+            IdInterference = "inspect.verify.interference", IdScope = "inspect.verify.scope", IdDistance = "inspect.verify.distance",
+            IdHealth = "inspect.verify.health", IdResults = "inspect.verify.results", IdIgnore = "inspect.verify.ignore";
 
         private static readonly XrTab[] StaticTabs =
         {
             new XrTab(TabMeasure, "Misura"), new XrTab(TabSection, "Sezione"), new XrTab(TabView, "Vista"),
+            new XrTab(TabVisibility, "Visibilità"), new XrTab(TabVerify, "Verifica"),
         };
 
         private sealed class PickerItem
@@ -160,7 +166,7 @@ namespace InventorXrSo.Xr
             var list = new List<XrAction>
             {
                 // Misura
-                new XrAction(IdMeasure, "Misura", TabMeasure, () => Local, BeginMeasure, LocalReason, new[] { "misurazione" }),
+                new XrAction(IdMeasure, "Punto-punto (locale)", TabMeasure, () => Local, BeginMeasure, LocalReason, new[] { "misurazione" }),
                 new XrAction(IdMeasurePin, "Fissa misura", TabMeasure, () => Local && _measure != null && _measure.DistanceMm.HasValue, PinMeasure,
                     () => !Active ? LocalReason() : "Completa prima una misura tra due punti."),
                 new XrAction(IdMeasureCancel, "Annulla misura", TabMeasure, () => Active && Measuring,
@@ -194,6 +200,36 @@ namespace InventorXrSo.Xr
                     () => !Active ? LocalReason() : "Seleziona prima un componente con Esplora o toccandolo."),
                 new XrAction(IdBack, "Indietro", TabView, () => Active && _context.Path.Count > 1, ContextBack,
                     () => !Active ? LocalReason() : "Sei già alla radice del documento."),
+
+                // Visibilità (local, view only)
+                new XrAction(IdXRay, "X-Ray", TabVisibility, () => Local && _selected != null,
+                    () => VisibilityOnSelection(_visibility.XRay, "X-Ray"), () => !Active ? LocalReason() : "Seleziona prima un componente.",
+                    voiceInvokes: false),
+                new XrAction(IdIsolate, "Isola", TabVisibility, () => Local && _selected != null,
+                    () => VisibilityOnSelection(_visibility.Isolate, "Isolato"), () => !Active ? LocalReason() : "Seleziona prima un componente.",
+                    voiceInvokes: false),
+                new XrAction(IdHide, "Nascondi", TabVisibility, () => Local && _selected != null,
+                    () => VisibilityOnSelection(_visibility.Hide, "Nascosto"), () => !Active ? LocalReason() : "Seleziona prima un componente.",
+                    voiceInvokes: false),
+                new XrAction(IdShowAll, "Mostra tutto", TabVisibility, () => Local && (_visibility.AnyChanged || _focusSnapshot != null), ShowAllComponents,
+                    () => !Active ? LocalReason() : "Tutti i componenti sono già visibili.", voiceInvokes: false),
+
+                // Verifica (Inventor, read-only)
+                new XrAction(IdInterference, _scopeSelection && _selected != null ? "Interferenze di " + _selected.Name : "Interferenze", TabVerify,
+                    () => VerifyReady && (!_scopeSelection || DirectSelection), RunInterference,
+                    () => VerifyReady ? "Seleziona un componente di primo livello o togli Solo selezione." : VerifyReason(), voiceInvokes: false),
+                new XrAction(IdScope, "Solo selezione", TabVerify, () => Local && (_scopeSelection || DirectSelection),
+                    () => { _scopeSelection = !_scopeSelection; Refresh(); },
+                    () => !Active ? LocalReason() : "Seleziona un componente di primo livello.", kind: XrActionKind.Toggle,
+                    isOn: () => _scopeSelection, voiceInvokes: false),
+                new XrAction(IdDistance, _distanceA == null ? "Distanza minima" : "Distanza minima da " + _distanceA.Name, TabVerify,
+                    () => VerifyReady && DirectSelection, Distance,
+                    () => VerifyReady ? "Seleziona un componente di primo livello." : VerifyReason(), voiceInvokes: false),
+                new XrAction(IdHealth, "Salute assieme", TabVerify, () => VerifyReady, RunHealth, VerifyReason, voiceInvokes: false),
+                new XrAction(IdResults, "Risultati (" + _findings.Count + ")", TabVerify, () => Active && _findings.Count > 0, OpenResults,
+                    () => !Active ? LocalReason() : "Nessun risultato da mostrare.", voiceInvokes: false),
+                new XrAction(IdIgnore, "Ignora risultato", TabVerify, () => Active && _verifySession.Running != null, IgnoreRunning,
+                    () => "Nessuna verifica in corso.", voiceInvokes: false),
             };
 
             if (_picker != null)

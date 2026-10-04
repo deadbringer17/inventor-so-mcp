@@ -41,6 +41,8 @@ public sealed class InventorMcpConfig
     public string? PairClientName { get; set; }
     /// <summary>Host written into the pairing QR code; default: this PC's first LAN IPv4 address.</summary>
     public string? PairHost { get; set; }
+    /// <summary>Enable owner-only local pairing control; no window opens until requested.</summary>
+    public bool PairControl { get; set; }
 
     // --- Voice transcription (POST /voice/transcribe on the remote host; off unless a command is set) ---
     /// <summary>Local command that transcribes a WAV file (path appended, or replaces {wav}); null = voice disabled.</summary>
@@ -175,6 +177,7 @@ public sealed class InventorMcpConfig
                 case "--http-self-signed":     c.HttpSelfSignedCertificate = true; break;
                 case "--pair":                 c.PairClientName = Next(args, ref i); break;
                 case "--pair-host":            c.PairHost = Next(args, ref i); break;
+                case "--pair-control":         c.PairControl = true; break;
                 case "--http-token-file":      c.HttpTokenFile = Next(args, ref i); break;
                 case "--http-allow-insecure-lan": c.HttpAllowInsecureLan = true; break;
                 case "--http-origins":         c.HttpAllowedOrigins = SplitCsv(Next(args, ref i)); break;

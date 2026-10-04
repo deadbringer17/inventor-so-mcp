@@ -44,6 +44,7 @@ internal static class Fixtures
                 "m3" => PrepareM3(app, directory, created),
                 "m5" => PrepareM5(app, directory, created),
                 "m6" => PrepareM6(app, directory, created),
+                "m7" => PrepareM7(app, directory, created),
                 _ => throw new ArgumentException("Unknown milestone " + m),
             };
             var active = app.ActiveDocument ?? throw new InvalidOperationException("No active document after preparing the fixture.");
@@ -249,6 +250,69 @@ internal static class Fixtures
         };
     }
 
+    /// <summary>
+    /// M7: four 20 mm cubes of one part (blank part number). M7_A grounded at the origin; M7_B grounded and overlapping M7_A by
+    /// 5 mm in X (2000 mm3); M7_C grounded 30 mm from M7_A along Y; M7_D free and unconstrained at X = 100 mm. M7_Sick is a flush
+    /// constraint between the M7_Ref work planes of the two grounded cubes M7_B and M7_C with a 5 mm offset they cannot satisfy.
+    /// </summary>
+    private static JObject PrepareM7(global::Inventor.Application app, string directory, List<object> created)
+    {
+        var cube = (PartDocument)app.Documents.Add(DocumentTypeEnum.kPartDocumentObject);
+        created.Add(cube);
+        CreateBlock(app, cube, 20, 20, 20, false, "Cubo");   // x, y in [0, 20] mm, z in [0, 20] mm
+        var def = cube.ComponentDefinition;
+        var reference = def.WorkPlanes.AddByPlaneAndOffset(def.WorkPlanes[3], 1.0, false);   // z = 10 mm
+        reference.Name = "M7_Ref";
+        cube.PropertySets["Design Tracking Properties"]["Part Number"].Value = "";
+        cube.PropertySets["Design Tracking Properties"]["Description"].Value = "";   // get_assembly_bom reports a blank part number as the file name: the BOM finding is a missing description
+        var cubePath = Path.Combine(directory, "XR_M7_Quest_Acceptance_Cube.ipt");
+        cube.SaveAs(cubePath, false);
+
+        var assembly = (AssemblyDocument)app.Documents.Add(DocumentTypeEnum.kAssemblyDocumentObject);
+        created.Add(assembly);
+        var tg = app.TransientGeometry;
+        var occurrences = assembly.ComponentDefinition.Occurrences;
+        ComponentOccurrence Place(string name, double xCm, double yCm, bool grounded)
+        {
+            var pose = tg.CreateMatrix();
+            pose.SetTranslation(tg.CreateVector(xCm, yCm, 0));
+            var occurrence = occurrences.Add(cubePath, pose);
+            occurrence.Name = name;
+            occurrence.Grounded = grounded;
+            return occurrence;
+        }
+        Place("M7_A", 0, 0, true);
+        var b = Place("M7_B", 1.5, 0, true);
+        var c = Place("M7_C", 0, 5, true);
+        Place("M7_D", 10, 0, false);
+
+        object RefProxy(ComponentOccurrence occurrence)
+        {
+            occurrence.CreateGeometryProxy(((PartComponentDefinition)occurrence.Definition).WorkPlanes["M7_Ref"], out object proxy);
+            return proxy;
+        }
+        var constraints = assembly.ComponentDefinition.Constraints;
+        var flush = constraints.AddFlushConstraint(RefProxy(b), RefProxy(c), 0.5);
+        flush.Name = "M7_Sick";
+        assembly.Update();
+        if (flush.HealthStatus == HealthStatusEnum.kUpToDateHealth)
+            throw new InvalidOperationException("M7_Sick is healthy: the fixture needs a failing constraint. Record this in the probe log.");
+
+        var assemblyPath = Path.Combine(directory, "XR_M7_Quest_Acceptance.iam");
+        assembly.SaveAs(assemblyPath, false);
+        assembly.Activate();
+        var expected = new JObject
+        {
+            ["occurrences"] = 4, ["interference_pairs"] = 1, ["interference_volume_mm3"] = 2000,
+            ["distance_a_c_mm"] = 30, ["unconstrained"] = new JArray("M7_D"), ["failing_constraint"] = "M7_Sick",
+            ["bom_finding"] = "DESCRIPTION_MISSING", ["fixture_documents"] = 2,
+        };
+        return new JObject
+        {
+            ["assembly"] = assemblyPath, ["part"] = cubePath, ["documents"] = new JArray(assemblyPath, cubePath), ["expected"] = expected,
+        };
+    }
+
     private static double? ThicknessMm(SheetMetalComponentDefinition def)
     {
         try { return Convert.ToDouble(((dynamic)def).Thickness.Value) * 10; } catch { return null; }
@@ -299,6 +363,7 @@ internal static class Fixtures
             if (occurrences.Length > 0 && occurrences[0].Definition is PartComponentDefinition partDef)
                 result["volume_mm3"] = VolumeMm3(partDef);
             result["fixture_documents"] = ManifestDocuments(manifest).Count(p => FindOpen(app, p) != null);
+            if (m == "m7") ProbeM7.AddInspection(app, assembly, result);
         }
         else if (active is PartDocument part)
         {

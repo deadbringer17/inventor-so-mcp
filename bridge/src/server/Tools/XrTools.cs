@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Bimwright.Ipt.Server.Assets;
+using Bimwright.Ipt.Server.Planning;
 using Bimwright.Ipt.Shared.Contracts;
 using ModelContextProtocol.Server;
 using Newtonsoft.Json;
@@ -36,6 +37,42 @@ public sealed class XrTools
     [McpServerTool(Name = "inventor_activate_open_document_xr"), Description("Activate exactly one already-open part or assembly by document_id for XR inspection. View/context only: no open-file, save, close, rebuild or CAD edit. Refuses an active transaction and duplicate ids. Experimental.")]
     public Task<string> ActivateOpen(string document_id, CancellationToken ct = default)
         => Call("activate_open_document_xr", new JObject { ["document_id"] = document_id }, ct);
+
+    [McpServerTool(Name = "inventor_check_interference_xr"), Description("Revision-bound Inventor interference analysis of the active assembly's direct occurrences for XR. Without occurrence_ids every unsuppressed direct occurrence is analysed; with occurrence_ids (portable ids of direct occurrences) those are analysed against all the others. Returns analyzed, count, total_volume_mm3, elapsed_ms and pairs with portable a/b occurrence ids, names, volume_mm3 and the range box (min_mm/max_mm, assembly millimetres) of each interference body. A subassembly counts as one unit. No CAD changes. Experimental.")]
+    public Task<string> CheckInterferenceXr(string document_id, string expected_revision, string[]? occurrence_ids = null, CancellationToken ct = default)
+        => Call("check_interference_xr", new JObject
+        {
+            ["document_id"] = document_id, ["expected_revision"] = expected_revision,
+            ["occurrence_ids"] = occurrence_ids is null ? null : new JArray(occurrence_ids),
+        }, ct);
+
+    [McpServerTool(Name = "inventor_measure_min_distance_xr"), Description("Revision-bound Inventor minimum distance (mm) between two direct occurrences of the active assembly (portable ids) for XR. Returns distance_mm and, when Inventor provides them, the closest points point_a/point_b in assembly millimetres (points_source inventor), otherwise null points (points_source unavailable). Expect 0 on touching or interfering parts. No CAD changes. Experimental.")]
+    public Task<string> MeasureMinDistanceXr(string document_id, string expected_revision, string a_occurrence_id, string b_occurrence_id, CancellationToken ct = default)
+        => Call("measure_min_distance_xr", new JObject
+        {
+            ["document_id"] = document_id, ["expected_revision"] = expected_revision,
+            ["a_occurrence_id"] = a_occurrence_id, ["b_occurrence_id"] = b_occurrence_id,
+        }, ct);
+
+    [McpServerTool(Name = "inventor_assembly_health_xr"), Description("Revision-bound health of the active assembly for XR: per-occurrence DOF, grounding and an unconstrained flag, failing constraints and joints with the portable ids of the direct occurrences they bind (null when Inventor does not expose them), plus bom = the inventor_validate_bom result. Refuses with STALE_REVISION if the document changed while reading. No CAD changes. Experimental.")]
+    public async Task<string> AssemblyHealthXr(string document_id, string expected_revision, int max_occurrences = 2000, CancellationToken ct = default)
+    {
+        try
+        {
+            var health = (JObject)await _client.SendAsync("assembly_health_xr", new JObject
+            {
+                ["document_id"] = document_id, ["expected_revision"] = expected_revision, ["max_occurrences"] = max_occurrences,
+            }, ct);
+            var bom = await _client.SendAsync("get_assembly_bom", new JObject { ["max_rows"] = 2000 }, ct);
+            health["bom"] = BomAnalysis.Validate(BomAnalysis.ReadRows(bom), (bool?)bom["truncated"] ?? false);
+            var after = (JObject)await _client.SendAsync("get_visual_revision", new JObject { ["document_id"] = document_id }, ct);
+            if ((string?)after["revision"] != expected_revision)
+                return Error(InventorErrorCodes.STALE_REVISION, "The assembly changed while its health was read.");
+            return health.ToString(Formatting.None);
+        }
+        catch (InventorGatewayException ex) { return ex.ToErrorJson().ToString(Formatting.None); }
+        catch (ArgumentException ex) { return Error(InventorErrorCodes.API_ERROR, ex.Message); }
+    }
 
     /// <summary>A composed scene fetches at most this many distinct definitions.</summary>
     public const int MaxSceneDefinitions = 200;

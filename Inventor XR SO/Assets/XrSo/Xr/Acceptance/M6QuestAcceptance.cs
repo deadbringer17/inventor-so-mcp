@@ -347,7 +347,8 @@ namespace InventorXrSo.Xr
             Check(!_shell.Palette.Canvas.transform.IsChildOf(_head), "the palette is not a head-locked panel");
             Check(ReferenceEquals(Catalog.Active, _inspect), "Ispeziona is the default workspace of the catalog: the palette is never empty");
             CheckPalette("Ispeziona", _inspect,
-                new[] { InspectWorkspace.TabMeasure, InspectWorkspace.TabSection, InspectWorkspace.TabView }, normalizeFirstTab: true);
+                new[] { InspectWorkspace.TabMeasure, InspectWorkspace.TabSection, InspectWorkspace.TabView,
+                    InspectWorkspace.TabVisibility, InspectWorkspace.TabVerify }, normalizeFirstTab: true);
             CheckSpacesTab();
 
             RunAction(SpacesDesign);

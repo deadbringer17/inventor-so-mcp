@@ -84,6 +84,7 @@ namespace InventorXrSo.Xr
             _measure.transform.SetParent(view.transform, false);
             _measure.Initialize(ray.LineMaterial, head);
             _ray.PointPicked += OnPointPicked;
+            InitializeVerify(ray.LineMaterial);
             SetVisible(false);
         }
 
@@ -121,7 +122,7 @@ namespace InventorXrSo.Xr
         /// <summary>An authoring workspace opened or closed: the local tools stop (or resume) with it.</summary>
         public void OthersChanged()
         {
-            if (!Active) { _measure?.Cancel(); _section?.SetActive(false); EndGrabs(); CloseKeypad(); ClosePicker(false); }
+            if (!Active) { _measure?.Cancel(); _section?.SetActive(false); EndGrabs(); CloseKeypad(); ClosePicker(false); LeaveVerifyView(); }
             Refresh();
         }
 
@@ -129,6 +130,7 @@ namespace InventorXrSo.Xr
         {
             CancelRequests();
             _backend = backend; _selection = selection;
+            BindVerify(backend);
             _online = false;
             _selected = null; _info = null; _documents = new OpenDocument[0];
             _measure.ClearAll(); _section.SetActive(false);
@@ -159,13 +161,17 @@ namespace InventorXrSo.Xr
             bool changedDocument = _scene?.Graph.DocumentId != scene?.Graph.DocumentId;
             CancelRequests(); EndGrabs();
             _measure.ClearAll(); _section.SetActive(false); _selected = null; _info = null;
+            _distanceA = null; _distancePending = null;
             CloseKeypad(); ClosePicker(false);
             _scene = scene; _context.SetGraph(scene?.Graph);
+            _notice = "";
+            // SessionController announces the new scene before DocumentStateChanged, so this is where a geometry edit makes Done results stale.
+            if (!changedDocument && scene != null) PropagateRevision(scene.Graph.State);
             _documentState = scene?.Graph.State;
             if (changedDocument) { _scaleMode = ModelScaleMode.OneToOne; _view.transform.localScale = Vector3.one; }
             else if (scene != null) InspectionGeometry.ApplyScale(_view.transform, ScenePlacement.LocalBounds(_view.transform), _scaleMode, _roomExtent);
             _section.ResetPlane(ScenePlacement.LocalBounds(_view.transform));
-            _notice = "";
+            if (changedDocument) ResetVerify(); else { _overlay?.Clear(); _focusSnapshot = null; }
             if (scene != null && TooBig()) SetNotice(OversizeNotice);
             Refresh();
         }
@@ -182,19 +188,23 @@ namespace InventorXrSo.Xr
         {
             if (_documentState?.DocumentId == state?.DocumentId && _documentState?.Revision == state?.Revision
                 && _documentState?.VisualRevision == state?.VisualRevision) return;
+            bool sameDocument = _documentState?.DocumentId == state?.DocumentId;
+            if (!sameDocument) ResetVerify();
             CancelRequests();
             _documentState = state;
             _info = null; _selected = null; _selection?.ResetLocal();
-            _measure.ClearAll(); _section.SetActive(false);
+            _measure.ClearAll(); _section.SetActive(false); _distanceA = null; _distancePending = null;
             ClosePicker(false);
             SetNotice("Documento aggiornato. Seleziona nuovamente o aggiorna le proprietà.");
+            // After the generic notice, so "Modello cambiato: rilancia la verifica." is the last word.
+            if (sameDocument) PropagateRevision(state);
             Refresh();
         }
 
         public void SetVisible(bool visible)
         {
             _visible = visible;
-            if (!visible) { EndGrabs(); _measure?.Cancel(); CloseKeypad(); ClosePicker(false); }
+            if (!visible) { EndGrabs(); _measure?.Cancel(); CloseKeypad(); ClosePicker(false); LeaveVerifyView(); }
             else if (_scene != null && TooBig()) SetNotice(OversizeNotice);
             Refresh();
         }
@@ -297,7 +307,7 @@ namespace InventorXrSo.Xr
             if (!Measuring) return;
             _measure.Pick(point);
             SetNotice(_measure.Measuring ? "Seleziona il secondo punto."
-                : "Distanza tra punti sulla mesh (approssimata): ≈ " + Format(_measure.DistanceMm, "mm"));
+                : "Punto-punto (locale): ≈ " + Format(_measure.DistanceMm, "mm"));
             Refresh();
         }
 
@@ -395,7 +405,7 @@ namespace InventorXrSo.Xr
         {
             CloseKeypad();
             _measure.Begin();
-            SetNotice("Misura: seleziona il primo punto sulla mesh (distanza approssimata).");
+            SetNotice("Punto-punto (locale): seleziona il primo punto sulla mesh.");
             Refresh();
         }
 
@@ -463,6 +473,8 @@ namespace InventorXrSo.Xr
             if (!Active) return;
             if (_ask != null || (_shell != null && _shell.Palette.KeypadVisible)) { CloseKeypad(); return; }
             if (_picker != null) { ClosePicker(); return; }
+            if (ClearFocus()) { SetNotice(""); Refresh(); return; }
+            if (_distanceA != null) { CancelDistance(); SetNotice("Distanza annullata."); Refresh(); return; }
             if (Measuring) { _measure.Cancel(); SetNotice("Misura annullata."); Refresh(); return; }
             if (_context.Path.Count > 1) ContextBack();
         }
@@ -543,6 +555,7 @@ namespace InventorXrSo.Xr
         {
             if (!_visible) return;
             DropClosedKeypad();
+            TickVerify();
             if (!Active || _ray == null || _ray.Origin == null) return;
             if (_input != null && !_input.PenTracked) { EndGrabs(); return; }
             if (_twoHandActive) { TwoHandStep(); return; }
@@ -552,6 +565,7 @@ namespace InventorXrSo.Xr
         private void OnDestroy()
         {
             DetachInput();
+            DisposeVerify();
             _requests.Cancel(); _requests.Dispose();
             if (_ray != null) _ray.PointPicked -= OnPointPicked;
             if (_section != null) Release(_section.gameObject);

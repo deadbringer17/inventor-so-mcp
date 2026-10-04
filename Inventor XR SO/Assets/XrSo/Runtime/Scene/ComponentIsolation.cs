@@ -1,5 +1,5 @@
 using System;
-using System.Collections.Generic;
+using System.Linq;
 using InventorXrSo.Core.Backend;
 using InventorXrSo.Core.Ui;
 using UnityEngine;
@@ -23,7 +23,7 @@ namespace InventorXrSo.Unity.Scene
         private Vector3 _fromLocal, _toLocal, _homeLocal;
         private float _elapsed, _duration;
         private bool _tweening;
-        private readonly List<(Renderer renderer, GameObject ghost)> _faded = new List<(Renderer, GameObject)>();
+        private GhostBodies _ghosts;
 
         /// <summary>Occorrenza isolata; null se nessuna (anche mentre il componente torna al suo posto).</summary>
         public string OccurrenceId { get; private set; }
@@ -31,18 +31,16 @@ namespace InventorXrSo.Unity.Scene
         public bool Tweening => _tweening;
         /// <summary>Posizione locale dell'istanza prima dell'isolamento.</summary>
         public Vector3 HomeLocalPosition => _homeLocal;
-        public int FadedBodies => _faded.Count;
+        public int FadedBodies => _ghosts?.Count ?? 0;
         public event Action Changed;
 
         public void Initialize(CadSceneView view)
         {
             if (_view != null) throw new InvalidOperationException("Isolation is already initialized.");
             if (view == null) throw new ArgumentNullException(nameof(view));
-            var shader = Shader.Find("XrSo/HighlightOverlay");
-            if (shader == null) throw new InvalidOperationException("CAD ghost shader is unavailable.");
+            _fade = GhostBodies.CreateMaterial("Isolation fade", FadeColor);
+            _ghosts = new GhostBodies(_fade, "IsolationGhost");
             _view = view;
-            _fade = new Material(shader) { name = "Isolation fade" };
-            _fade.SetColor("_Color", FadeColor);
             _view.Rebuilt += OnRebuilt;
         }
 
@@ -50,7 +48,7 @@ namespace InventorXrSo.Unity.Scene
         {
             if (!Active || occurrenceId == OccurrenceId) return false;
             var instance = _view.Find(occurrenceId);
-            return instance != null && _faded.Exists(f => f.renderer != null && f.renderer.transform.IsChildOf(instance.transform));
+            return instance != null && instance.Bodies.Any(_ghosts.Contains);
         }
 
         /// <summary>False se l'occorrenza non e nella scena. Riisolare lo stesso componente non fa nulla.</summary>
@@ -81,7 +79,7 @@ namespace InventorXrSo.Unity.Scene
             foreach (var other in _view.Instances)
             {
                 if (other == null || other == instance) continue;
-                foreach (var body in other.Bodies) Fade(body);
+                foreach (var body in other.Bodies) _ghosts.Add(body);
             }
             Changed?.Invoke();
             return true;
@@ -92,7 +90,7 @@ namespace InventorXrSo.Unity.Scene
         {
             if (!Active) return;
             OccurrenceId = null;
-            Unfade();
+            _ghosts.Clear();
             if (_instance != null)
             {
                 _fromLocal = _instance.transform.localPosition;
@@ -134,33 +132,11 @@ namespace InventorXrSo.Unity.Scene
             _instance.transform.localPosition = Vector3.Lerp(_fromLocal, _toLocal, e);
         }
 
-        private void Fade(CadBody body)
-        {
-            if (body == null || body.Renderer == null) return;
-            // Un fantasma al posto del corpo: i collider restano (il raggio colpisce ancora) e nessun materiale altrui viene scambiato.
-            var ghost = new GameObject("IsolationGhost");
-            ghost.transform.SetParent(body.transform, false);
-            ghost.AddComponent<MeshFilter>().sharedMesh = body.Mesh;
-            ghost.AddComponent<MeshRenderer>().sharedMaterial = _fade;
-            body.Renderer.enabled = false;
-            _faded.Add((body.Renderer, ghost));
-        }
-
-        private void Unfade()
-        {
-            foreach (var (renderer, ghost) in _faded)
-            {
-                if (renderer != null) renderer.enabled = true;
-                if (ghost != null) { ghost.SetActive(false); Destroy(ghost); }
-            }
-            _faded.Clear();
-        }
-
         // La scena e stata ricostruita: le istanze sono gia distrutte, lo stato di isolamento non ha piu senso.
         private void OnRebuilt()
         {
             bool was = Active || _tweening;
-            _faded.Clear();
+            _ghosts.Forget();
             OccurrenceId = null; _instance = null; _tweening = false;
             if (was) Changed?.Invoke();
         }
@@ -170,11 +146,6 @@ namespace InventorXrSo.Unity.Scene
             if (_view != null) _view.Rebuilt -= OnRebuilt;
             if (Active) Release(true);
             if (_fade != null) { if (Application.isPlaying) Destroy(_fade); else DestroyImmediate(_fade); }
-        }
-
-        private static void Destroy(GameObject go)
-        {
-            if (Application.isPlaying) UnityEngine.Object.Destroy(go); else UnityEngine.Object.DestroyImmediate(go);
         }
     }
 }

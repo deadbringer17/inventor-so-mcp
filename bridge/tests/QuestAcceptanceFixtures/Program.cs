@@ -11,15 +11,21 @@ internal static class Program
     {
         try
         {
+            var clsid = Type.GetTypeFromProgID("Inventor.Application")!.GUID;
+            if (args.Contains("--probe-m7") || args.Contains("--probe-active"))
+            {
+                GetActiveObject(ref clsid, IntPtr.Zero, out var probed);
+                var probeApp = (global::Inventor.Application)probed;
+                return args.Contains("--probe-m7") ? ProbeM7.Probe(probeApp) : ProbeM7.ProbeActive(probeApp);
+            }
             var mode = args.FirstOrDefault(a => a is "--prepare-quest" or "--inspect-quest" or "--restore-quest");
             var index = Array.IndexOf(args, mode);
             var milestone = mode == null || index + 1 >= args.Length ? null : args[index + 1].ToLowerInvariant();
-            if (mode == null || milestone is not ("m1" or "m2" or "m3" or "m5" or "m6"))
+            if (mode == null || milestone is not ("m1" or "m2" or "m3" or "m5" or "m6" or "m7"))
             {
-                Console.Error.WriteLine("Usage: QuestAcceptanceFixtures (--prepare-quest|--inspect-quest|--restore-quest) <m1|m2|m3|m5|m6>");
+                Console.Error.WriteLine("Usage: QuestAcceptanceFixtures (--prepare-quest|--inspect-quest|--restore-quest) <m1|m2|m3|m5|m6|m7> | --probe-m7 | --probe-active");
                 return 64;
             }
-            var clsid = Type.GetTypeFromProgID("Inventor.Application")!.GUID;
             GetActiveObject(ref clsid, IntPtr.Zero, out var active);
             var app = (global::Inventor.Application)active;
             return mode switch

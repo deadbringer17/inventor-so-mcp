@@ -1,14 +1,11 @@
-using System.Linq;
 using Bimwright.Ipt.Server;
 using Inventor.So.Mcp.Http.Pairing;
+using Inventor.So.Pairing.Control;
+using Microsoft.Extensions.DependencyInjection;
 using HostOptions = Inventor.So.Mcp.Http.Pairing.HostOptions;
 
 namespace Inventor.So.Mcp.Http;
 
-// Inventor.So.Mcp.Http - remote MCP host for Inventor SO (docs/INVENTOR_SO_MCP_IMPLEMENTATION_PLAN.md §21).
-//   --generate-token <name>   print a new "name:token" line for the token file and exit
-//   otherwise                 same configuration as the stdio server, plus the --http-* options
-// An explicit class, not top-level statements: the stdio server already owns the global Program.
 public static class HttpProgram
 {
     public static async Task<int> Main(string[] args)
@@ -19,69 +16,80 @@ public static class HttpProgram
             var name = generate + 1 < args.Length ? args[generate + 1] : "client";
             var registry = new TokenRegistry();
             var token = TokenRegistry.Generate();
-            registry.Add(name, token);   // validates the name
+            registry.Add(name, token);
             Console.WriteLine(name + ":" + token);
             return 0;
         }
-
-        var config = InventorMcpConfig.Load(args);
-        TokenRegistry tokens;
-        WebApplication app;
-        PairingWindow? window = null;
-        PairingEndpoint? pairing = null;
-        System.Security.Cryptography.X509Certificates.X509Certificate2? certificate;
         try
         {
-            tokens = TokenRegistry.Load(config);
-            certificate = PairingSetup.ResolveCertificate(config);
-            if (config.PairClientName != null)
+            var config = InventorMcpConfig.Load(args);
+            if (config.PairControl)
             {
-                if (string.IsNullOrWhiteSpace(config.HttpTokenFile))
-                    throw new InvalidOperationException("--pair needs --http-token-file: the new token is appended there.");
-                if (certificate == null)
-                    throw new InvalidOperationException("--pair needs HTTPS: use --http-self-signed (or --http-cert) with an https:// URL.");
-                if (tokens.Names.Contains(config.PairClientName))
-                    throw new InvalidOperationException("--pair: client '" + config.PairClientName + "' already has a token; choose another name.");
-                var store = new PairingStore(() => DateTimeOffset.UtcNow);
-                window = store.Open(config.PairClientName, PairingStore.DefaultTtl);
+                if (!OperatingSystem.IsWindows()) throw new InvalidOperationException("--pair-control requires Windows.");
+                if (string.IsNullOrWhiteSpace(config.HttpTokenFile)) throw new InvalidOperationException("--pair-control requires --http-token-file.");
+                if (config.HttpUrls.Any(url => BindingPolicy.TryParse(url, out var scheme, out var host) && scheme == "http" && !BindingPolicy.IsLoopback(host)))
+                    throw new InvalidOperationException("Managed LAN pairing requires HTTPS on every non-loopback listener.");
+                OwnerStorage.ProtectDirectory(Path.GetDirectoryName(Path.GetFullPath(config.HttpTokenFile))!);
+                if (string.IsNullOrWhiteSpace(config.HttpCertificatePath))
+                    OwnerStorage.ProtectDirectory(Path.GetDirectoryName(Path.GetFullPath(config.HttpSelfSignedPath))!);
+            }
+            var tokens = TokenRegistry.Load(config);
+            using var certificate = PairingSetup.ResolveCertificate(config);
+            var store = new PairingStore(() => DateTimeOffset.UtcNow);
+            PairingWindow? window = null;
+            PairingEndpoint? pairing = null;
+            if (config.PairClientName != null || config.PairControl)
+            {
+                if (string.IsNullOrWhiteSpace(config.HttpTokenFile)) throw new InvalidOperationException("Pairing needs --http-token-file.");
+                if (certificate == null || PairingSetup.HttpsPort(config) == null)
+                    throw new InvalidOperationException("Pairing needs HTTPS: use --http-self-signed or --http-cert with an https:// URL.");
+                if (config.PairClientName != null)
+                {
+                    if (tokens.Names.Contains(config.PairClientName)) throw new InvalidOperationException("This client already has a token; choose another name.");
+                    window = store.Open(config.PairClientName, PairingStore.DefaultTtl);
+                }
                 pairing = new PairingEndpoint(store, tokens, config.HttpTokenFile!);
             }
-            app = HttpHost.Build(args, config, tokens, new HostOptions { Certificate = certificate, Pairing = pairing });
+            await using var app = HttpHost.Build(args, config, tokens, new HostOptions { Certificate = certificate, Pairing = pairing });
+            await app.StartAsync(); // No QR or local readiness before Kestrel has bound successfully.
+            await using var control = config.PairControl ? new ControlPipeServer(ControlNames.HostPipe,
+                new LocalPairingController(store, config, app.Services.GetRequiredService<PluginClient>(),
+                    SelfSignedCertificate.Sha256Hex(certificate!)).Handle) : null;
+            string? png = null;
+            if (window != null)
+            {
+                var host = config.PairHost ?? PairingSetup.LanAddresses().FirstOrDefault() ?? "127.0.0.1";
+                var sha = SelfSignedCertificate.Sha256Hex(certificate!);
+                var port = PairingSetup.HttpsPort(config)!.Value;
+                png = Path.Combine(Path.GetDirectoryName(config.HttpSelfSignedPath)!, "pairing-qr.png");
+                try { PairingSetup.Announce(Console.Error, window, host, port, sha, png); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    Console.Error.WriteLine("Could not write QR; PC: " + host + ":" + port + " code: " + window.Code);
+                    Console.Error.WriteLine("Certificate: " + SelfSignedCertificate.Display(sha));
+                }
+            }
+            void CleanQr()
+            {
+                if (png == null || store.Status().State == "waiting") return;
+                try { File.Delete(png); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            }
+            if (pairing != null) pairing.Paired += (_, _) => CleanQr();
+            using var cleanup = new Timer(_ => CleanQr(), null, 1000, 1000);
+            try { await app.WaitForShutdownAsync(); }
+            finally
+            {
+                var current = store.Status().Window;
+                if (current != null) store.Cancel(current.Id);
+                CleanQr();
+            }
+            return 0;
         }
-        catch (Exception ex) when (ex is InvalidOperationException or IOException or System.Security.Cryptography.CryptographicException)
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException
+            or System.Security.Cryptography.CryptographicException)
         {
-            Console.Error.WriteLine("inventor-so-mcp-http: " + ex.Message);
+            Console.Error.WriteLine("inventor-so-mcp-http: startup failed (" + ex.GetType().Name + "). Check runtime, HTTPS configuration, port and local file permissions.");
             return 2;
         }
-        Console.Error.WriteLine("inventor-so-mcp-http: listening on " + string.Join(", ", config.HttpUrls) +
-            " for " + tokens.Count + " client token(s)" + (config.HttpAllowInsecureLan ? " (INSECURE LAN MODE)" : "") + ".");
-        if (window != null && pairing != null)
-        {
-            var host = config.PairHost ?? PairingSetup.LanAddresses().FirstOrDefault() ?? "127.0.0.1";
-            var sha = SelfSignedCertificate.Sha256Hex(certificate!);
-            var port = PairingSetup.HttpsPort(config) ?? 443;
-            var png = Path.Combine(Path.GetDirectoryName(config.HttpSelfSignedPath)!, "pairing-qr.png");
-            // A display or file-I/O failure here (no console, redirected stdout, unwritable PNG
-            // directory, ...) must never crash the host: the pairing window is already open and
-            // the headset can still redeem it, it just needs the plain-text fallback below.
-            try
-            {
-                Console.OutputEncoding = System.Text.Encoding.UTF8;
-                PairingSetup.Announce(Console.Error, window, host, port, sha, png);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                Console.Error.WriteLine("inventor-so-mcp-http: could not display the pairing QR code (" + ex.Message + "); pair with these details instead:");
-                Console.Error.WriteLine("  PC: " + host + ":" + port + "   code: " + window.Code);
-                Console.Error.WriteLine("  Certificate: " + SelfSignedCertificate.Display(sha));
-            }
-            pairing.Paired += (client, device) =>
-            {
-                Console.Error.WriteLine("inventor-so-mcp-http: paired '" + client + "'" + (device == null ? "" : " (" + device + ")") + ".");
-                try { File.Delete(png); } catch (IOException) { }
-            };
-        }
-        await app.RunAsync();
-        return 0;
     }
 }

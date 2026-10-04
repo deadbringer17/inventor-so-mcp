@@ -72,6 +72,10 @@ public sealed class FakeAddIn : System.IAsyncDisposable
     }
 
     public string Revision { get { lock (_gate) return "fake:" + _sequence; } }
+
+    /// <summary>One-shot: the next get_assembly_bom advances the revision after answering, as an edit landing mid-read would.</summary>
+    public bool BumpRevisionOnNextBom { get { lock (_gate) return _bumpOnBom; } set { lock (_gate) _bumpOnBom = value; } }
+    private bool _bumpOnBom;
     private string Visual { get { lock (_gate) return "fake:v" + _visual; } }
 
     /// <summary>Simulate an edit in Inventor: advances the revision (and the visual revision for geometry) and journals it.</summary>
@@ -179,6 +183,53 @@ public sealed class FakeAddIn : System.IAsyncDisposable
                     ["name"] = p["occurrence_id"]?.Type == JTokenType.String ? "Bolt:1" : "Fake.iam", ["material"] = "Steel",
                     ["mass_kg"] = 1.28, ["volume_mm3"] = 160000, ["area_mm2"] = 20000,
                     ["constraints"] = 3, ["dof_translation"] = 1, ["dof_rotation"] = 0 });
+            case "check_interference_xr":
+                if ((string?)p["document_id"] != AssemblyId) return Fail(InventorErrorCodes.DOCUMENT_CHANGED, "Active document changed.");
+                if ((string?)p["expected_revision"] != Revision) return Fail(InventorErrorCodes.STALE_REVISION, "Revision changed.");
+                return Ok(new JObject
+                {
+                    ["document_id"] = AssemblyId, ["revision"] = Revision, ["analyzed"] = 3, ["count"] = 1, ["total_volume_mm3"] = 2000.0, ["elapsed_ms"] = 12,
+                    ["pairs"] = new JArray(new JObject
+                    {
+                        ["a_occurrence_id"] = "ent_occ_1", ["b_occurrence_id"] = "ent_occ_3", ["a_name"] = "Bolt:1", ["b_name"] = "Plate:1",
+                        ["volume_mm3"] = 2000.0,
+                        ["boxes"] = new JArray(new JObject { ["min_mm"] = new JArray(15, 0, 0), ["max_mm"] = new JArray(20, 20, 20) }),
+                    }),
+                });
+            case "measure_min_distance_xr":
+                if ((string?)p["document_id"] != AssemblyId) return Fail(InventorErrorCodes.DOCUMENT_CHANGED, "Active document changed.");
+                if ((string?)p["expected_revision"] != Revision) return Fail(InventorErrorCodes.STALE_REVISION, "Revision changed.");
+                if ((string?)p["a_occurrence_id"] == (string?)p["b_occurrence_id"]) return Fail(InventorErrorCodes.INVALID_ARGUMENT, "Choose two different occurrences.");
+                return Ok(new JObject
+                {
+                    ["document_id"] = AssemblyId, ["revision"] = Revision, ["distance_mm"] = 30.0,
+                    ["point_a"] = new JArray(0, 0, 0), ["point_b"] = new JArray(30, 0, 0), ["points_source"] = "inventor",
+                });
+            case "assembly_health_xr":
+                if ((string?)p["document_id"] != AssemblyId) return Fail(InventorErrorCodes.DOCUMENT_CHANGED, "Active document changed.");
+                if ((string?)p["expected_revision"] != Revision) return Fail(InventorErrorCodes.STALE_REVISION, "Revision changed.");
+                return Ok(new JObject
+                {
+                    ["document_id"] = AssemblyId, ["revision"] = Revision, ["healthy"] = false, ["occurrence_count"] = 3,
+                    ["unconstrained_occurrences"] = 1, ["constraint_count"] = 1, ["joint_count"] = 0,
+                    ["failing_constraints"] = new JArray(new JObject
+                        { ["name"] = "M7_Sick", ["health"] = "kInconsistentHealth", ["a_occurrence_id"] = "ent_occ_1", ["b_occurrence_id"] = "ent_occ_3" }),
+                    ["failing_joints"] = new JArray(),
+                    ["occurrences"] = new JArray(
+                        new JObject { ["name"] = "Bolt:1", ["occurrence_id"] = "ent_occ_1", ["suppressed"] = false, ["grounded"] = true, ["dof_translation"] = 0, ["dof_rotation"] = 0, ["unconstrained"] = false },
+                        new JObject { ["name"] = "Bolt:2", ["occurrence_id"] = "ent_occ_2", ["suppressed"] = false, ["grounded"] = false, ["dof_translation"] = 3, ["dof_rotation"] = 3, ["unconstrained"] = true },
+                        new JObject { ["name"] = "Plate:1", ["occurrence_id"] = "ent_occ_3", ["suppressed"] = false, ["grounded"] = true, ["dof_translation"] = 0, ["dof_rotation"] = 0, ["unconstrained"] = false }),
+                });
+            case "get_assembly_bom":
+                lock (_gate) { if (_bumpOnBom) { _bumpOnBom = false; _sequence++; } }
+                // Mirrors the real handler: a blank part number is reported as the file name, the description stays blank.
+                return Ok(new JObject
+                {
+                    ["truncated"] = false,
+                    ["bom"] = new JArray(
+                        new JObject { ["part_number"] = "Bolt", ["path"] = "C:\\fake\\Bolt.ipt", ["qty"] = 2, ["description"] = "" },
+                        new JObject { ["part_number"] = "PL-1", ["path"] = "C:\\fake\\Plate.ipt", ["qty"] = 1, ["description"] = "Plate" }),
+                });
             case "get_display_mesh":
             {
                 string id = (string?)p["document_id"] ?? AssemblyId;

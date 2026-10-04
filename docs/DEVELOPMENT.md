@@ -2,6 +2,44 @@
 
 Target: Inventor 2027 x64. Full functional scope remains the 80-point assessment in `analisi-spec-inventor-so-mcp.md`; the work below does not replace it with a smaller goal.
 
+## Pairing Windows e pulsante Inventor — 2026-10-04
+
+Implementati controllo locale su Named Pipe con ACL utente e rifiuto dei logon di rete,
+apertura/rigenerazione/annullamento a runtime, registrazione persistente coerente,
+finestra WinForms con QR in memoria, codice, IP/porta e impronta, pulsante ribbon SO27,
+packaging e collegamento Start. Nessuna modifica al protocollo QR v1 o all'app Quest.
+
+Verifiche automatiche e limiti live: [verbale pairing Windows](pairing-windows-verification.md).
+L'add-in della sessione Inventor aperta non è stato sostituito; scansione fisica Quest,
+ribbon live e DPI reali restano aperti. La UI distingue associazione e disponibilità
+Inventor; lo stato di sessione MCP non viene dedotto dal pairing.
+
+## Inventor XR SO M7: verifica ingegneristica in Ispeziona — 2026-10-04
+
+Tre tool sperimentali nuovi (`Verification = Pending`), legati a `document_id`
+e `expected_revision` e con id portabili, solo in lettura:
+
+- `inventor_check_interference_xr`: interferenze tra occorrenze di primo
+  livello (tutte, oppure la selezione contro le altre), con box di ogni corpo
+  di interferenza e `elapsed_ms`.
+- `inventor_measure_min_distance_xr`: distanza minima tra due occorrenze
+  dirette, con i punti più vicini (`ClosestPointOne`/`ClosestPointTwo` del
+  contesto di `GetMinimumDistance`) quando Inventor li fornisce.
+- `inventor_assembly_health_xr`: salute dell'assieme con le occorrenze dei
+  vincoli e giunti in errore, più `inventor_validate_bom`; rifiuta con
+  `STALE_REVISION` se il documento cambia durante la lettura.
+
+Sonde dal vivo sulla fixture `m7` (Inventor 2027, 2026-10-03): punti più vicini,
+box di interferenza, occorrenze del vincolo in errore e `AnalyzeInterference`
+a due insiemi funzionano; interferenze in 3 ms su 4 occorrenze. Esiti in
+[verifica M7](xr-m7-verification.md).
+
+Aperti: esecuzione dal vivo dei tre tool tramite l'host HTTPS e il runner M7
+sul Quest (gate M7-02…M7-05), durata su un assieme reale (M7-07), test Unity
+EditMode di M7 (non eseguiti: il runner batch di Unity si blocca per il token
+di licenza scaduto) e prova fisica M7-08. I tool restano sperimentali finché
+M7-02, M7-03 e M7-04 non passano dal vivo.
+
 ## Host remoto: segue il riavvio di Inventor — 2026-09-30
 
 `PluginClient.CurrentTarget` restituiva `null` per sempre quando il processo Inventor agganciato terminava, anche se il pin era nato in automatico. L'host HTTPS usato dal Quest è di lunga durata: a ogni riavvio di Inventor il visore perdeva la connessione fino al riavvio manuale dell'host.

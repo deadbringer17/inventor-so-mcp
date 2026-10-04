@@ -127,8 +127,14 @@ public sealed class GetAssemblyHealthHandler : ExperimentalHandler
     public override string Name => "get_assembly_health";
     public override bool IsReadOnly => true;
     protected override JToken Run(InventorCommandContext ctx, Application app, JObject p)
+        => AssemblyHealthReader.Read(ctx, X.ActiveAssembly(app, Name), p, withIds: false);
+}
+
+/// <summary>DOF, grounding and constraint/joint health of an assembly. With ids, failing relationships carry the direct occurrences they bind.</summary>
+internal static class AssemblyHealthReader
+{
+    public static JObject Read(InventorCommandContext ctx, AssemblyDocument assembly, JObject p, bool withIds)
     {
-        var assembly = X.ActiveAssembly(app, Name);
         var def = assembly.ComponentDefinition;
         int max = p["max_occurrences"]?.Type == JTokenType.Integer ? Math.Max(1, Math.Min(20000, (int)p["max_occurrences"]!)) : 2000;
         var occurrences = new JArray();
@@ -139,6 +145,7 @@ public sealed class GetAssemblyHealthHandler : ExperimentalHandler
             X.Deadline(ctx, "while reading assembly health");
             var item = new JObject { ["name"] = occurrence.Name, ["occurrence_id"] = X.Describe((global::Inventor.Document)assembly, occurrence),
                 ["suppressed"] = occurrence.Suppressed, ["grounded"] = occurrence.Grounded };
+            bool free = false;
             if (!occurrence.Suppressed)
             {
                 try
@@ -146,10 +153,12 @@ public sealed class GetAssemblyHealthHandler : ExperimentalHandler
                     occurrence.GetDegreesOfFreedom(out int translations, out ObjectsEnumerator _, out int rotations, out ObjectsEnumerator _, out Point _);
                     item["dof_translation"] = translations;
                     item["dof_rotation"] = rotations;
-                    if (!occurrence.Grounded && translations + rotations == 6) unconstrained++;
+                    free = !occurrence.Grounded && translations + rotations == 6;
+                    if (free) unconstrained++;
                 }
                 catch { item["dof_translation"] = null; }
             }
+            if (withIds) item["unconstrained"] = free;
             occurrences.Add(item);
         }
         var failingConstraints = new JArray();
@@ -157,16 +166,20 @@ public sealed class GetAssemblyHealthHandler : ExperimentalHandler
         foreach (AssemblyConstraint constraint in def.Constraints)
         {
             constraintCount++;
-            if (!constraint.Suppressed && constraint.HealthStatus != HealthStatusEnum.kUpToDateHealth)
-                failingConstraints.Add(new JObject { ["name"] = constraint.Name, ["health"] = constraint.HealthStatus.ToString() });
+            if (constraint.Suppressed || constraint.HealthStatus == HealthStatusEnum.kUpToDateHealth) continue;
+            var item = new JObject { ["name"] = constraint.Name, ["health"] = constraint.HealthStatus.ToString() };
+            if (withIds) AddPair(assembly, item, () => constraint.OccurrenceOne, () => constraint.OccurrenceTwo);
+            failingConstraints.Add(item);
         }
         var failingJoints = new JArray();
         int jointCount = 0;
         foreach (AssemblyJoint joint in def.Joints)
         {
             jointCount++;
-            if (!joint.Suppressed && joint.HealthStatus != HealthStatusEnum.kUpToDateHealth)
-                failingJoints.Add(new JObject { ["name"] = joint.Name, ["health"] = joint.HealthStatus.ToString() });
+            if (joint.Suppressed || joint.HealthStatus == HealthStatusEnum.kUpToDateHealth) continue;
+            var item = new JObject { ["name"] = joint.Name, ["health"] = joint.HealthStatus.ToString() };
+            if (withIds) AddPair(assembly, item, () => joint.OccurrenceOne, () => joint.OccurrenceTwo);
+            failingJoints.Add(item);
         }
         return new JObject
         {
@@ -179,6 +192,19 @@ public sealed class GetAssemblyHealthHandler : ExperimentalHandler
             ["failing_joints"] = failingJoints,
             ["occurrences"] = occurrences,
         };
+    }
+
+    // A sick relationship may not expose its occurrences: the ids stay null and the row is shown without highlight.
+    private static void AddPair(AssemblyDocument assembly, JObject item, Func<ComponentOccurrence?> one, Func<ComponentOccurrence?> two)
+    {
+        item["a_occurrence_id"] = Safe(assembly, one);
+        item["b_occurrence_id"] = Safe(assembly, two);
+    }
+
+    private static JToken Safe(AssemblyDocument assembly, Func<ComponentOccurrence?> read)
+    {
+        try { return (JToken?)VerifyXr.Id(assembly, VerifyXr.Top(read())) ?? JValue.CreateNull(); }
+        catch { return JValue.CreateNull(); }
     }
 }
 

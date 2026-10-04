@@ -30,6 +30,8 @@ modifies your CAD documents.
 | The add-in | Windows x64 and **Autodesk Inventor 2027** (version 31.x) |
 | Building the add-in | **.NET 10 SDK** |
 | Building and running the server | **.NET 8 SDK** (or the .NET 8 runtime to run only) |
+| Running the HTTPS host for Quest | **ASP.NET Core Runtime 8 x64** (or the .NET 8 SDK) |
+| Windows pairing window | Included as a self-contained Windows x64 application |
 | Running the live smoke tests | Python 3 with `pywin32` |
 
 The Inventor interop assembly is read from your local Inventor installation and is
@@ -44,12 +46,13 @@ cd inventor-so-mcp
 ./scripts/build-inventor-so.ps1
 ```
 
-This writes a fresh `artifacts/inventor-so-mcp-<timestamp>/` containing `server/`
-and `addin/`. It only builds: no add-in is registered and no document is touched.
+This writes a fresh `artifacts/inventor-so-mcp-<timestamp>/` containing `server/`,
+`server-http/`, `pairing-desktop/` and `addin/`. It only builds: no add-in is registered and no document is touched.
 Run the unit and protocol tests at any time — they need no Inventor:
 
 ```powershell
 dotnet test bridge/tests/Bimwright.Ipt.Tests
+dotnet test bridge/tests/Pairing.Desktop.Tests # Windows UI tests, isolated pairing fixtures
 ```
 
 ### 3. Install the add-in
@@ -62,7 +65,22 @@ The installer copies the package to `%LOCALAPPDATA%\InventorSO\packages\<version
 writes the add-in manifest to
 `%APPDATA%\Autodesk\Inventor 2027\Addins\InventorSO\Inventor.So.addin`, and keeps a
 copy of the previous manifest. It never closes documents and never restarts Inventor.
+It also installs **Inventor SO → Connessione visore** in the current user's Start menu.
 It prints the exact server path to use in step 6 — keep that line.
+
+For Quest pairing, open **Connessione visore**, or use **Inventor SO → Associa visore**
+in Inventor after loading the new add-in. Select the LAN interface shared with the
+headset and click **Genera codice**. The window shows the QR, manual code, IP/port,
+certificate fingerprint and two-minute countdown. **Genera nuovo codice** replaces
+both previous secrets. Closing the window cancels the open pairing while the HTTPS
+host stays available to paired clients. The first version reports association;
+it does not claim that the headset has an active MCP session.
+
+With several Inventor instances, choose one before starting the managed host. An
+existing host keeps its target; opening the button from another instance shows the
+mismatch. A console host already using port 8443 must be stopped before the window
+can manage a new host. No firewall rule is installed automatically. Ribbon behavior
+and physical Quest scanning remain pending in the [pairing verification record](docs/pairing-windows-verification.md).
 
 ### 4. Restart Inventor, then check the add-in actually loaded
 
