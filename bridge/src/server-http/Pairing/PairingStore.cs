@@ -15,6 +15,7 @@ public sealed class PairingWindow
     }
 
     public string ClientName { get; }
+    public string Id { get; } = Guid.NewGuid().ToString("N");
     /// <summary>Secret carried by the QR code.</summary>
     public string OneTimeToken { get; }
     /// <summary>Six digits for manual entry on the headset.</summary>
@@ -58,6 +59,26 @@ public sealed class PairingStore
     private PairingWindow? _window;
     private bool _used;
     private int _failures;
+    private string _state = "ready";
+
+    public (PairingWindow? Window, string State, double RemainingSeconds) Status()
+    {
+        lock (_gate)
+        {
+            if (_state == "waiting" && _window != null && _clock() >= _window.ExpiresUtc) _state = "expired";
+            return (_window, _state, _state == "waiting" ? Math.Max(0, (_window!.ExpiresUtc - _clock()).TotalSeconds) : 0);
+        }
+    }
+
+    public bool Cancel(string? windowId)
+    {
+        lock (_gate)
+        {
+            if (_window == null || _window.Id != windowId) return false;
+            if (_state == "waiting") _state = "cancelled";
+            return true;
+        }
+    }
 
     public PairingStore(Func<DateTimeOffset> clock) => _clock = clock;
 
@@ -67,33 +88,53 @@ public sealed class PairingStore
         if (!TokenRegistry.IsValidName(clientName))
             throw new InvalidOperationException("Pairing: the client name must be 1-40 letters, digits, '.', '_' or '-'.");
         if (ttl <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(ttl));
-        var window = new PairingWindow(clientName, TokenRegistry.Generate(),
-            RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6"), _clock() + ttl);
         lock (_gate)
         {
+            string code;
+            do { code = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6"); }
+            while (code == _window?.Code);
+            var window = new PairingWindow(clientName, TokenRegistry.Generate(), code, _clock() + ttl);
             _window = window;
             _used = false;
             _failures = 0;
+            _state = "waiting";
+            return window;
         }
-        return window;
     }
 
-    public PairingOutcome Redeem(string? secret)
+    public PairingOutcome Redeem(string? secret) => Redeem(secret, _ => { });
+
+    // Persistence and consumption share the same lock as open/cancel: no old completion
+    // can consume a replacement window, and no success precedes durable registration.
+    public PairingOutcome Redeem(string? secret, Action<string> persist)
     {
         lock (_gate)
         {
             if (_window == null) return PairingOutcome.Failure(Expired, "No pairing is open on this PC.");
             if (_used) return PairingOutcome.Failure(Used, "This pairing code was already used. Start a new pairing on the PC.");
+            if (_state is "cancelled" or "failed") return PairingOutcome.Failure(Expired, "Pairing closed. Start a new pairing on the PC.");
+            if (_state == "locked") return PairingOutcome.Failure(Expired, "Too many wrong codes: pairing closed. Start a new pairing on the PC.");
             if (_clock() >= _window.ExpiresUtc || _failures >= MaxFailures)
+            {
+                _state = "expired";
                 return PairingOutcome.Failure(Expired, "The pairing code expired. Start a new pairing on the PC.");
+            }
             if (!Matches(secret, _window))
             {
                 _failures++;
+                if (_failures >= MaxFailures) _state = "locked";
                 return _failures >= MaxFailures
                     ? PairingOutcome.Failure(Expired, "Too many wrong codes: pairing closed. Start a new pairing on the PC.")
                     : PairingOutcome.Failure(Invalid, "Wrong pairing code.");
             }
+            try { persist(_window.ClientName); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+            {
+                _state = "failed";
+                return PairingOutcome.Failure("PAIRING_PERSIST_FAILED", "Could not save the credential. Start a new pairing on the PC.");
+            }
             _used = true;
+            _state = "paired";
             return PairingOutcome.Success(_window.ClientName);
         }
     }

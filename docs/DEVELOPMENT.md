@@ -2,6 +2,18 @@
 
 Target: Inventor 2027 x64. Full functional scope remains the 80-point assessment in `analisi-spec-inventor-so-mcp.md`; the work below does not replace it with a smaller goal.
 
+## Pairing Windows e pulsante Inventor — 2026-10-04
+
+Implementati controllo locale su Named Pipe con ACL utente e rifiuto dei logon di rete,
+apertura/rigenerazione/annullamento a runtime, registrazione persistente coerente,
+finestra WinForms con QR in memoria, codice, IP/porta e impronta, pulsante ribbon SO27,
+packaging e collegamento Start. Nessuna modifica al protocollo QR v1 o all'app Quest.
+
+Verifiche automatiche e limiti live: [verbale pairing Windows](pairing-windows-verification.md).
+L'add-in della sessione Inventor aperta non è stato sostituito; scansione fisica Quest,
+ribbon live e DPI reali restano aperti. La UI distingue associazione e disponibilità
+Inventor; lo stato di sessione MCP non viene dedotto dal pairing.
+
 ## Inventor XR SO M7: verifica ingegneristica in Ispeziona — 2026-10-04
 
 Tre tool sperimentali nuovi (`Verification = Pending`), legati a `document_id`

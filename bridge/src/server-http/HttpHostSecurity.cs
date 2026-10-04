@@ -51,6 +51,9 @@ public sealed class TokenRegistry
     }
 
     public void Add(string name, string token, string source = "token")
+        => AddPersisted(name, token, () => { }, source);
+
+    public void AddPersisted(string name, string token, Action persist, string source = "pairing")
     {
         if (!NamePattern.IsMatch(name)) throw new InvalidOperationException(source + ": client name must be 1-40 letters, digits, '.', '_' or '-'.");
         if (token.Length < MinimumTokenLength) throw new InvalidOperationException(source + ": tokens must be at least " + MinimumTokenLength + " characters (use --generate-token).");
@@ -59,6 +62,7 @@ public sealed class TokenRegistry
         {
             if (_tokens.Any(t => t.name == name)) throw new InvalidOperationException(source + ": duplicate client name '" + name + "'.");
             if (_tokens.Any(t => CryptographicOperations.FixedTimeEquals(t.hash, hash))) throw new InvalidOperationException(source + ": duplicate token.");
+            persist();
             _tokens.Add((name, hash));
         }
     }
@@ -85,21 +89,33 @@ public sealed class TokenRegistry
 /// <summary>The token file of the remote host: "name:token" per line.</summary>
 public static class TokenFile
 {
+    private static readonly object Gate = new();
     /// <summary>Append one line, creating the file and its directory if needed.</summary>
     public static void Append(string path, string name, string token)
     {
         var full = Path.GetFullPath(path);
         Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-        var prefix = File.Exists(full) && new FileInfo(full).Length > 0 && !EndsWithNewline(full) ? Environment.NewLine : "";
-        File.AppendAllText(full, prefix + name + ":" + token + Environment.NewLine);
+        lock (Gate)
+        {
+            // Serialize other host processes that might use this same token file too.
+            using var fileLock = new FileStream(full + ".lock", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            var previous = File.Exists(full) ? File.ReadAllText(full) : "";
+            var prefix = previous.Length > 0 && !previous.EndsWith('\n') ? Environment.NewLine : "";
+            var temp = full + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                using (var file = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    var bytes = Encoding.UTF8.GetBytes(previous + prefix + name + ":" + token + Environment.NewLine);
+                    file.Write(bytes);
+                    file.Flush(flushToDisk: true);
+                }
+                File.Move(temp, full, overwrite: true);
+            }
+            finally { if (File.Exists(temp)) File.Delete(temp); }
+        }
     }
 
-    private static bool EndsWithNewline(string path)
-    {
-        using var stream = File.OpenRead(path);
-        stream.Seek(-1, SeekOrigin.End);
-        return stream.ReadByte() == '\n';
-    }
 }
 
 /// <summary>Checks the listening configuration before anything is bound.</summary>

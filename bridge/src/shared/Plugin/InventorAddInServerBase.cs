@@ -40,6 +40,17 @@ public abstract class InventorAddInServerBase : InvApi.ApplicationAddInServer
     protected virtual string ProductDirectory => Path.Combine("Bimwright", "ipt-mcp");
     protected virtual string PipePrefix => "BimwrightInventor";
     protected virtual bool RequireAtomicWrites => false;
+    protected virtual void OnActivated(InvApi.Application application, string targetId) { }
+    protected virtual void OnDeactivating() { }
+
+    /// <summary>Called only on Inventor's STA, e.g. from a WinForms UI timer.</summary>
+    protected void RefreshDocumentDescriptor()
+    {
+        if (_descriptor == null || _descriptorWriter == null) return;
+        ReadActiveDocument(out var title, out var path);
+        if (title != _descriptor.DocumentTitle || path != _descriptor.DocumentPath)
+            _descriptorWriter.UpdateDocument(title, path);
+    }
 
     public void Activate(InvApi.ApplicationAddInSite site, bool firstTime)
     {
@@ -79,6 +90,7 @@ public abstract class InventorAddInServerBase : InvApi.ApplicationAddInServer
         ReadActiveDocument(out var docTitle, out var docPath);
         _descriptorWriter = new TargetDescriptorWriter(_descriptorDir, _descriptor);
         _descriptorWriter.Start(docTitle, docPath);
+        OnActivated(_app, _descriptor.TargetId);
     }
 
     private void HandleLine(
@@ -152,6 +164,7 @@ public abstract class InventorAddInServerBase : InvApi.ApplicationAddInServer
 
     public void Deactivate()
     {
+        try { OnDeactivating(); } catch { }
 #if INVENTOR2027 && SO_EXPERIMENTAL
         try { _selection?.Dispose(); } catch { }
         _selection = null;

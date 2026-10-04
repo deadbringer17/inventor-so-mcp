@@ -273,6 +273,32 @@ public sealed class PairingEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task PairingCanOpenAgainWithoutRestartAndOldCredentialRemainsValid()
+    {
+        using var http = Client();
+        var first = _store.Open("quest-first", PairingStore.DefaultTtl);
+        var response = await http.PostAsync("/pair", Json(new { secret = first.Code }));
+        var token = (string)JObject.Parse(await response.Content.ReadAsStringAsync())["token"]!;
+        var second = _store.Open("quest-second", PairingStore.DefaultTtl);
+        Assert.Equal(HttpStatusCode.OK, (await http.PostAsync("/pair", Json(new { secret = second.OneTimeToken }))).StatusCode);
+        Assert.Equal("quest-first", _tokens.Authenticate(token));
+        Assert.Equal(2, TokenRegistry.Load(new InventorMcpConfig { HttpTokenFile = TokenFilePath }).Count);
+    }
+
+    [Fact]
+    public async Task UnwritableTokenFileReturns503WithoutActivatingCredential()
+    {
+        Directory.CreateDirectory(TokenFilePath); // A directory cannot be replaced by the token file.
+        var window = _store.Open("quest-failure", PairingStore.DefaultTtl);
+        using var http = Client();
+        var response = await http.PostAsync("/pair", Json(new { secret = window.Code }));
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Equal("PAIRING_PERSIST_FAILED", (string?)JObject.Parse(await response.Content.ReadAsStringAsync())["error"]!["code"]);
+        Assert.Equal(0, _tokens.Count);
+        Assert.Equal("failed", _store.Status().State);
+    }
+
+    [Fact]
     public async Task MalformedBodyIsRefused()
     {
         _store.Open("quest-bad", PairingStore.DefaultTtl);

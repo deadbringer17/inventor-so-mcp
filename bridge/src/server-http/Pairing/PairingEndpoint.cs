@@ -55,14 +55,16 @@ public sealed class PairingEndpoint
         if (string.IsNullOrEmpty(secret))
             return Error(StatusCodes.Status400BadRequest, PairingStore.Invalid, "The body must be {\"secret\": \"...\", \"device_name\": \"...\"}.");
 
-        var outcome = _store.Redeem(secret);
-        if (!outcome.Ok) return Error(StatusCodes.Status403Forbidden, outcome.ErrorCode!, outcome.Message);
-
         var token = TokenRegistry.Generate();
-        _tokens.Add(outcome.ClientName!, token, "pairing");
-        TokenFile.Append(_tokenFile, outcome.ClientName!, token);
+        var outcome = _store.Redeem(secret, name => _tokens.AddPersisted(name, token,
+            () => TokenFile.Append(_tokenFile, name, token)));
+        if (!outcome.Ok) return Error(outcome.ErrorCode == "PAIRING_PERSIST_FAILED" ? 503 : 403, outcome.ErrorCode!, outcome.Message);
         var device = (request!["device_name"] as JValue)?.Value as string;
-        Paired?.Invoke(outcome.ClientName!, device == null ? null : device[..Math.Min(device.Length, 80)]);
+        // An observer failure cannot turn durable pairing into a failed HTTP response.
+        if (Paired != null)
+            foreach (Action<string, string?> observer in Paired.GetInvocationList())
+                try { observer(outcome.ClientName!, device == null ? null : device[..Math.Min(device.Length, 80)]); }
+                catch { }
         return Results.Json(new { ok = true, client_name = outcome.ClientName, token });
     }
 

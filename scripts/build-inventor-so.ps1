@@ -17,6 +17,8 @@ if (Test-Path -LiteralPath $package) { throw 'Package directory already exists. 
 if ($LASTEXITCODE -ne 0) { throw 'Server publish failed' }
 & $DotnetPath publish (Join-Path $repo 'bridge\src\server-http\Inventor.So.Mcp.Http.csproj') -c Release --self-contained false -o (Join-Path $package 'server-http') --nologo
 if ($LASTEXITCODE -ne 0) { throw 'Remote (HTTP) host publish failed' }
+& $DotnetPath publish (Join-Path $repo 'bridge\src\pairing-desktop\Inventor.So.Pairing.Desktop.csproj') -c Release -r win-x64 --self-contained true -o (Join-Path $package 'pairing-desktop') --nologo
+if ($LASTEXITCODE -ne 0) { throw 'Windows pairing application publish failed' }
 $addinArgs = @('publish', (Join-Path $repo 'bridge\src\plugin-so27\Inventor.So.AddIn.csproj'), '-c', 'Release', '--self-contained', 'false', '-o', (Join-Path $package 'addin'), '--nologo')
 if ($Experimental) { $addinArgs += '-p:SoExperimental=true' }
 & $DotnetPath @addinArgs

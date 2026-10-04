@@ -51,6 +51,19 @@ $adb = "C:\Program Files\Unity\Hub\Editor\6000.6.3f1\Editor\Data\PlaybackEngines
 
 ## Primo collegamento
 
+Con il nuovo pacchetto Windows, aprire **Inventor SO → Connessione visore** dal
+menu Start oppure **Inventor SO → Associa visore** nella scheda dell'add-in.
+Selezionare l'indirizzo della rete condivisa con il Quest e premere **Genera codice**:
+la finestra mostra QR, codice manuale, IP con porta, impronta e scadenza. È possibile
+rigenerare il codice senza riavviare il server. Alla chiusura della finestra il pairing
+viene annullato, mentre il server continua a servire i dispositivi già associati.
+Il server richiede ASP.NET Core Runtime .NET 8 x64; la finestra è distribuita con
+il proprio runtime. Questa nuova UI ha verifiche automatiche Windows; collaudo
+fisico Quest e ribbon live sono registrati come aperti nel
+[verbale pairing Windows](../docs/pairing-windows-verification.md).
+
+Il percorso da console rimane disponibile per sviluppo e collaudo:
+
 Senza Inventor, per il collaudo del client:
 
 ```powershell
