@@ -37,6 +37,9 @@
     <Compile Include="..\..\src\shared\Infrastructure\*.cs" LinkBase="Shared\Infrastructure" />
     <Compile Include="..\..\src\shared\Transport\*.cs" LinkBase="Shared\Transport" />
     <Compile Include="..\..\src\shared\Handlers\Export\CaptureImagePolicy.cs" LinkBase="Shared\Handlers\Export" />
+    <!-- Pure face_feature rules (no Inventor reference): the unit tests and FakeAddIn use them directly. -->
+    <Compile Include="..\..\src\shared\Handlers\UnitConvert.cs" LinkBase="Shared\Handlers" />
+    <Compile Include="..\..\src\shared\Handlers\Core\FaceFeatureModel.cs" LinkBase="Shared\Handlers\Core" />
   </ItemGroup>
 
 </Project>

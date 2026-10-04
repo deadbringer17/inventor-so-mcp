@@ -28,6 +28,7 @@ internal static class Program
             var journal=(CadEventJournal)trackerType.GetProperty("Journal")!.GetValue(tracker)!;
             var commands=InventorCommandRegistry.Build(new PluginOptions(2027,false,false,0));
             var context=new InventorCommandContext { Application=app,Events=journal,Commands=commands,AllowExperimental=true,InventorYear=2027 };
+            if(args.Contains("--face-feature")) return FaceFeatureProbe.Run(app,commands,context,journal);
             if(args.Contains("--face-selection"))
             {
                 var current=app.ActiveDocument;

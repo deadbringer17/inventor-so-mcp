@@ -103,6 +103,7 @@ namespace InventorXrSo.Tests
             public readonly List<string> Activated = new List<string>();
             public InspectionInfo Info = InspectionInfo.FromJson(new JObject { ["material"] = "Acciaio", ["mass_kg"] = 1.5, ["volume_mm3"] = 120000 });
             public Task<InspectionInfo> InspectAsync(DocumentState state, string occurrenceId, CancellationToken ct) => Task.FromResult(Info);
+            public Task<FaceFeatureInfo> GetFaceFeatureAsync(DocumentState state, string faceId, CancellationToken ct) => throw new NotImplementedException();
             public Task<IReadOnlyList<OpenDocument>> ListOpenAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<OpenDocument>>(
                 Enumerable.Range(1, Documents).Select(i => new OpenDocument("doc" + i, "Documento " + i, "kPartDocumentObject")).ToArray());
             public Task ActivateOpenAsync(string documentId, CancellationToken ct) { Activated.Add(documentId); return Task.CompletedTask; }
@@ -113,6 +114,7 @@ namespace InventorXrSo.Tests
             public readonly TaskCompletionSource<InspectionInfo> Result = new TaskCompletionSource<InspectionInfo>();
             public DocumentState LastState;
             public Task<InspectionInfo> InspectAsync(DocumentState state, string occurrenceId, CancellationToken ct) { LastState = state; return Result.Task; }
+            public Task<FaceFeatureInfo> GetFaceFeatureAsync(DocumentState state, string faceId, CancellationToken ct) => throw new NotImplementedException();
             public Task<IReadOnlyList<OpenDocument>> ListOpenAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<OpenDocument>>(Array.Empty<OpenDocument>());
             public Task ActivateOpenAsync(string documentId, CancellationToken ct) => Task.CompletedTask;
         }

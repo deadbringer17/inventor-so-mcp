@@ -97,6 +97,7 @@ namespace InventorXrSo.Tests
                 ["bom"] = new JObject { ["valid"] = true } });
 
             public Task<InspectionInfo> InspectAsync(DocumentState state, string occurrenceId, CancellationToken ct) => Task.FromResult(InspectionInfo.FromJson(new JObject()));
+            public Task<FaceFeatureInfo> GetFaceFeatureAsync(DocumentState state, string faceId, CancellationToken ct) => throw new NotImplementedException();
             public Task<IReadOnlyList<OpenDocument>> ListOpenAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<OpenDocument>>(Array.Empty<OpenDocument>());
             public Task ActivateOpenAsync(string documentId, CancellationToken ct) => Task.CompletedTask;
             public Task<InterferenceReport> CheckInterferenceAsync(DocumentState state, IReadOnlyList<string> ids, CancellationToken ct) { LastScope = ids; return Interference.Task; }

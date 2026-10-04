@@ -34,6 +34,12 @@ public sealed class XrTools
     public Task<string> Inspect(string document_id, string expected_revision, string? occurrence_id = null, CancellationToken ct = default)
         => Call("inspect_xr", new JObject { ["document_id"] = document_id, ["expected_revision"] = expected_revision, ["occurrence_id"] = occurrence_id }, ct);
 
+    [McpServerTool(Name = "inventor_face_feature"), Description("Revision-bound: the parametric feature that created a face of the active part (face_id as returned by the XR selection) and its editable parameters. Returns feature {name, type, suppressed, healthy}, parameters [{name, role, value, unit (mm or deg), expression, editable}] and previous_feature. Supported: extrude (distance), revolve (angle), fillet (radius), chamfer (distance), hole (diameter, depth), rectangular/circular pattern (count, spacing or angle), sheet-metal flange (distance, angle). editable is false when the expression is not a plain value, or the feature is suppressed or in error. Errors: NO_OWNING_FEATURE (base, derived or imported body), UNSUPPORTED_FEATURE (details carry feature name and type), STALE_REVISION. No CAD changes. Experimental.")]
+    public Task<string> FaceFeature(string document_id, string expected_revision, string face_id, CancellationToken ct = default)
+        => string.IsNullOrWhiteSpace(face_id)
+            ? Task.FromResult(Error(InventorErrorCodes.INVALID_ARGUMENT, "face_id is required."))
+            : Call("face_feature", new JObject { ["document_id"] = document_id, ["expected_revision"] = expected_revision, ["face_id"] = face_id.Trim() }, ct);
+
     [McpServerTool(Name = "inventor_activate_open_document_xr"), Description("Activate exactly one already-open part or assembly by document_id for XR inspection. View/context only: no open-file, save, close, rebuild or CAD edit. Refuses an active transaction and duplicate ids. Experimental.")]
     public Task<string> ActivateOpen(string document_id, CancellationToken ct = default)
         => Call("activate_open_document_xr", new JObject { ["document_id"] = document_id }, ct);

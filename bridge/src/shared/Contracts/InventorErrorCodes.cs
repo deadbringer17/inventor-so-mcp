@@ -69,4 +69,10 @@ public static class InventorErrorCodes
     // Asset store and remote host.
     public const string ASSET_NOT_FOUND = "ASSET_NOT_FOUND";
     public const string RATE_LIMITED = "RATE_LIMITED";
+
+    // face_feature (experimental): the face belongs to the base body, a derived or imported body (no
+    // owning parametric feature), or its feature type is outside the editable table (the failure
+    // still carries the feature name and type in Details).
+    public const string NO_OWNING_FEATURE = "NO_OWNING_FEATURE";
+    public const string UNSUPPORTED_FEATURE = "UNSUPPORTED_FEATURE";
 }

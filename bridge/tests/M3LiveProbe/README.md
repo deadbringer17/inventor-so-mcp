@@ -48,3 +48,11 @@ captured preview, clean sketch/revision rollback, then the persisted constraint
 after commit. It uses a new temporary part and restores the original active
 document on exit. Compile-only validation does not establish native correctness.
 Do not run while the user is interacting with the active Inventor/Quest document.
+
+## face_feature (M9-08)
+
+Run with `-- --face-feature` (same experimental add-in build as above). It builds a temporary part
+(extrude, fillet, chamfer, hole), calls `face_feature` on one face per feature and checks name, type,
+roles, `editable` vs the expression, `previous_feature`, an expression-driven distance (not editable)
+and that the revision does not change. Covers extrude, fillet, chamfer, hole only; revolve, patterns and
+sheet-metal flange still need a fixture case before the tool leaves the experimental tier.

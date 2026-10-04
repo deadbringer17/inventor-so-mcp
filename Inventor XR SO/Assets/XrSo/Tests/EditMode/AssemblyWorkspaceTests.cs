@@ -85,6 +85,7 @@ namespace InventorXrSo.Tests
             public Task<DesignHistory> GetHistoryAsync(DocumentState state, CancellationToken ct) => Task.FromResult(new DesignHistory(state, false, false, null));
             public Task<DocumentState> ApplyHistoryAsync(DesignHistory history, bool redo, CancellationToken ct) => Task.FromResult(State);
             public Task<InspectionInfo> InspectAsync(DocumentState state, string occurrenceId, CancellationToken ct) => Task.FromResult<InspectionInfo>(null);
+            public Task<FaceFeatureInfo> GetFaceFeatureAsync(DocumentState state, string faceId, CancellationToken ct) => throw new NotImplementedException();
             public Task<IReadOnlyList<OpenDocument>> ListOpenAsync(CancellationToken ct) =>
                 Task.FromResult<IReadOnlyList<OpenDocument>>(new[] { new OpenDocument("doc_bolt", "Bolt", "kPartDocumentObject") });
             public Task ActivateOpenAsync(string documentId, CancellationToken ct) { Activations++; LastActivated = documentId; return Task.CompletedTask; }

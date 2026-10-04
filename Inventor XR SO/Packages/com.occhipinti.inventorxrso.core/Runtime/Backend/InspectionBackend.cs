@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using InventorXrSo.Core.Mcp;
 using Newtonsoft.Json.Linq;
 
 namespace InventorXrSo.Core.Backend
@@ -43,6 +44,7 @@ namespace InventorXrSo.Core.Backend
         Task<InspectionInfo> InspectAsync(DocumentState state, string occurrenceId, CancellationToken ct);
         Task<IReadOnlyList<OpenDocument>> ListOpenAsync(CancellationToken ct);
         Task ActivateOpenAsync(string documentId, CancellationToken ct);
+        Task<FaceFeatureInfo> GetFaceFeatureAsync(DocumentState state, string faceId, CancellationToken ct);
     }
 
     public sealed partial class InventorBackend : IInspectionBackend
@@ -65,5 +67,17 @@ namespace InventorXrSo.Core.Backend
 
         public Task ActivateOpenAsync(string documentId, CancellationToken ct) =>
             _mcp.CallToolAsync("inventor_activate_open_document_xr", new JObject { ["document_id"] = documentId }, ct);
+
+        public async Task<FaceFeatureInfo> GetFaceFeatureAsync(DocumentState state, string faceId, CancellationToken ct)
+        {
+            try
+            {
+                return FaceFeatureInfo.FromJson(await _mcp.CallToolAsync("inventor_face_feature", new JObject
+                {
+                    ["document_id"] = state.DocumentId, ["expected_revision"] = state.Revision, ["face_id"] = faceId
+                }, ct));
+            }
+            catch (McpToolException ex) when (ex.Code == FaceFeatureInfo.UnsupportedCode) { return FaceFeatureInfo.FromToolError(ex); }
+        }
     }
 }

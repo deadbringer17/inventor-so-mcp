@@ -18,5 +18,8 @@
     <ProjectReference Include="..\..\..\bridge\src\server\Bimwright.Ipt.Server.csproj" />
     <ProjectReference Include="..\..\..\bridge\src\server-http\Inventor.So.Mcp.Http.csproj" />
     <Compile Include="..\..\..\bridge\tests\Bimwright.Ipt.Tests\FakeAddIn.cs" Link="Bridge\FakeAddIn.cs" />
+    <Compile Include="..\..\..\bridge\src\shared\Handlers\UnitConvert.cs" Link="Bridge\UnitConvert.cs" />
+    <Compile Include="..\..\..\bridge\src\shared\Infrastructure\*.cs" LinkBase="Bridge\Infrastructure" />
+    <Compile Include="..\..\..\bridge\src\shared\Handlers\Core\FaceFeatureModel.cs" Link="Bridge\FaceFeatureModel.cs" />
   </ItemGroup>
 </Project>

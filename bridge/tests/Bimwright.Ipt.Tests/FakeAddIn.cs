@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Bimwright.Ipt.Shared.Contracts;
+using Bimwright.Ipt.Shared.Handlers.Core;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -183,6 +184,13 @@ public sealed class FakeAddIn : System.IAsyncDisposable
                     ["name"] = p["occurrence_id"]?.Type == JTokenType.String ? "Bolt:1" : "Fake.iam", ["material"] = "Steel",
                     ["mass_kg"] = 1.28, ["volume_mm3"] = 160000, ["area_mm2"] = 20000,
                     ["constraints"] = 3, ["dof_translation"] = 1, ["dof_rotation"] = 0 });
+            case "face_feature":
+                if (!DesignPartMode) return Fail(InventorErrorCodes.WRONG_DOCUMENT_TYPE, "face_feature needs an active part document.");
+                if ((string?)p["document_id"] != ActiveDocumentId) return Fail(InventorErrorCodes.DOCUMENT_CHANGED, "Active document changed.");
+                if ((string?)p["expected_revision"] != Revision) return Fail(InventorErrorCodes.STALE_REVISION, "Revision changed.");
+                try { return Ok(FakeFaceFeature((string?)p["face_id"])); }
+                catch (Bimwright.Ipt.Shared.Infrastructure.CodedFailureException failure)
+                { return InventorCommandResult.Fail(envelope.Id, failure.Code, failure.Message, failure.Details, meta); }
             case "check_interference_xr":
                 if ((string?)p["document_id"] != AssemblyId) return Fail(InventorErrorCodes.DOCUMENT_CHANGED, "Active document changed.");
                 if ((string?)p["expected_revision"] != Revision) return Fail(InventorErrorCodes.STALE_REVISION, "Revision changed.");
@@ -348,6 +356,45 @@ public sealed class FakeAddIn : System.IAsyncDisposable
     }
 
     private static double[] Translate(double x, double y, double z) => new[] { 1, 0, 0, x, 0, 1, 0, y, 0, 0, 1, z, 0, 0, 0, 1.0 };
+
+    /// <summary>
+    /// face_feature stand-in: a few canned faces fed through the same pure model the add-in handler
+    /// uses (values in Inventor internal units), so wire shape, units and error codes are exercised.
+    /// </summary>
+    private static JObject FakeFaceFeature(string? faceId)
+    {
+        const string Previous = "Schizzo1";
+        switch (faceId)
+        {
+            case "ent_face_extrude":
+                return FaceFeatureModel.Result("Estrusione1", "extrude", false, true,
+                    new[] { new FaceFeatureModel.RawParameter("d3", FaceFeatureModel.Distance, 2.0, "20 mm") }, Previous);
+            case "ent_face_expression":
+                return FaceFeatureModel.Result("Estrusione1", "extrude", false, true,
+                    new[] { new FaceFeatureModel.RawParameter("d3", FaceFeatureModel.Distance, 2.0, "d1*2") }, Previous);
+            case "ent_face_suppressed":
+                return FaceFeatureModel.Result("Raccordo1", "fillet", true, true,
+                    new[] { new FaceFeatureModel.RawParameter("d5", FaceFeatureModel.Radius, 0.1, "1 mm") }, "Estrusione1");
+            case "ent_face_hole":
+                return FaceFeatureModel.Result("Foro1", "hole", false, true, new[]
+                {
+                    new FaceFeatureModel.RawParameter("d7", FaceFeatureModel.Diameter, 0.5, "5 mm"),
+                    new FaceFeatureModel.RawParameter("d8", FaceFeatureModel.Depth, 1.0, "10 mm"),
+                }, "Raccordo1");
+            case "ent_face_circular":
+                return FaceFeatureModel.Result("Serie1", "circular_pattern", false, true, new[]
+                {
+                    new FaceFeatureModel.RawParameter("d9", FaceFeatureModel.Count, 6, "6"),
+                    new FaceFeatureModel.RawParameter("d10", FaceFeatureModel.Angle, Math.PI, "180 deg"),
+                }, "Foro1");
+            case "ent_face_base":
+                throw FaceFeatureModel.NoOwningFeature();
+            case "ent_face_sweep":
+                throw FaceFeatureModel.Unsupported("Sweep1", FaceFeatureModel.GenericType("kSweepFeatureObject"), false, true, "Schizzo2");
+            default:
+                throw new Bimwright.Ipt.Shared.Infrastructure.CodedFailureException(InventorErrorCodes.INVALID_ARGUMENT, "Unknown face id.");
+        }
+    }
 
     private JObject Scene() => new()
     {
