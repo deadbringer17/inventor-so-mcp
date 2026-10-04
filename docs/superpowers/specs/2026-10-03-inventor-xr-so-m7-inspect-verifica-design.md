@@ -1,7 +1,9 @@
 # Inventor XR SO — M7: Ispeziona, verifica ingegneristica degli assiemi
 
 Data: 3 ottobre 2026. Stato: specifica di design approvata in sessione di
-brainstorming. Implementazione e accettazione M7 non ancora eseguite.
+brainstorming. Implementazione presente; test automatici e sonde PC eseguiti
+il 4 ottobre 2026. Accettazione Quest e prova fisica ancora aperte:
+[verbale M7](../../xr-m7-verification.md).
 
 Riferimenti: [specifica prodotto](../../../Inventor%20XR%20SO/inventor_meta_product.md)
 §16 (Inspect Mode); [spec M6](2026-09-29-inventor-xr-so-m6-ux-spaziale-design.md);

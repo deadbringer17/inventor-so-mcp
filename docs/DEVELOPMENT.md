@@ -34,10 +34,15 @@ box di interferenza, occorrenze del vincolo in errore e `AnalyzeInterference`
 a due insiemi funzionano; interferenze in 3 ms su 4 occorrenze. Esiti in
 [verifica M7](xr-m7-verification.md).
 
-Aperti: esecuzione dal vivo dei tre tool tramite l'host HTTPS e il runner M7
-sul Quest (gate M7-02…M7-05), durata su un assieme reale (M7-07), test Unity
-EditMode di M7 (non eseguiti: il runner batch di Unity si blocca per il token
-di licenza scaduto) e prova fisica M7-08. I tool restano sperimentali finché
+Finalizzazione del 4 ottobre: backend 984 PASS / 1 SKIP, core XR 467/467,
+EditMode 407/407 (compresi i test M7). I tre tool sono passati via MCP stdio
+contro la fixture Inventor reale: interferenza 2000 mm³, distanza 30 mm con
+punti nativi, vincolo non sano, componente libero e `DESCRIPTION_MISSING`,
+con revisione invariata. Evidenze nel verbale M7.
+
+Aperti: esecuzione dei tre tool tramite l'host HTTPS e il runner M7
+sul Quest (gate M7-02…M7-05), durata su un assieme reale (M7-07)
+e prova fisica M7-08. I tool restano sperimentali finché
 M7-02, M7-03 e M7-04 non passano dal vivo.
 
 ## Host remoto: segue il riavvio di Inventor — 2026-09-30

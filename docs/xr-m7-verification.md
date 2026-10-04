@@ -7,14 +7,59 @@ Piano: [M7](superpowers/plans/2026-10-03-inventor-xr-so-m7-inspect-verifica.md).
 
 | Gate | Esito | Evidenza |
 |---|---|---|
-| M7-01 | APERTO | |
-| M7-02 | APERTO | |
-| M7-03 | APERTO | |
-| M7-04 | APERTO | |
-| M7-05 | APERTO | |
-| M7-06 | APERTO | |
+| M7-01 | PASS EditMode; runner Quest aperto | `artifacts/m7-verification/editmode.xml`: visibilità 6/6, overlay 5/5, azioni Ispeziona 17/17 |
+| M7-02 | PASS backend Inventor reale su PC; runner Quest aperto | `artifacts/m7-verification/live-smoke.json`: 1 coppia, 2000 mm³; scena verificata in EditMode |
+| M7-03 | PASS backend Inventor reale su PC; runner Quest aperto | `live-smoke.json`: 30 mm, `points_source = inventor` |
+| M7-04 | PASS backend Inventor reale su PC; runner Quest aperto | `live-smoke.json`: `M7_Sick`, 1 occorrenza libera, `DESCRIPTION_MISSING` |
+| M7-05 | PASS core/FakeAddIn; runner Quest aperto | `artifacts/m7-verification/m7-core.trx`: 467/467; revisione invariata nella sonda PC |
+| M7-06 | PASS EditMode | `InspectVerifyTests` 17/17, incluse abilitazione offline/su parte ed etichette delle misure |
 | M7-07 | APERTO | |
 | M7-08 | APERTO (prova fisica) | |
+
+## Finalizzazione Windows — 4 ottobre 2026
+
+Il branch `feat/m7-inspect-verifica` è già integrato in `main` (merge `5b849b0`).
+Suite backend: **984 PASS, 1 SKIP, 0 FAIL** (`m7-backend.trx`). Il test di processo
+pairing è saltato perché l'host gestito dell'utente è già in esecuzione. Il primo
+tentativo aveva un fallimento di configurazione: `INVENTOR_SO_EXPERIMENTAL=1`
+ereditata dalla shell contraddice il test del default disabilitato. Riesecuzione
+con la variabile rimossa solo dal processo dei test: nessun fallimento.
+Core XR: **467/467** (`m7-core.trx`). Evidenza EditMode disponibile della stessa
+giornata: **407/407** (`editmode.xml`, 12:31 ora locale), inclusi i contratti dei
+runner 13/13. Nessuna modifica al codice dopo questa esecuzione.
+
+Fixture rigenerata con `bom_finding = DESCRIPTION_MISSING`. La sonda MCP su PC
+(`live-smoke.py`, `live-smoke.json`) usa il server stdio e l'add-in Inventor reale:
+tutti e tre i tool risultano esposti e lo sperimentale è abilitato nell'add-in.
+Confermati interferenza 2000 mm³ (45 ms), distanza 30 mm con punti Inventor,
+vincolo non sano, componente libero e avviso BOM. Identità e revisione prima e
+dopo le letture sono identiche. Questa evidenza non certifica il percorso HTTPS
+né il runner Quest. I tool restano sperimentali.
+
+APK QA e ordinario compilati con successo dalla stessa revisione. File:
+`artifacts/InventorXrSo-m7-acceptance.apk` e `artifacts/InventorXrSo-m7.apk`;
+hash, risultati e stato raccolti in `artifacts/m7-verification/readiness.json`,
+log in `acceptance-build.log` e `ordinary-build.log`. L'APK ordinario è stato
+installato sul Quest `2G0YC1ZFB407P1` e il suo SHA-256 verificato sul dispositivo.
+La fixture PC è stata chiusa senza salvare; non c'erano documenti precedenti
+da riattivare. Runner Quest **NOT RUN**: visore in standby (`Asleep`).
+
+Avvio preparato (PowerShell 7 disponibile nel runtime Codex; ADB configurato
+dal wrapper), dalla radice del repository con il Quest indossato e sveglio:
+
+```powershell
+& "$env:USERPROFILE/.cache/codex-runtimes/codex-primary-runtime/dependencies/native/powershell/pwsh.exe" -NoProfile -File artifacts/m7-verification/run-m7.ps1
+```
+
+Il wrapper prepara una fixture nuova, esegue il runner e ispeziona il risultato;
+nel `finally` ripristina fixture e APK ordinario. Manifest, log e screenshot del
+runner vanno in `artifacts/m7-verification/`. Servono host HTTPS sperimentale
+già avviato e Quest associato; nessun pairing nuovo è stato effettuato qui.
+
+Prova fisica ridotta M7-08: con il visore addosso, da seduto, verificare la
+leggibilità del rosso delle interferenze, dei fantasmi, dei box, della linea
+della distanza e della lista Risultati; verificare la selezione dei componenti
+con il controller e il comfort di lettura.
 
 ## Sonde dal vivo (task 1)
 

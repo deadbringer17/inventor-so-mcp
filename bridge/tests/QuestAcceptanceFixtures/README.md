@@ -1,4 +1,4 @@
-# Quest acceptance fixtures (M1, M2, M3, M5, M6)
+# Quest acceptance fixtures (M1, M2, M3, M5, M6, M7)
 
 Windows only. Needs Inventor 2027 already open and available for automation. Creates the dedicated
 documents the in-app Quest acceptance runners work on (plan `docs/superpowers/plans/2026-09-29-quest-acceptance-runners.md`,
@@ -11,7 +11,7 @@ dotnet run --project bridge/tests/QuestAcceptanceFixtures -- --inspect-quest m3
 dotnet run --project bridge/tests/QuestAcceptanceFixtures -- --restore-quest m3
 ```
 
-The milestone is `m1`, `m2`, `m3`, `m5` or `m6`. The manifest is written relative to the current directory:
+The milestone is `m1`, `m2`, `m3`, `m5`, `m6` or `m7`. The manifest is written relative to the current directory:
 `artifacts/<m>-verification/quest-fixture.json` (document paths, `previous_document`, `document_id`,
 `active_document`, `expected`).
 
@@ -29,6 +29,12 @@ The milestone is `m1`, `m2`, `m3`, `m5` or `m6`. The manifest is written relativ
 | m3 | `XR_M3_Quest_Acceptance.ipt` | 40 x 30 x 10 mm block (sketch `Blocco`), unconsumed sketch `Base_M3` with a circle R 5 mm on the top face |
 | m5 | `XR_M5_Quest_Acceptance.ipt` | sheet-metal Face 100 x 60 mm, no flat pattern, unconsumed sketch `Taglio_M5` (20 x 10 mm rectangle) |
 | m6 | `XR_M6_Quest_Acceptance.iam` | two occurrences, three documents kept open: `XR_M6_Quest_Acceptance_Block.ipt` (40 x 30 x 10 mm centred block, unconsumed sketch `Base_M6` with a circle R 5 mm on the top face, grounded), `XR_M6_Quest_Acceptance_Sheet.ipt` (sheet-metal Face 100 x 60 mm, unconsumed sketch `Taglio_M6`, +60 mm in X, free) |
+| m7 | `XR_M7_Quest_Acceptance.iam` | four 20 mm cubes: M7_A/M7_B overlap by 2000 mm³, M7_A/M7_C have a 30 mm gap, M7_D is free; unhealthy constraint M7_Sick and empty cube Description (`DESCRIPTION_MISSING` BOM warning) |
+
+M7 is read-only. `--probe-m7` independently measures the dedicated fixture;
+`--probe-active` measures interference and health timings on an active real
+assembly without modifying or saving it. Native M7 probes passed on Inventor
+2027; see `docs/xr-m7-verification.md` for the separate PC, Quest and physical gates.
 
 ### What one m6 fixture serves
 

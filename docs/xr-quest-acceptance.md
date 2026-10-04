@@ -78,7 +78,7 @@ l'assieme. Dopo un run interrotto, riattivare l'assieme a mano prima del restore
 
 Per M7 (Ispeziona, verifica ingegneristica) la fixture è `XR_M7_Quest_Acceptance.iam` (`m7`):
 quattro cubi `M7_A`…`M7_D`, A e B in interferenza (2000 mm³), C a 30 mm da A, D libero, un
-vincolo in errore `M7_Sick` e un numero di parte vuoto. Il runner è di sola lettura (nessuna
+vincolo in errore `M7_Sick` e una descrizione BOM vuota (`DESCRIPTION_MISSING`). Il runner è di sola lettura (nessuna
 transazione); lo script usa 480 s di timeout se non si passa `-TimeoutSeconds`. Sequenza:
 
 ```bash
