@@ -25,6 +25,7 @@ namespace InventorXrSo.Xr
         private IVerifyJob _findingsJob;
         private bool _findingsStale, _scopeSelection;
         private SceneNode _distanceA;
+        private (string a, string b)? _distancePending;
         private IReadOnlyDictionary<string, OccurrenceVisibility> _focusSnapshot;
         private float _runningSince;
         private int _runningShown = -1;
@@ -52,15 +53,23 @@ namespace InventorXrSo.Xr
         {
             _verifySession.Reset();
             _findings = Array.Empty<VerifyFinding>(); _findingsJob = null; _findingsStale = false;
-            _distanceA = null; _focusSnapshot = null;
+            _distanceA = null; _distancePending = null; _focusSnapshot = null;
             _overlay?.Clear(); _visibility?.ShowAll();
         }
 
         /// <summary>Leaving Ispeziona: the scene goes back to normal; results stay listed.</summary>
         private void LeaveVerifyView()
         {
-            _focusSnapshot = null; _distanceA = null;
+            _focusSnapshot = null; _distanceA = null; _distancePending = null;
+            _verifySession.Running?.Ignore();
             _overlay?.Clear(); _visibility?.ShowAll();
+        }
+
+        /// <summary>Back during the two-selection flow: forgets the first pick and drops a distance answer still in flight.</summary>
+        private void CancelDistance()
+        {
+            _distanceA = null; _distancePending = null;
+            if (_verifySession.Distance.Status == VerifyStatus.Running) _verifySession.Distance.Ignore();
         }
 
         // ---------------------------------------------------------------- availability
@@ -143,6 +152,7 @@ namespace InventorXrSo.Xr
             }
             if (_selected == _distanceA) { SetNotice("Scegli un componente diverso da " + _distanceA.Name + "."); Refresh(); return; }
             var state = _documentState; string a = _distanceA.OccurrenceId, b = _selected.OccurrenceId;
+            _distancePending = (a, b);
             BeginRun();
             await _verifySession.Distance.RunAsync(ct => _verify.MeasureMinDistanceAsync(state, a, b, ct), _verifyRequests.Token);
         }
@@ -156,6 +166,13 @@ namespace InventorXrSo.Xr
 
         private void OnFindingsJob<T>(VerifyJob<T> job, Func<T, IReadOnlyList<VerifyFinding>> rows, Func<T, string> summary) where T : class, IVerifyResult
         {
+            if (!Active)
+            {
+                // Left Ispeziona: keep the bookkeeping, announce and draw nothing.
+                if (job.Status == VerifyStatus.Done) { _findings = rows(job.Result); _findingsJob = job; _findingsStale = false; }
+                else if (job.Status == VerifyStatus.Stale && _findingsJob == job) _findingsStale = true;
+                return;
+            }
             switch (job.Status)
             {
                 case VerifyStatus.Done:
@@ -174,21 +191,27 @@ namespace InventorXrSo.Xr
         private void OnDistanceChanged()
         {
             var job = _verifySession.Distance;
+            if (!Active)
+            {
+                if (job.Status != VerifyStatus.Running) { _distancePending = null; _distanceA = null; }
+                return;
+            }
             switch (job.Status)
             {
                 case VerifyStatus.Done:
                 {
                     var report = job.Result;
-                    var a = _context.Find(_distanceA?.OccurrenceId ?? ""); var b = _selected;
+                    if (_distancePending == null) break;
+                    var a = _context.Find(_distancePending.Value.a); var b = _context.Find(_distancePending.Value.b);
                     string value = VerifyFindings.Millimetres(report.DistanceMm) + " mm";
                     if (report.HasPoints) _overlay.ShowDistance(VerifyOverlay.ToLocal(report.PointAMm), VerifyOverlay.ToLocal(report.PointBMm), value);
                     else if (VerifyOverlay.ClosestVertices(Instances(LeafIds(a)), Instances(LeafIds(b)), _view.transform, out var pa, out var pb))
                         _overlay.ShowDistance(pa, pb, value + " (linea indicativa)");
                     SetNotice("Distanza minima (Inventor): " + value + (report.HasPoints ? "" : "\nLinea indicativa: punti calcolati sulle mesh del visore."));
-                    _distanceA = null;
+                    _distanceA = null; _distancePending = null;
                     break;
                 }
-                case VerifyStatus.Failed: SetNotice(job.ErrorMessage); _distanceA = null; break;
+                case VerifyStatus.Failed: SetNotice(job.ErrorMessage); _distanceA = null; _distancePending = null; break;
                 case VerifyStatus.Stale: _overlay.ClearDistance(); SetNotice("Modello cambiato: rilancia la distanza minima."); break;
             }
             Refresh();
@@ -197,7 +220,7 @@ namespace InventorXrSo.Xr
         /// <summary>HUD clock while Inventor computes.</summary>
         private void TickVerify()
         {
-            if (_verifySession.Running == null) return;
+            if (!Active || _verifySession.Running == null) return;
             int seconds = (int)(Time.unscaledTime - _runningSince);
             if (seconds == _runningShown) return;
             _runningShown = seconds;

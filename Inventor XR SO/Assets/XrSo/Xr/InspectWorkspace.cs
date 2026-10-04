@@ -469,7 +469,7 @@ namespace InventorXrSo.Xr
             if (_ask != null || (_shell != null && _shell.Palette.KeypadVisible)) { CloseKeypad(); return; }
             if (_picker != null) { ClosePicker(); return; }
             if (ClearFocus()) { SetNotice(""); Refresh(); return; }
-            if (_distanceA != null) { _distanceA = null; SetNotice("Distanza annullata."); Refresh(); return; }
+            if (_distanceA != null) { CancelDistance(); SetNotice("Distanza annullata."); Refresh(); return; }
             if (Measuring) { _measure.Cancel(); SetNotice("Misura annullata."); Refresh(); return; }
             if (_context.Path.Count > 1) ContextBack();
         }

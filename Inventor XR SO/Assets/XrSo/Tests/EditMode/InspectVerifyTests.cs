@@ -34,13 +34,14 @@ namespace InventorXrSo.Tests
         private XrInput _xr;
         private XrInputFrame _frame;
         private float _clock;
+        private bool _other;
         private readonly List<string> _hud = new List<string>();
         private readonly List<GameObject> _roots = new List<GameObject>();
 
         [SetUp]
         public void SetUp()
         {
-            _hud.Clear();
+            _hud.Clear(); _other = false;
             _root = new GameObject("Test rig");
             var eye = Child("Eye").AddComponent<Camera>();
             eye.transform.position = new Vector3(0, 1.6f, 0);
@@ -50,7 +51,7 @@ namespace InventorXrSo.Tests
             var visuals = _view.gameObject.AddComponent<SelectionVisuals>(); visuals.Configure(_view, null, null);
             _env = Child("Environment").AddComponent<EnvironmentModeController>(); _env.Configure(eye, null);
             _workspace = Child("Workspace").AddComponent<InspectWorkspace>();
-            _workspace.OtherWorkspaceActive = () => false;
+            _workspace.OtherWorkspaceActive = () => _other;
             _workspace.HudMessage += _hud.Add;
             _workspace.Initialize(_view, visuals, _ray, eye.transform, _env);
             _catalog = new ActionCatalog(new SpacesActions(() => { }, () => { }, () => { }, () => { }, () => { }, () => true, () => true, () => true, () => true));
@@ -86,6 +87,7 @@ namespace InventorXrSo.Tests
             public TaskCompletionSource<InterferenceReport> Interference = new TaskCompletionSource<InterferenceReport>();
             public IReadOnlyList<string> LastScope;
             public string LastA, LastB;
+            public TaskCompletionSource<DistanceReport> DistanceHold;
             public DistanceReport Distance = DistanceReport.FromJson(new JObject { ["revision"] = "r1", ["distance_mm"] = 30.0,
                 ["point_a"] = new JArray(0, 0, 0), ["point_b"] = new JArray(30, 0, 0) });
             public HealthReport Health = HealthReport.FromJson(new JObject { ["revision"] = "r1", ["healthy"] = false,
@@ -96,7 +98,7 @@ namespace InventorXrSo.Tests
             public Task<IReadOnlyList<OpenDocument>> ListOpenAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<OpenDocument>>(Array.Empty<OpenDocument>());
             public Task ActivateOpenAsync(string documentId, CancellationToken ct) => Task.CompletedTask;
             public Task<InterferenceReport> CheckInterferenceAsync(DocumentState state, IReadOnlyList<string> ids, CancellationToken ct) { LastScope = ids; return Interference.Task; }
-            public Task<DistanceReport> MeasureMinDistanceAsync(DocumentState state, string a, string b, CancellationToken ct) { LastA = a; LastB = b; return Task.FromResult(Distance); }
+            public Task<DistanceReport> MeasureMinDistanceAsync(DocumentState state, string a, string b, CancellationToken ct) { LastA = a; LastB = b; return DistanceHold != null ? DistanceHold.Task : Task.FromResult(Distance); }
             public Task<HealthReport> GetAssemblyHealthAsync(DocumentState state, CancellationToken ct) => Task.FromResult(Health);
         }
 
@@ -218,8 +220,37 @@ namespace InventorXrSo.Tests
             Do(InspectWorkspace.IdInterference);
             Do(InspectWorkspace.IdIgnore);
             backend.Interference.SetResult(OnePair());
-            for (int i = 0; i < 5; i++) await Task.Yield();
+            await Until(() => Enabled(InspectWorkspace.IdHealth));
+            Assert.True(Enabled(InspectWorkspace.IdHealth), "the gate is free once the ignored answer arrived");
             Assert.AreEqual(0, Field<IReadOnlyList<VerifyFinding>>("_findings").Count);
+        }
+
+        [Test]
+        public async Task LeavingIspezionaDuringARunDrawsAndAnnouncesNothing()
+        {
+            var backend = Online();
+            Do(InspectWorkspace.IdInterference);
+            int hudBefore = _hud.Count;
+            _other = true; _workspace.OthersChanged();
+            backend.Interference.SetResult(OnePair());
+            await Until(() => Field<VerifySession>("_verifySession").Gate.CanStart);
+            Assert.True(Field<VerifySession>("_verifySession").Gate.CanStart);
+            Assert.AreEqual(0, Field<VerifyOverlay>("_overlay").BoxCount);
+            Assert.AreEqual(0, Field<IReadOnlyList<VerifyFinding>>("_findings").Count);
+            Assert.That(string.Join(" | ", _hud.Skip(hudBefore)), Does.Not.Contain("interferenze"));
+        }
+
+        [Test]
+        public async Task BackDuringTheDistanceRunDropsTheAnswer()
+        {
+            var backend = Online();
+            backend.DistanceHold = new TaskCompletionSource<DistanceReport>();
+            Select("ent_occ_1"); Do(InspectWorkspace.IdDistance);
+            Select("ent_occ_2"); Do(InspectWorkspace.IdDistance);
+            _workspace.Back();
+            backend.DistanceHold.SetResult(backend.Distance);
+            await Until(() => Field<VerifySession>("_verifySession").Gate.CanStart);
+            Assert.False(Field<VerifyOverlay>("_overlay").HasDistance);
         }
 
         [Test]
