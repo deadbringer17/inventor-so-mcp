@@ -62,8 +62,14 @@ namespace InventorXrSo.Xr
         private InventorBackend _backend;
         private IReadOnlyList<OpenDocument> _openDocuments = new OpenDocument[0];
 
-        /// <summary>Pila di navigazione Assieme › Sub › Parte (la guida del router arriva con il collegamento completo).</summary>
+        private ContextWorkspaceSwitcher _contextSwitcher;
+        private LoadedScene _currentScene;
+
+        /// <summary>Pila di navigazione Assieme › Sub › Parte, guidata dal documento attivo (ContextRouter).</summary>
         public NavigationStack Navigation { get; } = new NavigationStack();
+
+        /// <summary>Contesto del documento attivo (Assieme, Parte, Lamiera); null senza documento supportato.</summary>
+        public DocContext? Context => _contextSwitcher?.Context;
 
         public void Configure(CadSceneView view, SelectionVisuals visuals, ControllerRay controllerRay, EnvironmentModeController env, Transform centerEye, QrScanner scanner)
         {
@@ -89,13 +95,15 @@ namespace InventorXrSo.Xr
             _lamiera = gameObject.AddComponent<LamieraWorkspace>();
             _lamiera.Initialize(sceneView, selectionVisuals, ray, head);
             // One shared CAD guard: an uncertain commit in any authoring workspace blocks entering the others.
+            _contextSwitcher = new ContextWorkspaceSwitcher(Navigation, OpenContext, CloseAuthoring,
+                text => _badge?.Flash(text, 6f), () => _inSession);
             _design.CanEnter = () => !_assembly.RequiresCadReview && !_lamiera.RequiresCadReview;
             _assembly.CanEnter = () => !_design.RequiresCadReview && !_lamiera.RequiresCadReview;
             _lamiera.CanEnter = () => !_design.RequiresCadReview && !_assembly.RequiresCadReview;
             _document = new DocumentActions(Navigation, GoBack, SaveDocument, RecenterWorkbench, CalibrateDesk,
                 LeaveSession, LeaveSession, () => _inSession,
                 () => _design.CanEnter() && _lamiera.CanEnter() && _assembly.CanEnter(),
-                () => _openDocuments, ActivateDocument);
+                () => _openDocuments, JumpToDocument);
             _catalog = new ActionCatalog(_document);
             _document.Changed = _catalog.NotifyChanged;
             _shell = UiShell.Create(left, head, _catalog);
@@ -131,9 +139,10 @@ namespace InventorXrSo.Xr
                 else if (ReferenceEquals(_catalog.Active, _assembly)) _catalog.SetActive(_inspect);
             };
             _assembly.Closed += () => { if (_inSession) Place(); };
-            // From the isolated component: its document is already active, the switch only changes workspace.
-            _assembly.DesignRequested += () => { if (!_design.RequiresCadReview && !_lamiera.RequiresCadReview) { _assembly.Close(); _design.Open(); } };
-            _assembly.LamieraRequested += () => { if (!_design.RequiresCadReview && !_lamiera.RequiresCadReview) { _assembly.Close(); _lamiera.Open(); } };
+            // From the isolated component ("Apri"): its document is already active; the router expects the entry and the
+            // document-change event pushes the level and switches the workspace.
+            _assembly.EntryRequested += (documentId, occurrenceId, pose, sheetMetal) =>
+                _contextSwitcher.ExpectEntry(documentId, occurrenceId, pose, sheetMetal);
             _lamiera.HudMessage += text => _badge.Flash(text, 6f);
             _lamiera.ActiveChanged += active =>
             {
@@ -143,8 +152,8 @@ namespace InventorXrSo.Xr
             _lamiera.Closed += () => { if (_inSession) Place(); };
             // Back, Fit, Recenter, step and zoom belong to the active authoring workspace (it subscribes through Attach); the palette owns the tabs.
             _input.TabDelta += _shell.Palette.SelectTab;
-            _lamiera.DesignRequested += () => { if (!_assembly.RequiresCadReview && !_lamiera.RequiresCadReview) { _lamiera.Close(); _design.Open(); } };
-            _lamiera.PrimaryChanged += OnLamieraPrimaryChanged;
+            // Sheet-metal detection is asynchronous: when it flips, the active document is routed again.
+            _lamiera.PrimaryChanged += _ => RouteCurrentScene();
             // Ispeziona stops its local tools while an authoring workspace is open and resumes when it closes.
             _design.ActiveChanged += _ => _inspect.OthersChanged();
             _assembly.ActiveChanged += _ => _inspect.OthersChanged();
@@ -190,6 +199,8 @@ namespace InventorXrSo.Xr
             _design?.Bind(null);
             _assembly?.Bind(null);
             _lamiera?.Bind(null, null);
+            _currentScene = null;
+            _contextSwitcher?.Clear();
             if (_session != null)
             {
                 _session.StatusChanged -= OnStatusChanged; _session.SceneLoaded -= OnSceneLoaded;
@@ -360,6 +371,8 @@ namespace InventorXrSo.Xr
             _design.SetScene(scene);
             _assembly.SetScene(scene);
             _lamiera.SetScene(scene);
+            _currentScene = scene;
+            RouteCurrentScene();
             if (scene != null && _inSession && !_placed) Place();
             RefreshOpenDocuments();
             _design.RefreshWorkbench();
@@ -400,6 +413,7 @@ namespace InventorXrSo.Xr
             _design?.SetVisible(false);
             _assembly?.SetVisible(false);
             _lamiera?.SetVisible(false);
+            _contextSwitcher?.Leave();
             _voice?.NotifyModeChanged();
             ray.CanPick = false;
             sceneView.gameObject.SetActive(false);
@@ -428,25 +442,44 @@ namespace InventorXrSo.Xr
             ray.CanPick = true;
             if (!_placed) Place();
             RefreshHome();
-            // A sheet-metal part opens Lamiera as the primary mode; an ordinary part never does.
-            if (_lamiera.IsPrimary) OpenLamiera();
+            // The active document decides the workspace (Assieme / Progettazione / Lamiera).
+            _contextSwitcher.Sync();
         }
 
-        private void OpenDesign() { if (!_assembly.RequiresCadReview && !_lamiera.RequiresCadReview) { _assembly.Close(); _lamiera.Close(); _design.Open(); } }
-        private void OpenAssembly() { if (!_design.RequiresCadReview && !_lamiera.RequiresCadReview) { _design.Close(); _lamiera.Close(); _assembly.Open(); } }
-        private void OpenInspection() { _design.Close(); _assembly.Close(); _lamiera.Close(); NotifyVoiceModeChanged(); }
+        // --- contesto guidato dal documento attivo (M9) ---
 
-        private void OpenLamiera()
+        /// <summary>DocInfo del documento della scena corrente (tipo da scena, lamiera dal rilevamento primario di Lamiera).</summary>
+        private DocInfo CurrentDocInfo()
         {
-            if (_design.RequiresCadReview || _assembly.RequiresCadReview) return;
-            _design.Close(); _assembly.Close(); _lamiera.Open();
+            var graph = _currentScene?.Graph;
+            if (graph == null || string.IsNullOrWhiteSpace(graph.DocumentId)) return null;
+            string kind = graph.Kind ?? "";
+            bool sheetMetal = kind == "part" && (_lamiera.IsPrimary || _contextSwitcher.SheetMetalHint(graph.DocumentId));
+            return new DocInfo(graph.DocumentId, graph.Root?.Name, kind, sheetMetal);
         }
 
-        private void OnLamieraPrimaryChanged(bool primary)
+        private void RouteCurrentScene()
         {
-            // Auto-open only on the transition to primary and only from plain inspection: never over an authoring workspace.
-            if (primary && _inSession && !_design.Active && !_assembly.Active && !_lamiera.Active) OpenLamiera();
+            var doc = CurrentDocInfo();
+            if (doc == null || _contextSwitcher == null) return;
+            _contextSwitcher.OnDocument(doc);
+            NotifyVoiceModeChanged();
         }
+
+        /// <summary>Chiude gli altri workspace di authoring e apre quello del contesto; false se il CAD richiede una verifica.</summary>
+        private bool OpenContext(DocContext context)
+        {
+            if (_design.RequiresCadReview || _assembly.RequiresCadReview || _lamiera.RequiresCadReview) return false;
+            _design.Close(); _assembly.Close(); _lamiera.Close();
+            switch (context)
+            {
+                case DocContext.Assembly: _assembly.Open(); return _assembly.Active;
+                case DocContext.SheetMetal: _lamiera.Open(); return _lamiera.Active;
+                default: _design.Open(); return _design.Active;
+            }
+        }
+
+        private void CloseAuthoring() { _design?.Close(); _assembly?.Close(); _lamiera?.Close(); }
 
         private void NotifyVoiceModeChanged() { _voice?.NotifyModeChanged(); }
 
@@ -489,17 +522,19 @@ namespace InventorXrSo.Xr
             catch (Exception ex) { Debug.Log("[XrSession] open documents: " + ex.Message); }
         }
 
-        private async void ActivateDocument(string documentId)
+        /// <summary>Un documento scelto dall'elenco: la pila riparte da lì (nessun Push/Pop).</summary>
+        private async void JumpToDocument(string documentId)
         {
             var backend = _backend;
             if (backend == null || string.IsNullOrEmpty(documentId)) return;
+            _contextSwitcher.ExpectJump(documentId);
             try
             {
                 await backend.ActivateOpenAsync(documentId, _run?.Token ?? CancellationToken.None);
                 _badge?.Flash("Documento attivato. Attendo la scena da Inventor…", 4f);
             }
-            catch (OperationCanceledException) { }
-            catch (Exception ex) { _badge?.Flash(UiText.Error(ex), 6f); }
+            catch (OperationCanceledException) { _contextSwitcher.CancelJump(); }
+            catch (Exception ex) { _contextSwitcher.CancelJump(); _badge?.Flash(UiText.Error(ex), 6f); }
         }
 
         private void LeaveSession()

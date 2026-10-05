@@ -762,11 +762,13 @@ namespace InventorXrSo.Tests
             Assert.False(Enabled(AssemblyWorkspace.IdOpenDesign)); StringAssert.Contains("Isola prima", Act(AssemblyWorkspace.IdOpenDesign).DisabledReason);
             Assert.False(Enabled(AssemblyWorkspace.IdOpenLamiera));
             Do(AssemblyWorkspace.IdIsolate);
-            int design = 0, lamiera = 0; _workspace.DesignRequested += () => design++; _workspace.LamieraRequested += () => lamiera++;
+            var entries = new List<(string doc, string occ, float[] pose, bool sheet)>();
+            _workspace.EntryRequested += (d, o, p, m) => entries.Add((d, o, p, m));
             Do(AssemblyWorkspace.IdOpenDesign);
-            Assert.AreEqual(1, design); Assert.AreEqual(0, lamiera); Assert.AreEqual("doc_bolt", _backend.LastActivated);
+            Assert.AreEqual(1, entries.Count); Assert.False(entries[0].sheet); Assert.AreEqual("doc_bolt", entries[0].doc);
+            Assert.AreEqual("doc_bolt", _backend.LastActivated);
             Do(AssemblyWorkspace.IdOpenLamiera);
-            Assert.AreEqual(1, lamiera); Assert.AreEqual(2, _backend.Activations);
+            Assert.AreEqual(2, entries.Count); Assert.True(entries[1].sheet); Assert.AreEqual(2, _backend.Activations);
             Assert.AreEqual(0, _backend.Commits); Assert.AreEqual(0, _backend.Previews);
         }
 

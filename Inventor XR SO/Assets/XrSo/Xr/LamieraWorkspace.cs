@@ -104,8 +104,6 @@ namespace InventorXrSo.Xr
         public event Action Closed;
         /// <summary>Lamiera becomes (or stops being) the primary mode for the active document.</summary>
         public event Action<bool> PrimaryChanged;
-        /// <summary>The user asked for Modello 3D / Schizzo (Design); the switcher decides.</summary>
-        public event Action DesignRequested;
         public event Action ArmedFieldChanged;
         /// <summary>Notices and error detail for the HUD (the commit bar only carries a short message).</summary>
         public event Action<string> HudMessage;

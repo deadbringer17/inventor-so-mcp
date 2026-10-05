@@ -57,5 +57,14 @@ namespace XrSo.Core.Tests.Navigation
             s.Reset(Asm()); s.Push(Part()); s.Pop();
             Assert.Equal(3, n);
         }
+
+        [Fact]
+        public void Clear_empties_the_stack_and_notifies()
+        {
+            var s = new NavigationStack(); int n = 0;
+            s.Reset(Asm()); s.Changed += () => n++;
+            s.Clear(); s.Clear();
+            Assert.Null(s.Top); Assert.Equal(1, n);
+        }
     }
 }

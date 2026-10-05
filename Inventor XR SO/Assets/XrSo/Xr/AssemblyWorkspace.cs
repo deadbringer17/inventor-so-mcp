@@ -68,6 +68,7 @@ namespace InventorXrSo.Xr
         private string _armedField;
         private AssemblyContext _context;
         private AssemblyOccurrence _occurrence;
+        private SceneGraph _graph;
         private AssemblyReference _a, _b;
         private DesignHistory _history;
         private CadPoint _translation;
@@ -94,8 +95,11 @@ namespace InventorXrSo.Xr
         public event Action<bool> ActiveChanged;
         /// <summary>Raised only when an open workspace closes: the shell restores the Inspect placement of the model.</summary>
         public event Action Closed;
-        /// <summary>The user asked to open the isolated component in Progettazione / Lamiera (its document is already active).</summary>
-        public event Action DesignRequested, LamieraRequested;
+        /// <summary>
+        /// The definition of the isolated component was activated in Inventor (documentId, occurrenceId, 16-float pose in this
+        /// assembly, sheetMetal requested). Raised only after the activation succeeded; the context router drives the rest.
+        /// </summary>
+        public event Action<string, string, float[], bool> EntryRequested;
         public event Action ArmedFieldChanged;
         /// <summary>Notices and error detail for the HUD (the commit bar only carries a short message).</summary>
         public event Action<string> HudMessage;
@@ -224,7 +228,16 @@ namespace InventorXrSo.Xr
             // releases the rendered ghost. Its previous rendering proof is gone.
             if (_session?.CanEdit == true && _session.Status == DesignStatus.PreviewReady)
             { _rendered = null; _session.RejectDraft("Scena aggiornata: ricalcola l'anteprima prima di applicare."); }
+            _graph = scene?.Graph;
             _sceneState = scene?.Graph.State; _kind = scene?.Graph.Kind; SetDocumentState(_sceneState);
+        }
+
+        private static float[] FindPose(SceneNode node, string occurrenceId)
+        {
+            if (node == null) return null;
+            if (node.OccurrenceId == occurrenceId) return node.MatrixGltf;
+            foreach (var child in node.Children) { var found = FindPose(child, occurrenceId); if (found != null) return found; }
+            return null;
         }
 
         public void SetDocumentState(DocumentState state)
@@ -911,8 +924,11 @@ namespace InventorXrSo.Xr
         {
             try
             {
+                var occurrence = _occurrence;
+                var graph = _graph;
                 if (!await ActivateDefinitionAsync(false)) return;
-                if (lamiera) LamieraRequested?.Invoke(); else DesignRequested?.Invoke();
+                if (occurrence == null) return;
+                EntryRequested?.Invoke(occurrence.DefinitionId, occurrence.Id, FindPose(graph?.Root, occurrence.Id), lamiera);
             }
             catch (Exception ex) { SetNotice(ex.Message); Refresh(); }
         }

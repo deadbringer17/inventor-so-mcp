@@ -51,6 +51,14 @@ namespace InventorXrSo.Core.Navigation
             Changed?.Invoke();
         }
 
+        /// <summary>Svuota la pila (sessione terminata): il prossimo documento attivo diventa la radice.</summary>
+        public void Clear()
+        {
+            if (_levels.Count == 0) return;
+            _levels.Clear();
+            Changed?.Invoke();
+        }
+
         public void Push(NavLevel level)
         {
             if (level == null) throw new ArgumentNullException(nameof(level));

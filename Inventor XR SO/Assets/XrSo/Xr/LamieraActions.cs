@@ -22,7 +22,7 @@ namespace InventorXrSo.Xr
             IdFlangeAngle = "lamiera.flange.angle", IdFlangeDatum = "lamiera.flange.datum", IdFlangeClear = "lamiera.flange.clear",
             IdUndo = "lamiera.history.undo", IdRedo = "lamiera.history.redo",
             IdFace = "lamiera.face", IdCut = "lamiera.cut", IdSketchChange = "lamiera.sketch.change", IdCutExtent = "lamiera.cut.extent",
-            IdCutDirection = "lamiera.cut.direction", IdCutAcrossBends = "lamiera.cut.acrossbends", IdDesign = "lamiera.design",
+            IdCutDirection = "lamiera.cut.direction", IdCutAcrossBends = "lamiera.cut.acrossbends",
             IdFlatCreate = "lamiera.flat.create", IdFlatShow = "lamiera.flat.show", IdFlatHide = "lamiera.flat.hide",
             IdFlatDetach = "lamiera.flat.detach", IdFlatAttach = "lamiera.flat.attach",
             IdFit = "lamiera.view.fit", IdRecenter = "lamiera.view.recenter", IdRefresh = "lamiera.refresh",
@@ -117,7 +117,7 @@ namespace InventorXrSo.Xr
         private void OpenSketchPicker()
         {
             var sketches = _designContext?.Sketches.ToArray() ?? Array.Empty<DesignPlane>();
-            if (sketches.Length == 0) { SetNotice("Nessuno schizzo nel documento: crealo da Modello 3D / Schizzo."); Refresh(); return; }
+            if (sketches.Length == 0) { SetNotice("Nessuno schizzo nel documento: crealo in Inventor."); Refresh(); return; }
             OpenPicker(_mode.Armed == SheetMetalCommand.Cut ? "Taglio da schizzo" : "Faccia da schizzo", sketches.Select(sketch =>
             {
                 var name = sketch.Name;
@@ -154,7 +154,7 @@ namespace InventorXrSo.Xr
         private string NeedFlange() => OptionsOn && _screen != "flange" ? "Scegli prima Flangia." : CommandReason();
         private string NeedCut() => OptionsOn && _screen != "cut" ? "Scegli prima Taglio da schizzo e il suo schizzo." : CommandReason();
         private string SketchReason() => IsEnabled(CommandIds.SheetMetalFace) || _designContext == null || _designContext.Sketches.Count > 0
-            ? CommandReason() : "Nessuno schizzo nel documento: crealo da Modello 3D / Schizzo.";
+            ? CommandReason() : "Nessuno schizzo nel documento: crealo in Inventor.";
         private string FlatReason()
         {
             if (!Active || _session == null || !_online || !_mode.CanWrite || _busy) return CommandReason();
@@ -207,8 +207,6 @@ namespace InventorXrSo.Xr
                 new XrAction(IdCutAcrossBends, "Attraverso pieghe: " + (_acrossBends ? "sì" : "no"), TabSketch,
                     () => _screen == "cut" && OptionsOn && _extent == "thickness", () => { _acrossBends = !_acrossBends; Preview(); },
                     () => _screen == "cut" && OptionsOn ? "Solo con estensione spessore." : NeedCut(), kind: XrActionKind.Toggle, isOn: () => _acrossBends),
-                new XrAction(IdDesign, "Modello 3D / Schizzo", TabSketch, () => Active && !Locked, () => DesignRequested?.Invoke(),
-                    () => Active ? "Operazione CAD in corso." : "Lamiera non è aperta."),
 
                 // Sviluppo
                 new XrAction(IdFlatCreate, "Crea sviluppo", TabFlat, () => IsEnabled(CommandIds.FlatPatternCreate), StartFlatPattern, FlatReason, new[] { "sviluppa" }),
