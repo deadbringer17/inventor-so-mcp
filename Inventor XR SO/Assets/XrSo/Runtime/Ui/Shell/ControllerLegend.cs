@@ -23,11 +23,19 @@ namespace InventorXrSo.Unity.Ui
         public bool Visible { get; internal set; }
         /// <summary>Azione a soglia temporale dell'etichetta (None se assente).</summary>
         public InputAction Secondary { get; internal set; }
+        /// <summary>Posizione mondo del centro dell'etichetta (aggiornata a ogni Tick con la legenda visibile).</summary>
+        public Vector3 WorldPosition { get; internal set; }
+        /// <summary>Posizione mondo del tasto fisico a cui l'etichetta si riferisce (inizio della linea guida).</summary>
+        public Vector3 ButtonWorldPosition { get; internal set; }
+        /// <summary>Estremo della linea guida sul bordo dell'etichetta.</summary>
+        public Vector3 LeaderEnd { get; internal set; }
+        /// <summary>Posizione nella colonna della mano, 0 = in alto; le etichette inattive non occupano slot.</summary>
+        public int Slot { get; internal set; }
     }
 
     /// <summary>
-    /// Legenda 3D (spec M9 §3): un'etichetta per ogni tasto attivo nello stato (da <see cref="InputMap.Active"/>), ancorata al modello
-    /// del controller. Opacità bassa di base, piena entro 25° dall'asse della testa; anellino di avanzamento per doppio Trigger e X tenuto.
+    /// Legenda 3D (spec M9 §3): un'etichetta per ogni tasto attivo nello stato (da <see cref="InputMap.Active"/>), posizionata accanto al
+    /// tasto reale (baricentro dei tasti, lato esterno rispetto alla testa), sempre rivolta verso l'utente, con linea guida fino al tasto. Opacità bassa di base, piena entro 25° dall'asse della testa; anellino di avanzamento per doppio Trigger e X tenuto.
     /// Nessuna animazione: lo stato e l'opacità si applicano nello stesso frame.
     /// </summary>
     public sealed class ControllerLegend : MonoBehaviour
@@ -37,29 +45,36 @@ namespace InventorXrSo.Unity.Ui
         public const float LabelWidthMm = 46f, LabelHeightMm = 11f, TextCapMm = 5f, RingMm = 8f;
 
         /// <summary>
-        /// Offset locali (m) di ogni etichetta rispetto all'ancora del controller (x destra, y su, z avanti del controller).
-        /// APPROSSIMATI: le etichette stanno in colonna sul lato esterno, ordinate come i tasti (stick, tasti facciali, trigger, grip),
-        /// per non sovrapporsi. Da tarare con la prova fisica (M9-07 resta aperto sul visore).
+        /// Posizione (m) di ogni tasto nello spazio locale dell'ancora del controller destro. Misurata sui nodi FBX del Meta Quest Touch Plus
+        /// (artifacts/m9-verification/controller-touchplus-nodes.txt, in cm, qui divisi per 100). I due assi dello stick condividono il punto.
         /// </summary>
-        public static readonly IReadOnlyDictionary<Key, Vector3> RightOffsets = new Dictionary<Key, Vector3>
+        public static readonly IReadOnlyDictionary<Key, Vector3> RightButtonPositions = new Dictionary<Key, Vector3>
         {
-            [Key.StickRightH] = new Vector3(0.075f, 0.070f, 0.015f),
-            [Key.StickRightV] = new Vector3(0.075f, 0.056f, 0.015f),
-            [Key.A] = new Vector3(0.075f, 0.042f, 0.010f),
-            [Key.B] = new Vector3(0.075f, 0.028f, 0.010f),
-            [Key.Trigger] = new Vector3(0.075f, 0.010f, 0.040f),
-            [Key.Grip] = new Vector3(0.075f, -0.020f, -0.020f),
+            [Key.A] = new Vector3(-0.0049f, 0.0044f, -0.0097f),
+            [Key.B] = new Vector3(-0.0154f, 0.0065f, 0.0028f),
+            [Key.StickRightH] = new Vector3(0.0060f, -0.0022f, 0.0089f),
+            [Key.StickRightV] = new Vector3(0.0060f, -0.0022f, 0.0089f),
+            [Key.Trigger] = new Vector3(-0.0157f, -0.0014f, 0.0243f),
+            [Key.Grip] = new Vector3(-0.0116f, -0.0214f, 0.0126f),
         };
 
-        public static readonly IReadOnlyDictionary<Key, Vector3> LeftOffsets = new Dictionary<Key, Vector3>
+        /// <summary>Come <see cref="RightButtonPositions"/>, controller sinistro.</summary>
+        public static readonly IReadOnlyDictionary<Key, Vector3> LeftButtonPositions = new Dictionary<Key, Vector3>
         {
-            [Key.StickLeftH] = new Vector3(-0.075f, 0.070f, 0.015f),
-            [Key.StickLeftV] = new Vector3(-0.075f, 0.056f, 0.015f),
-            [Key.X] = new Vector3(-0.075f, 0.042f, 0.010f),
-            [Key.Y] = new Vector3(-0.075f, 0.028f, 0.010f),
-            [Key.TriggerLeft] = new Vector3(-0.075f, 0.010f, 0.040f),
-            [Key.TwoGrips] = new Vector3(-0.075f, -0.020f, -0.020f),
+            [Key.X] = new Vector3(0.0054f, 0.0043f, -0.0096f),
+            [Key.Y] = new Vector3(0.0156f, 0.0060f, 0.0032f),
+            [Key.StickLeftH] = new Vector3(-0.0063f, -0.0019f, 0.0087f),
+            [Key.StickLeftV] = new Vector3(-0.0063f, -0.0019f, 0.0087f),
+            [Key.TriggerLeft] = new Vector3(0.0149f, -0.0020f, 0.0247f),
+            [Key.TwoGrips] = new Vector3(0.0103f, -0.0218f, 0.0129f),
         };
+
+        /// <summary>Ordine della colonna dall'alto in basso (dal davanti al dietro del controller).</summary>
+        public static readonly IReadOnlyList<Key> RightOrder = new[] { Key.Trigger, Key.Grip, Key.StickRightH, Key.StickRightV, Key.B, Key.A };
+        public static readonly IReadOnlyList<Key> LeftOrder = new[] { Key.TriggerLeft, Key.TwoGrips, Key.StickLeftH, Key.StickLeftV, Key.Y, Key.X };
+
+        /// <summary>Larghezza della linea guida (m).</summary>
+        public const float LeaderWidth = 0.0012f;
 
         private sealed class View
         {
@@ -70,7 +85,12 @@ namespace InventorXrSo.Unity.Ui
             public TextMeshProUGUI Text;
             public Image Ring;
             public GameObject RingRoot;
+            public LineRenderer Leader;
+            public int Slot;
+            public Vector3 ButtonLocal;
         }
+
+        private static Material _leaderMaterial;
 
         private static Sprite _ringSprite;
 
@@ -134,10 +154,30 @@ namespace InventorXrSo.Unity.Ui
                 view.Text.text = view.Label.Text;
                 _labels.Add(view.Label);
             }
+            AssignSlots(true); AssignSlots(false);
             Tick();
         }
 
-        /// <summary>Aggiorna opacità, anellini e visibilità; chiamato ogni frame e dopo ogni cambio.</summary>
+        private void AssignSlots(bool right)
+        {
+            int slot = 0;
+            foreach (var key in right ? RightOrder : LeftOrder)
+            {
+                var label = _labels.Find(l => l.Key == key);
+                if (label == null) continue;
+                var view = _views[key];
+                view.Slot = label.Slot = slot++;
+            }
+        }
+
+        private int ActiveCount(bool right)
+        {
+            int n = 0;
+            foreach (var l in _labels) if (l.Right == right) n++;
+            return n;
+        }
+
+        /// <summary>Aggiorna opacità, anellini, visibilità e geometria (etichette verso la testa, linee guida); chiamato ogni frame e dopo ogni cambio.</summary>
         public void Tick()
         {
             bool show = _enabled && _shown;
@@ -153,11 +193,38 @@ namespace InventorXrSo.Unity.Ui
                 bool ring = label.Progress > 0f;
                 view.RingRoot.SetActive(ring);
                 if (ring) view.Ring.fillAmount = label.Progress;
-                if (_head != null)
-                {
-                    var away = view.Root.transform.position - _head.position;
-                    if (away.sqrMagnitude > 1e-8f) view.Root.transform.rotation = Quaternion.LookRotation(away, Vector3.up);
-                }
+                Layout(view);
+            }
+        }
+
+        private void Layout(View view)
+        {
+            var label = view.Label;
+            bool right = label.Right;
+            var anchor = view.Anchor;
+            var buttons = right ? RightButtonPositions : LeftButtonPositions;
+            var centroidWorld = anchor.TransformPoint(LegendGeometry.Centroid(buttons.Values));
+            var outward = LegendGeometry.Outward(_head, right);
+            var up = LegendGeometry.HeadUp(_head);
+            var pos = LegendGeometry.LabelPosition(centroidWorld, outward, up, view.Slot, ActiveCount(right));
+            var tr = view.Root.transform;
+            tr.position = pos;
+            if (_head != null)
+            {
+                var away = pos - _head.position;
+                if (away.sqrMagnitude > 1e-8f) tr.rotation = Quaternion.LookRotation(away, up);
+            }
+            label.WorldPosition = pos;
+            var button = anchor.TransformPoint(view.ButtonLocal);
+            label.ButtonWorldPosition = button;
+            var end = LegendGeometry.NearestEdgePoint(pos, tr.right, tr.up, LabelWidthMm * 0.0005f, LabelHeightMm * 0.0005f, button);
+            label.LeaderEnd = end;
+            if (view.Leader != null)
+            {
+                view.Leader.SetPosition(0, button);
+                view.Leader.SetPosition(1, end);
+                var c = new Color(UiTheme.Signal.r, UiTheme.Signal.g, UiTheme.Signal.b, label.Opacity);
+                view.Leader.startColor = view.Leader.endColor = c;
             }
         }
 
@@ -176,7 +243,7 @@ namespace InventorXrSo.Unity.Ui
             return dir.sqrMagnitude < 1e-8f ? 0f : Vector3.Angle(_head.forward, dir);
         }
 
-        private void Update() => Tick();
+        private void LateUpdate() => Tick();
 
         private void OnDestroy()
         {
@@ -193,13 +260,11 @@ namespace InventorXrSo.Unity.Ui
         private View GetView(Key key)
         {
             if (_views.TryGetValue(key, out var existing)) return existing;
-            bool right = RightOffsets.ContainsKey(key);
+            bool right = RightButtonPositions.ContainsKey(key);
             var anchor = right ? _right : _left;
-            var offsets = right ? RightOffsets : LeftOffsets;
-            offsets.TryGetValue(key, out var offset);
+            (right ? RightButtonPositions : LeftButtonPositions).TryGetValue(key, out var buttonLocal);
 
             var canvas = UiFactory.WorldCanvas(anchor, "Legend." + key, new Vector2(LabelWidthMm, LabelHeightMm));
-            canvas.transform.localPosition = offset;
             _roots.Add(canvas.gameObject);
             var group = canvas.gameObject.AddComponent<CanvasGroup>();
             group.interactable = false; group.blocksRaycasts = false;
@@ -230,14 +295,36 @@ namespace InventorXrSo.Unity.Ui
             text.rectTransform.anchorMin = Vector2.zero; text.rectTransform.anchorMax = Vector2.one;
             text.rectTransform.offsetMin = new Vector2(RingMm + 4f, 0f); text.rectTransform.offsetMax = new Vector2(-2f, 0f);
 
+            var leaderGo = new GameObject("Guida", typeof(LineRenderer));
+            leaderGo.transform.SetParent(canvas.transform, false);
+            var leader = leaderGo.GetComponent<LineRenderer>();
+            leader.useWorldSpace = true;
+            leader.positionCount = 2;
+            leader.startWidth = leader.endWidth = LeaderWidth;
+            leader.numCapVertices = 0;
+            leader.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            leader.receiveShadows = false;
+            leader.sharedMaterial = LeaderMaterial();
+
             var view = new View
             {
+                Leader = leader, ButtonLocal = buttonLocal,
                 Label = new LegendLabel { Key = key, Right = right },
                 Anchor = anchor, // l'angolo di sguardo si misura sul controller, non sull'etichetta
                 Root = canvas.gameObject, Group = group, Text = text, Ring = ring, RingRoot = ringRoot,
             };
             _views[key] = view;
             return view;
+        }
+
+        /// <summary>Materiale unlit condiviso delle linee guida (colore da vertex color): stesso fallback degli altri overlay runtime.</summary>
+        private static Material LeaderMaterial()
+        {
+            if (_leaderMaterial != null) return _leaderMaterial;
+            var shader = Shader.Find("Sprites/Default");
+            if (shader == null) shader = Shader.Find("XrSo/HighlightOverlay");
+            _leaderMaterial = new Material(shader) { name = "Legend leader", hideFlags = HideFlags.HideAndDontSave };
+            return _leaderMaterial;
         }
 
         private static Sprite RingSprite()
