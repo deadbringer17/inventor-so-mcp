@@ -69,6 +69,23 @@ appena entrato. (2) Il marcatore «●» usava `Revision`, che sale anche all'at
 di un documento: navigare lo accendeva senza modifiche. Ora usa `VisualRevision`
 (geometria/struttura) e si spegne con XR Undo.
 
+## Runner flessibile M9F — 5 ottobre 2026 (input sintetico, fixture `m9f`, Inventor 2027 reale)
+
+Struttura ricostruita da quella dell'assieme reale dell'utente (APE-A-0001: sottoassieme
+fissato + sottoassieme libero **flessibile** che ne contiene un altro flessibile, scena
+estesa ~5 m). Esito: **`PASS COMPLETE`**
+(`artifacts/m9f-verification/device/quest-acceptance-run-20261005-150941.json`).
+Verificato: testo di selezione del flessibile in italiano («Sottoassieme flessibile: Sposta e
+Vincola non sono disponibili. Doppio Trigger (o Apri) per entrare…», nessun «flexible»
+inglese), Sposta/Vincola/Giunto/Isola disabilitati con motivo e Apri abilitato; raggio su un
+corpo a 5 m selezionato; ingresso Robot › AsmFlex › AsmFlexInner › PartX con fantasma del
+solo padre diretto; modifica e Torna ×3 fino a Robot con revisione visuale invariata.
+Causa del messaggio visto dall'utente: nessun blocco dell'ingresso (il codice non legge mai
+la flessibilità dell'occorrenza); ingannava il testo grezzo. Corretto anche «Apri» dall'anello,
+che attivava il documento senza aggiungere un livello alla pila.
+Aperto: vincolo su sottoassieme flessibile (la fixture non ne ha), sottoassieme con finestra
+di definizione non aperta, prova fisica sul robot reale.
+
 ## Sonda live `face_feature` — 5 ottobre 2026
 
 `dotnet run --project bridge/tests/M3LiveProbe -- --face-feature` contro Inventor
