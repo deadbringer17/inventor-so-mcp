@@ -9,12 +9,15 @@ namespace InventorXrSo.Xr.Input
     /// </summary>
     public sealed class XrInput : MonoBehaviour
     {
-        public const float FlickOn = 0.6f, FlickOff = 0.3f, ZoomDeadZone = 0.2f, RecenterHoldSeconds = 1f;
+        public const float FlickOn = 0.6f, FlickOff = 0.3f, ZoomDeadZone = 0.2f, RecenterHoldSeconds = 1f,
+            BackHoldSeconds = 1f;
 
         private XrInputFrame _last;
         private bool _penStickX, _penStickY, _paletteStickX;
         private float _yDownAt = -1;
         private bool _recentered;
+        private float _xDownAt = -1;
+        private bool _xRest, _xHeld;
 
         public IXrInputSource Source { get; set; } = new OvrInputSource();
         public bool Synthetic => Source != null && Source.Synthetic;
@@ -27,6 +30,16 @@ namespace InventorXrSo.Xr.Input
         /// <summary>Grip destro tenuto (e tracciato): serve ai workspace per distinguere "solo vista" dal trigger.</summary>
         public bool PenGripHeld { get; private set; }
 
+        /// <summary>
+        /// Decides, at the X press, whether the user is at rest (no ring, keypad, tab group, draft/command, isolation). At rest X
+        /// is tap/hold: <see cref="BackTapped"/> (released before <see cref="BackHoldSeconds"/>) or <see cref="BackHeld"/> (Torna).
+        /// Not at rest (or no probe) X raises <see cref="Back"/> on press, exactly as before, and never Torna.
+        /// </summary>
+        public Func<bool> RestingProbe { get; set; }
+        /// <summary>0..1 progress of the held X toward Torna (for the legend); 0 when X is not being held at rest.</summary>
+        public float BackHoldProgress { get; private set; }
+
+        public event Action BackTapped, BackHeld;
         public event Action PenPressed, PenReleased, PenGrabStarted, PenGrabEnded, Back, Fit, Recenter, SnapToggled;
         public event Action<int> StepDelta, StepSizeDelta, TabDelta;
         public event Action<float> Zoom;
@@ -57,7 +70,22 @@ namespace InventorXrSo.Xr.Input
             if (two != TwoHand) { TwoHand = two; TwoHandChanged?.Invoke(two); }
             Precision = f.PaletteTrigger && f.PaletteTracked;
 
-            if (f.X && !_last.X) Back?.Invoke();
+            if (f.X && !_last.X)
+            {
+                if (RestingProbe != null && RestingProbe()) { _xRest = true; _xHeld = false; _xDownAt = time; BackHoldProgress = 0; }
+                else { _xRest = false; Back?.Invoke(); }
+            }
+            if (f.X && _xRest && !_xHeld)
+            {
+                BackHoldProgress = Mathf.Clamp01((time - _xDownAt) / BackHoldSeconds);
+                if (time - _xDownAt >= BackHoldSeconds) { _xHeld = true; BackHoldProgress = 1; BackHeld?.Invoke(); }
+            }
+            if (!f.X && _last.X && _xRest)
+            {
+                _xRest = false; BackHoldProgress = 0;
+                if (!_xHeld) BackTapped?.Invoke();
+                _xHeld = false;
+            }
             if (f.A && !_last.A) SnapToggled?.Invoke();
 
             if (f.Y && !_last.Y) { _yDownAt = time; _recentered = false; }

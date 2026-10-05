@@ -350,6 +350,12 @@ namespace InventorXrSo.Tests
             Assert.False(_workspace.Actions.Any(a=>a.Label.StartsWith("Blocca")||a.Label=="Torna a Ispeziona"),state);
             foreach(var action in _workspace.Actions.Where(a=>!a.Enabled)) Assert.False(string.IsNullOrEmpty(action.DisabledReason),state+": reason of "+action.Id);
         }
+        [Test] public void AtRestOnlyOnTheToolsScreenWithNoDraft()
+        {
+            Assert.True(_workspace.AtRest);
+            Do(Create); Pick("XY");
+            Assert.False(_workspace.AtRest, "an open sketch is a draft: X must keep the Back chain");
+        }
         [Test] public void ActionIdsAreUniqueAndEveryTabHasAtMostEightActionsInEveryScreenState()
         {
             _backend.ParameterCount=0;

@@ -575,6 +575,11 @@ namespace InventorXrSo.Xr
             _ringEdge = edgeId;
         }
 
+        /// <summary>M9: nothing for X to back out of; only then a held X means "Torna". Mirrors the <see cref="Back"/> chain.</summary>
+        public bool AtRest => Active && !(_shell != null && (_shell.Palette.KeypadVisible || _shell.Palette.InTabGroup))
+            && _ask == null && !(_ring != null && _ring.Visible) && _picker == null && _armedField == null && !InDraftScreen && _mode.Armed == SheetMetalCommand.None && !(_manip != null && _manip.Dragging)
+            && !Locked && !RequiresCadReview && (_session == null || _session.Status == DesignStatus.Empty);
+
         /// <summary>
         /// X: closes the keypad, else the ring, else the open list, else the armed field, else drops the last draft step (the last
         /// selected flange edge; with none left, the armed command). Local state only: it never touches the CAD.

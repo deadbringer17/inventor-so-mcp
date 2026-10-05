@@ -68,6 +68,8 @@ namespace InventorXrSo.Xr
         private readonly Dictionary<string, LoadedScene> _sceneByDocument = new Dictionary<string, LoadedScene>();
         private GhostContext _ghost;
         private string _ghostKey;
+        private BackNavigator _backNav;
+        private readonly DirtyTracker _dirty = new DirtyTracker();
 
         /// <summary>Pila di navigazione Assieme › Sub › Parte, guidata dal documento attivo (ContextRouter).</summary>
         public NavigationStack Navigation { get; } = new NavigationStack();
@@ -105,6 +107,12 @@ namespace InventorXrSo.Xr
             Navigation.Changed += UpdateGhost;
             _contextSwitcher = new ContextWorkspaceSwitcher(Navigation, OpenContext, CloseAuthoring,
                 text => _badge?.Flash(text, 6f), () => _inSession);
+            _backNav = new BackNavigator(Navigation,
+                () => _design.RequiresCadReview || _assembly.RequiresCadReview || _lamiera.RequiresCadReview,
+                () => _session != null && _session.Status == SessionStatus.Online,
+                () => _backend, () => _run?.Token ?? CancellationToken.None,
+                text => _badge?.Flash(text, 6f), ResetNavigationOnActive);
+            Navigation.Changed += ApplyDirty;
             _design.CanEnter = () => !_assembly.RequiresCadReview && !_lamiera.RequiresCadReview;
             _assembly.CanEnter = () => !_design.RequiresCadReview && !_lamiera.RequiresCadReview;
             _lamiera.CanEnter = () => !_design.RequiresCadReview && !_assembly.RequiresCadReview;
@@ -126,6 +134,10 @@ namespace InventorXrSo.Xr
             _sheet.Bind(sceneView.transform);
             _input = gameObject.AddComponent<InventorXrSo.Xr.Input.XrInput>();
             _design.Attach(_shell, _workbench, _sheet, _input);
+            // M9: X at rest is tap (hint) / hold 1 s (Torna); away from rest it stays the Back chain.
+            _input.RestingProbe = AtRest;
+            _input.BackTapped += _backNav.Tapped;
+            _input.BackHeld += GoBack;
             _lamiera.Attach(_shell, _workbench, _sheet, _input);
             _assembly.Attach(_shell, _workbench, _sheet, _input);
             // Ispeziona is the default workspace: it draws on the palette whenever no authoring workspace is active.
@@ -209,11 +221,13 @@ namespace InventorXrSo.Xr
             _lamiera?.Bind(null, null);
             _currentScene = null;
             _sceneByDocument.Clear();
+            _dirty.Clear();
             _contextSwitcher?.Clear();
             ClearGhost();
             if (_session != null)
             {
                 _session.StatusChanged -= OnStatusChanged; _session.SceneLoaded -= OnSceneLoaded;
+                _session.DocumentStateChanged -= OnDocumentStateForDirty;
                 _session.DocumentStateChanged -= _inspect.SetDocumentState;
                 _session.DocumentStateChanged -= _design.SetDocumentState;
                 _session.DocumentStateChanged -= _assembly.SetDocumentState;
@@ -348,6 +362,7 @@ namespace InventorXrSo.Xr
             _selection.Changed += selectionVisuals.Show;
             _session.StatusChanged += OnStatusChanged;
             _session.SceneLoaded += OnSceneLoaded;
+            _session.DocumentStateChanged += OnDocumentStateForDirty;
             _session.DocumentStateChanged += _inspect.SetDocumentState;
             _session.DocumentStateChanged += _design.SetDocumentState;
             _session.DocumentStateChanged += _assembly.SetDocumentState;
@@ -542,10 +557,44 @@ namespace InventorXrSo.Xr
 
         // --- scheda Documento ---
 
-        /// <summary>Torna al livello superiore. Il collegamento al router arriva con il passo successivo di M9: per ora non cambia il documento.</summary>
-        public void GoBack() { if (Navigation.CanPop) _badge?.Flash("Torna a " + Navigation.Parent.Name + ": non ancora collegato.", 4f); }
+        /// <summary>
+        /// Torna al livello superiore: riattiva il documento padre in Inventor; il router riconcilia la pila (Popped) quando
+        /// la scena del padre arriva. Non salva. Bloccato con revisione CAD in sospeso.
+        /// </summary>
+        public void GoBack() { _ = _backNav.GoBackAsync(); }
 
-        private void SaveDocument() { _badge?.Flash("Salvataggio dal visore non ancora disponibile.", 4f); }
+        /// <summary>X a riposo: nessun anello, tastierino, gruppo schede, bozza/comando o isolamento nel workspace attivo.</summary>
+        private bool AtRest()
+        {
+            if (!_inSession) return false;
+            if (_design.Active) return _design.AtRest;
+            if (_assembly.Active) return _assembly.AtRest;
+            if (_lamiera.Active) return _lamiera.AtRest;
+            return false;
+        }
+
+        /// <summary>Padre chiuso dal PC: la pila riparte dal documento attivo.</summary>
+        private void ResetNavigationOnActive()
+        {
+            var doc = CurrentDocInfo();
+            var ctx = ContextRouter.ContextOf(doc);
+            if (doc == null || ctx == null) { Navigation.Clear(); return; }
+            Navigation.Reset(new NavLevel(doc.DocumentId, ctx.Value, doc.Name));
+        }
+
+        private void OnDocumentStateForDirty(DocumentState state)
+        {
+            _dirty.Observe(state);
+            ApplyDirty();
+        }
+
+        private void ApplyDirty()
+        {
+            if (_dirty.Apply(Navigation)) _catalog?.NotifyChanged();
+        }
+
+        // Il backend client non ha uno strumento di salvataggio (solo i tool desktop inventor_save_document_safe): resta HUD.
+        private void SaveDocument() { _badge?.Flash("Salva dal desktop: il visore non salva i documenti.", 5f); }
 
         private void RecenterWorkbench()
         {

@@ -584,6 +584,11 @@ namespace InventorXrSo.Xr
 
         private void HideRing() => _ring?.Hide();
 
+        /// <summary>M9: nothing for X to back out of; only then a held X means "Torna". Mirrors the <see cref="Back"/> chain.</summary>
+        public bool AtRest => Active && !(_shell != null && (_shell.Palette.KeypadVisible || _shell.Palette.InTabGroup))
+            && _ask == null && !(_ring != null && _ring.Visible) && _picker == null && _armedField == null && !(_isolation != null && _isolation.Active) && !_dragging && !InDraft
+            && !Locked && !RequiresCadReview && (_session == null || _session.Status == DesignStatus.Empty);
+
         /// <summary>
         /// X: closes the keypad, else the ring, else the open list, else the armed field, else releases the isolated component,
         /// else drops the command being drafted. Local state only: it never touches the CAD.

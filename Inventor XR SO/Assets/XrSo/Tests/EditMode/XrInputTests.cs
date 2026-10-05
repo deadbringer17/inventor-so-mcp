@@ -19,6 +19,8 @@ namespace InventorXrSo.Tests
             _input.PenPressed += () => _log.Add("press");
             _input.PenReleased += () => _log.Add("release");
             _input.Back += () => _log.Add("back");
+            _input.BackTapped += () => _log.Add("backTap");
+            _input.BackHeld += () => _log.Add("backHeld");
             _input.Fit += () => _log.Add("fit");
             _input.Recenter += () => _log.Add("recenter");
             _input.SnapToggled += () => _log.Add("snap");
@@ -97,6 +99,58 @@ namespace InventorXrSo.Tests
             var a = F(); a.A = true;
             _input.Poll(x, 0); _input.Poll(F(), 0.1f); _input.Poll(a, 0.2f);
             CollectionAssert.AreEqual(new[] { "back", "snap" }, _log);
+        }
+
+        // --- M9: X at rest = tap (hint) / hold 1 s (Torna); not at rest = the Back chain, never Torna ---
+
+        [Test]
+        public void XHeldForOneSecondAtRestFiresBackHeldOnceAndNeverBack()
+        {
+            _input.RestingProbe = () => true;
+            var x = F(); x.X = true;
+            _input.Poll(x, 0); _input.Poll(x, 0.5f);
+            Assert.AreEqual(0.5f, _input.BackHoldProgress, 1e-4);
+            _input.Poll(x, 1.0f); _input.Poll(x, 1.5f); _input.Poll(F(), 1.6f);
+            CollectionAssert.AreEqual(new[] { "backHeld" }, _log);
+            Assert.AreEqual(0f, _input.BackHoldProgress);
+        }
+
+        [Test]
+        public void XReleasedBeforeOneSecondAtRestIsOnlyATap()
+        {
+            _input.RestingProbe = () => true;
+            var x = F(); x.X = true;
+            _input.Poll(x, 0); _input.Poll(x, 0.9f); _input.Poll(F(), 0.95f);
+            CollectionAssert.AreEqual(new[] { "backTap" }, _log);
+            Assert.AreEqual(0f, _input.BackHoldProgress);
+        }
+
+        [Test]
+        public void XNotAtRestKeepsTheBackChainOnPressAndNeverTorna()
+        {
+            _input.RestingProbe = () => false;
+            var x = F(); x.X = true;
+            _input.Poll(x, 0); _input.Poll(x, 1.5f); _input.Poll(x, 3f); _input.Poll(F(), 3.1f);
+            CollectionAssert.AreEqual(new[] { "back" }, _log);
+            Assert.AreEqual(0f, _input.BackHoldProgress);
+        }
+
+        [Test]
+        public void RestIsDecidedAtThePressNotWhileHolding()
+        {
+            bool rest = false;
+            _input.RestingProbe = () => rest;
+            var x = F(); x.X = true;
+            _input.Poll(x, 0); rest = true; _input.Poll(x, 2f); _input.Poll(F(), 2.1f);
+            CollectionAssert.AreEqual(new[] { "back" }, _log);
+        }
+
+        [Test]
+        public void XWithoutAProbeBehavesAsBefore()
+        {
+            var x = F(); x.X = true;
+            _input.Poll(x, 0); _input.Poll(F(), 0.1f);
+            CollectionAssert.AreEqual(new[] { "back" }, _log);
         }
 
         [Test]

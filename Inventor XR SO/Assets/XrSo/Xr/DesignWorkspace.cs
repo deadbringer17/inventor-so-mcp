@@ -469,6 +469,14 @@ namespace InventorXrSo.Xr
         }
 
         /// <summary>
+        /// M9: nothing for X to back out of (no keypad, ring, tab group, list, draft screen or pending command): only then
+        /// a held X means "Torna". Mirrors the <see cref="Back"/> chain.
+        /// </summary>
+        public bool AtRest => Active && !(_shell != null && (_shell.Palette.KeypadVisible || _shell.Palette.InTabGroup))
+            && _ask == null && !(_ring != null && _ring.Visible) && _picker == null && !InDraftScreen
+            && (_session == null || _session.Status == DesignStatus.Empty);
+
+        /// <summary>
         /// X: closes the keypad, else the ring, else the open list, else discards the last draft step (pending dimension
         /// pick, first point, last element). Local draft only: it never touches the CAD.
         /// </summary>
