@@ -21,6 +21,10 @@ namespace InventorXrSo.Xr
         public Transform Origin => origin;
         public Material LineMaterial => line != null ? line.sharedMaterial : null;
         public bool CanPick { get; set; } = true;
+        /// <summary>Current ray direction (the double Trigger detector compares it between the two presses); zero when unset.</summary>
+        public Vector3 Direction => origin != null ? origin.forward : Vector3.zero;
+        /// <summary>Stable id of a picked target for the double Trigger detector: the occurrence it belongs to, null for no hit.</summary>
+        public static string TargetId(CadBody body) => body != null && body.Instance != null ? body.Instance.OccurrenceId : null;
 
         public void Configure(Transform rayOrigin, LineRenderer rayLine)
         {

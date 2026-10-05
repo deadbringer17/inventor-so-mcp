@@ -48,6 +48,7 @@ namespace InventorXrSo.Xr
 
         private CadSceneView _view;
         private ControllerRay _ray;
+        private readonly InventorXrSo.Core.Input.DoubleTriggerDetector _doubleTrigger = new InventorXrSo.Core.Input.DoubleTriggerDetector();
         private Transform _head;
         private UiShell _shell;
         private ActionCatalog _catalog;
@@ -933,16 +934,57 @@ namespace InventorXrSo.Xr
             catch (Exception ex) { SetNotice(ex.Message); Refresh(); }
         }
 
-        private async void ActivateSubassembly()
+        private void ActivateSubassembly() => ActivateSubassemblyCore(false);
+
+        /// <param name="enter">Double Trigger: the router must push a level, so the entry is announced like for a part.</param>
+        private async void ActivateSubassemblyCore(bool enter)
         {
             try
             {
                 if (_occurrence?.Kind != "assembly") return;
+                var occurrence = _occurrence;
+                var graph = _graph;
                 if (await ActivateDefinitionAsync(true))
-                { _context = null; _notice = "Attendo il sottoassieme attivo. Le modifiche alla definizione riguardano tutte le sue istanze."; HudMessage?.Invoke(_notice); }
+                {
+                    if (enter) EntryRequested?.Invoke(occurrence.DefinitionId, occurrence.Id, FindPose(graph?.Root, occurrence.Id), false);
+                    _context = null; _notice = "Attendo il sottoassieme attivo. Le modifiche alla definizione riguardano tutte le sue istanze."; HudMessage?.Invoke(_notice);
+                }
             }
             catch (Exception ex) { SetNotice(ex.Message); Refresh(); }
         }
+
+        /// <summary>Why a double Trigger cannot enter the selected component now, or null when it can.</summary>
+        private string EntryBlockedReason()
+        {
+            if (!Active) return "Assieme non è aperto.";
+            if (RequiresCadReview) return "Revisione CAD da fare: controlla il documento in Inventor prima di aprire il componente.";
+            if (_dragging || _twoHandActive || _grab != null) return "Maniglia in uso: rilasciala prima di aprire il componente.";
+            if (_session?.Status == DesignStatus.Previewing || _session?.Status == DesignStatus.PreviewReady) return "Anteprima in corso: applica o annulla prima di aprire il componente.";
+            if (_command != null || _ask != null) return "Comando in corso: applica o annulla prima di aprire il componente.";
+            if (_occurrence == null) return "Seleziona prima un componente: tocca il pezzo.";
+            if (!Editable) return CommandReason();
+            if (!(_backend is IInspectionBackend)) return "Apertura documenti non disponibile.";
+            if (string.IsNullOrEmpty(_occurrence.DefinitionId)) return "Il componente non ha un documento di definizione.";
+            return null;
+        }
+
+        /// <summary>
+        /// Double Trigger on a component (M9): activates its definition in Inventor through the existing path and announces the
+        /// entry. A part opens its context; a sub-assembly becomes a new level (edits affect all its instances). When blocked,
+        /// nothing is activated and the HUD says why.
+        /// </summary>
+        public bool TryEnterSelected(out string blockedReason)
+        {
+            blockedReason = EntryBlockedReason();
+            if (blockedReason != null) { SetNotice(blockedReason); return false; }
+            HideRing();
+            if (_occurrence.Kind == "assembly") ActivateSubassemblyCore(true);
+            else OpenIsolated(false);
+            return true;
+        }
+
+        /// <summary>Test seam: seconds clock of the double Trigger detector (default: unscaled game time).</summary>
+        public Func<double> DoubleTriggerClock { get; set; }
 
         // ---------------------------------------------------------------- labels
 
@@ -1012,9 +1054,21 @@ namespace InventorXrSo.Xr
         {
             if (!TryPenRay(out var ray, out bool overUi)) return;
             if (overUi || GripDown || _dragging || _twoHandActive) return;
-            if (CanCapture && HitMoveTarget(ray)) { BeginDrag(); return; }
+            if (CanCapture && HitMoveTarget(ray)) { _doubleTrigger.Reset(); BeginDrag(); return; }
+            bool picked = CadRaycaster.TryPick(ray, 20, out var body, out int triangle, out var hit);
+            string target = picked ? ControllerRay.TargetId(body) : null;
+            var dir = ray.direction;
+            double now = DoubleTriggerClock != null ? DoubleTriggerClock() : Time.unscaledTimeAsDouble;
+            if (_doubleTrigger.Press(now, target, dir.x, dir.y, dir.z))
+            {
+                // The first press selected the component as today; the second enters it (or says why it cannot).
+                if (_occurrence?.Id != target && _occurrence != null && !_busy) SetNotice("Selezione in corso: ripeti il doppio Trigger.");
+                else if (_occurrence?.Id != target && _busy) SetNotice("Lettura Inventor in corso: ripeti il doppio Trigger.");
+                else TryEnterSelected(out _);
+                return;
+            }
             if (!Editable || _ask != null) return;
-            if (CadRaycaster.TryPick(ray, 20, out var body, out int triangle, out var hit)) PickBody(body, triangle, hit);
+            if (picked) PickBody(body, triangle, hit);
             else HideRing();   // the selection persists while the user locates the second reference
         }
 

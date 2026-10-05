@@ -27,7 +27,7 @@ namespace InventorXrSo.Tests
     /// Assieme on the M6 shell: references, drafts, preview and Apply with no panel. Every command goes through the declared
     /// actions by stable id, like the palette, the ring and the commit bar do. Gestures arrive as synthetic XrInput frames.
     /// </summary>
-    public sealed class AssemblyWorkspaceTests
+    public sealed partial class AssemblyWorkspaceTests
     {
         private const string Apply = CommitIds.Apply;
         private static readonly BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic;
@@ -56,14 +56,14 @@ namespace InventorXrSo.Tests
             public JArray LastOperations;
             public bool Grounded, DofComplete = true;
             public Exception PreviewError;
-            public string LastActivated;
+            public string LastActivated, KindOfB = "part";
             public TaskCompletionSource<DocumentState> Mutation;
             public TaskCompletionSource<DesignPreview> Preview;
             public AssemblyContext Context(DocumentState state, string selected)
             {
                 JObject Occ(string id) => new JObject { ["occurrence_id"] = id, ["name"] = id, ["editable"] = true, ["grounded"] = Grounded,
                     ["suppressed"] = false, ["adaptive"] = false, ["dof_translation"] = 1, ["dof_rotation"] = 1, ["dof_complete"] = DofComplete,
-                    ["definition_document_id"] = "doc_bolt", ["definition_kind"] = "part",
+                    ["definition_document_id"] = "doc_bolt", ["definition_kind"] = id == "ent_b" ? KindOfB : "part",
                     ["translation_axes"] = new JArray { new JArray(1, 0, 0) }, ["rotation_axes"] = new JArray { new JArray(0, 0, 1) }, ["rotation_center_mm"] = new JArray(10, 20, 30) };
                 var all = new JArray(Occ("ent_a"), Occ("ent_b"));
                 for (int i = 0; i < ExtraOccurrences; i++) all.Add(Occ("ent_x" + i));
