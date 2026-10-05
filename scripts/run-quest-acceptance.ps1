@@ -7,7 +7,7 @@ This script never touches Quest test properties (proximity, guardian).
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9')][string]$Milestone,
+    [Parameter(Mandatory)][ValidateSet('m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9', 'm9n')][string]$Milestone,
     [Parameter(Mandatory)][string]$Apk,
     [string]$Serial,
     [int]$TimeoutSeconds = 240,
@@ -23,7 +23,7 @@ Set-StrictMode -Version Latest
 if ($Milestone -eq 'm6' -and -not $PSBoundParameters.ContainsKey('TimeoutSeconds')) { $TimeoutSeconds = 780 }
 if ($Milestone -eq 'm8' -and -not $PSBoundParameters.ContainsKey('TimeoutSeconds')) { $TimeoutSeconds = 900 }
 # The M9 runner enters and leaves the fixture documents several times (double Trigger, Torna, desktop change, voice) and applies one feature edit.
-if ($Milestone -eq 'm9' -and -not $PSBoundParameters.ContainsKey('TimeoutSeconds')) { $TimeoutSeconds = 960 }
+if (($Milestone -eq 'm9' -or $Milestone -eq 'm9n') -and -not $PSBoundParameters.ContainsKey('TimeoutSeconds')) { $TimeoutSeconds = 960 }
 # The M7 runner waits for three Inventor computations on the fixture.
 if ($Milestone -eq 'm7' -and -not $PSBoundParameters.ContainsKey('TimeoutSeconds')) { $TimeoutSeconds = 480 }
 

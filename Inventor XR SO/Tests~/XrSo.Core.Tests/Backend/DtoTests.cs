@@ -40,6 +40,28 @@ public class DtoTests
     }
 
     [Fact]
+    public void TopLevelOccurrenceIdMapsNestedLeavesToTheDirectOccurrence()
+    {
+        var json = JObject.Parse(@"{""document_id"":""asm"",""kind"":""assembly"",""revision"":""r1"",""visual_revision"":""v1"",""definition_document_ids"":[],
+            ""root"":{""name"":""Top.iam"",""definition_kind"":""assembly"",""children"":[
+              {""name"":""P:1"",""occurrence_id"":""ent_1"",""definition_kind"":""part"",""children"":[]},
+              {""name"":""Sub:1"",""occurrence_id"":""ent_3"",""definition_kind"":""assembly"",""children"":[
+                {""name"":""Mid:1"",""occurrence_id"":""ent_4"",""definition_kind"":""assembly"",""children"":[
+                  {""name"":""Q:1"",""occurrence_id"":""ent_5"",""definition_kind"":""part"",""children"":[]}]}]}]}}");
+        var scene = SceneGraph.FromJson(json);
+        Assert.Equal("ent_1", scene.TopLevelOccurrenceId("ent_1"));
+        Assert.Equal("ent_3", scene.TopLevelOccurrenceId("ent_3"));
+        Assert.Equal("ent_3", scene.TopLevelOccurrenceId("ent_4"));
+        Assert.Equal("ent_3", scene.TopLevelOccurrenceId("ent_5"));
+        Assert.Equal("ent_zzz", scene.TopLevelOccurrenceId("ent_zzz"));
+        Assert.Null(scene.TopLevelOccurrenceId(null));
+        Assert.Equal(new[] { "ent_3", "ent_4", "ent_5" }, scene.OccurrenceAndDescendantIds("ent_3").OrderBy(x => x));
+        Assert.Equal(new[] { "ent_1" }, scene.OccurrenceAndDescendantIds("ent_1"));
+        Assert.Empty(scene.OccurrenceAndDescendantIds("nope"));
+        Assert.Empty(scene.OccurrenceAndDescendantIds(null));
+    }
+
+    [Fact]
     public void APartDocumentPlacesItsRootAtTheOrigin()
     {
         var json = JObject.Parse(@"{""document_id"":""p"",""kind"":""part"",""revision"":""r"",""visual_revision"":""v"",""definition_document_ids"":[""p""],

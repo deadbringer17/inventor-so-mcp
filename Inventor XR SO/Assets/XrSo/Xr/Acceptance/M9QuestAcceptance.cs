@@ -40,7 +40,7 @@ namespace InventorXrSo.Xr
     ///
     /// Written without a device (no Quest in the authoring environment): compiled with XR_SO_ACCEPTANCE and contract-tested, never run.
     /// </summary>
-    internal sealed class M9QuestAcceptance : QuestAcceptanceRunner
+    internal class M9QuestAcceptance : QuestAcceptanceRunner
     {
         internal static readonly string[] ReflectedMembers =
         {
@@ -87,11 +87,15 @@ namespace InventorXrSo.Xr
         };
 
         /// <summary>Suffixes of the NOT COVERED gates that name evidence outside this runner (they never make the verdict PARTIAL).</summary>
-        internal static readonly string[] OutsideRunnerSuffixes = { "-physical", "-probe", "-suite" };
+        internal static readonly string[] OutsideRunnerSuffixes = { "-physical", "-probe", "-suite", "-nested" };
 
-        private const string FeaturePrefix = "design.feature.p.";
-        private const string SketchName = "Base_M6";
-        private const double ExtrudeStartMm = 10, ExtrudeEditedMm = 12;
+        protected const string FeaturePrefix = "design.feature.p.";
+        protected const string SketchName = "Base_M6";
+        protected const double ExtrudeStartMm = 10, ExtrudeEditedMm = 12;
+
+        /// <summary>The M9 runner on the M6 fixture reports the known feature-edit gaps; the nested runner repeats the edit only to prove navigation.</summary>
+        protected virtual bool ReportKnownFeatureGaps => true;
+        protected virtual string RestoreHint => "--restore-quest m6";
 
         protected override string Milestone => "m9";
         protected override string FixtureMilestone => "m6";
@@ -104,33 +108,33 @@ namespace InventorXrSo.Xr
         private static void AfterSceneLoad() => StartIfRequested<M9QuestAcceptance>("xr_m9_acceptance");
 
         // ---- application parts
-        private InspectWorkspace _inspect;
-        private DesignWorkspace _design;
-        private AssemblyWorkspace _assembly;
-        private LamieraWorkspace _lamiera;
-        private UiShell _shell;
-        private Workbench _bench;
-        private CadSceneView _view;
-        private ControllerRay _ray;
-        private Transform _head;
-        private ControllerLegend _legend;
-        private GhostContext _ghost;
-        private IDesignWorkspaceBackend _backend;
-        private IInspectionBackend _inspection;
-        private string _assemblyDocId;
+        protected InspectWorkspace _inspect;
+        protected DesignWorkspace _design;
+        protected AssemblyWorkspace _assembly;
+        protected LamieraWorkspace _lamiera;
+        protected UiShell _shell;
+        protected Workbench _bench;
+        protected CadSceneView _view;
+        protected ControllerRay _ray;
+        protected Transform _head;
+        protected ControllerLegend _legend;
+        protected GhostContext _ghost;
+        protected IDesignWorkspaceBackend _backend;
+        protected IInspectionBackend _inspection;
+        protected string _assemblyDocId;
 
         // ---- synthetic input
-        private XrInput _input;
-        private SyntheticInputSource _source;
-        private IXrInputSource _originalSource;
-        private bool _syntheticKeypadNoted;
+        protected XrInput _input;
+        protected SyntheticInputSource _source;
+        protected IXrInputSource _originalSource;
+        protected bool _syntheticKeypadNoted;
         /// <summary>Clock of the double Trigger detectors: the runner moves it instead of sleeping, so the 350 ms window is exact.</summary>
-        private double _clock = 1000;
-        private bool? _legendWasOn;
-        private readonly HashSet<InputState> _liveStates = new HashSet<InputState>();
+        protected double _clock = 1000;
+        protected bool? _legendWasOn;
+        protected readonly HashSet<InputState> _liveStates = new HashSet<InputState>();
 
-        private ActionCatalog Catalog => Read<ActionCatalog>(App, "_catalog");
-        private NavigationStack Nav => App.Navigation;
+        protected ActionCatalog Catalog => Read<ActionCatalog>(App, "_catalog");
+        protected NavigationStack Nav => App.Navigation;
 
         // ------------------------------------------------------------------------------------------------------------- verdict
 
@@ -181,7 +185,7 @@ namespace InventorXrSo.Xr
             NotCovered("M9-10-physical", "microphone and audio: recognized text was injected into the real PushToTalkController with silent samples");
         }
 
-        private void BindApp()
+        protected void BindApp()
         {
             _inspect = Read<InspectWorkspace>(App, "_inspect");
             _design = Read<DesignWorkspace>(App, "_design");
@@ -204,7 +208,7 @@ namespace InventorXrSo.Xr
 
         // ------------------------------------------------------------------------------------------------------------ plumbing
 
-        private void RunAction(string id)
+        protected void RunAction(string id)
         {
             var action = Catalog.Find(id);
             Check(action != null, "the action catalog has no action '" + id + "'");
@@ -212,13 +216,13 @@ namespace InventorXrSo.Xr
             Check(action.TryInvoke(), "action '" + id + "' did not run");
         }
 
-        private bool ActionEnabled(string id) => Catalog.Find(id)?.Enabled == true;
+        protected bool ActionEnabled(string id) => Catalog.Find(id)?.Enabled == true;
 
-        private static string F(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
+        protected static string F(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
 
-        private static bool Near(double a, double b, double tolerance) => Math.Abs(a - b) <= tolerance;
+        protected static bool Near(double a, double b, double tolerance) => Math.Abs(a - b) <= tolerance;
 
-        private static async Task<bool> TryWaitUntil(Func<bool> condition, double seconds, CancellationToken ct)
+        protected static async Task<bool> TryWaitUntil(Func<bool> condition, double seconds, CancellationToken ct)
         {
             var until = DateTime.UtcNow.AddSeconds(seconds);
             while (DateTime.UtcNow < until)
@@ -231,7 +235,7 @@ namespace InventorXrSo.Xr
         }
 
         /// <summary>WaitUntil that names what it waited for and what the app said meanwhile (HUD, workspace notices).</summary>
-        private async Task WaitDiag(Func<bool> condition, string what, CancellationToken ct, int seconds = 45)
+        protected async Task WaitDiag(Func<bool> condition, string what, CancellationToken ct, int seconds = 45)
         {
             if (await TryWaitUntil(condition, seconds, ct)) return;
             throw new InvalidOperationException("timed out after " + seconds + "s waiting for " + what + " [context=" + App.Context + ", levels="
@@ -240,7 +244,7 @@ namespace InventorXrSo.Xr
         }
 
         /// <summary>Why a synthetic Trigger press did not select: ray hit, selected occurrence, workspace state (read by reflection).</summary>
-        private string PressDiagnostics()
+        protected string PressDiagnostics()
         {
             var ray = new Ray(_ray.Origin.position, _ray.Origin.forward);
             bool hit = CadRaycaster.TryPick(ray, 20, out var body, out _, out var point);
@@ -263,19 +267,19 @@ namespace InventorXrSo.Xr
                 + " availability=" + mode?.Availability + " modeReason=" + mode?.Reason + " stateRev=" + Read<DocumentState>(_lamiera, "_state")?.Revision + "}";
         }
 
-        private string HudText() => _shell?.Hud == null ? ""
+        protected string HudText() => _shell?.Hud == null ? ""
             : string.Join("\n", _shell.Hud.Canvas.GetComponentsInChildren<TextMeshProUGUI>(true).Select(t => t.text));
 
-        private async Task<DocumentState> BaselineAsync(CancellationToken ct) => await _backend.GetDocumentStateAsync(ct);
+        protected async Task<DocumentState> BaselineAsync(CancellationToken ct) => await _backend.GetDocumentStateAsync(ct);
 
-        private async Task AssertUnchanged(DocumentState baseline, string what, CancellationToken ct)
+        protected async Task AssertUnchanged(DocumentState baseline, string what, CancellationToken ct)
         {
             var now = await _backend.GetDocumentStateAsync(ct);
             Check(now.DocumentId == baseline.DocumentId && now.Revision == baseline.Revision,
                 what + " leaves Inventor's revision unchanged (" + baseline.Revision + " vs " + now.Revision + ")");
         }
 
-        private void PickItem(IActionProvider workspace, string prefix, string label, bool suffix = false)
+        protected void PickItem(IActionProvider workspace, string prefix, string label, bool suffix = false)
         {
             var action = workspace.Actions.FirstOrDefault(a => a.Id.StartsWith(prefix, StringComparison.Ordinal)
                 && (suffix ? a.Label.EndsWith(label, StringComparison.Ordinal) : a.Label == label));
@@ -283,7 +287,7 @@ namespace InventorXrSo.Xr
             Check(action.Enabled && action.TryInvoke(), "list entry '" + label + "' did not run");
         }
 
-        private NumericEntry ActiveEntry()
+        protected NumericEntry ActiveEntry()
         {
             var active = Catalog.Active;
             if (active is DesignWorkspace design) return design.ActiveEntry;
@@ -292,7 +296,7 @@ namespace InventorXrSo.Xr
             return null;
         }
 
-        private void TypeValue(double value)
+        protected void TypeValue(double value)
         {
             if (!_syntheticKeypadNoted) { Record("Numbers are typed on the keypad entry by the runner (synthetic keypad input)"); _syntheticKeypadNoted = true; }
             var entry = ActiveEntry();
@@ -301,9 +305,9 @@ namespace InventorXrSo.Xr
             Check(entry.Commit(out var reason), "keypad accepted " + F(value) + ": " + reason);
         }
 
-        private void SnapPoses() { _bench.Snap(); }
+        protected void SnapPoses() { _bench.Snap(); }
 
-        private Vector3 OccurrenceCenter(string occurrenceId)
+        protected Vector3 OccurrenceCenter(string occurrenceId)
         {
             var instance = _view.Find(occurrenceId);
             Check(instance != null, "the occurrence " + occurrenceId + " is in the scene");
@@ -312,14 +316,14 @@ namespace InventorXrSo.Xr
         }
 
         /// <summary>The assembly context can still be refreshing after a previous step (partial occurrence list): wait for the fragment instead of failing on the first look.</summary>
-        private async Task<AssemblyOccurrence> FindOccurrenceAsync(string nameFragment, CancellationToken ct)
+        protected async Task<AssemblyOccurrence> FindOccurrenceAsync(string nameFragment, CancellationToken ct)
         {
             await TryWaitUntil(() => Read<AssemblyContext>(_assembly, "_context")?.Occurrences
                 .Any(o => o.Name.IndexOf(nameFragment, StringComparison.OrdinalIgnoreCase) >= 0) == true, 20, ct);
             return FindOccurrence(nameFragment);
         }
 
-        private AssemblyOccurrence FindOccurrence(string nameFragment)
+        protected AssemblyOccurrence FindOccurrence(string nameFragment)
         {
             var context = Read<AssemblyContext>(_assembly, "_context");
             Check(context != null, "the assembly context is loaded");
@@ -334,7 +338,7 @@ namespace InventorXrSo.Xr
 
         // ------------------------------------------------------------------------------------------------------- synthetic input
 
-        private void BeginSynthetic()
+        protected void BeginSynthetic()
         {
             _input = Read<XrInput>(App, "_input");
             Check(_input != null, "AppController owns the XrInput");
@@ -352,7 +356,7 @@ namespace InventorXrSo.Xr
             Record("Controller events of this run are SYNTHETIC XrInput frames; the double Trigger detector clock is driven by the runner (350 ms window respected)");
         }
 
-        private void EndSynthetic()
+        protected void EndSynthetic()
         {
             if (_input == null) return;
             if (_source != null) Send(Rest());
@@ -363,47 +367,47 @@ namespace InventorXrSo.Xr
             _source = null;
         }
 
-        private static XrInputFrame Rest() => new XrInputFrame { PenTracked = true, PaletteTracked = true };
+        protected static XrInputFrame Rest() => new XrInputFrame { PenTracked = true, PaletteTracked = true };
 
-        private void Send(XrInputFrame frame)
+        protected void Send(XrInputFrame frame)
         {
             _source.Next = frame;
             _input.Poll(frame, Time.unscaledTime);
         }
 
-        private void SendRest() => Send(Rest());
+        protected void SendRest() => Send(Rest());
 
-        private void FlickPalette(int direction)
+        protected void FlickPalette(int direction)
         {
             var frame = Rest(); frame.PaletteStick = new Vector2(direction, 0); Send(frame); SendRest();
         }
 
-        private void FlickPen(float x, float y)
+        protected void FlickPen(float x, float y)
         {
             var frame = Rest(); frame.PenStick = new Vector2(x, y); Send(frame); SendRest();
         }
 
-        private void PressX()
+        protected void PressX()
         {
             var frame = Rest(); frame.X = true; Send(frame); SendRest();
         }
 
-        private void TriggerTap()
+        protected void TriggerTap()
         {
             SendRest();
             var frame = Rest(); frame.PenTrigger = true; Send(frame);
             SendRest();
         }
 
-        private void AimAt(Vector3 target, Vector3 away, float distance = 0.3f)
+        protected void AimAt(Vector3 target, Vector3 away, float distance = 0.3f)
         {
             var direction = away.normalized;
             _ray.Origin.SetPositionAndRotation(target + direction * distance, Quaternion.LookRotation(-direction));
         }
 
-        private void AimAtSky() => _ray.Origin.SetPositionAndRotation(_head.position, Quaternion.LookRotation(Vector3.up));
+        protected void AimAtSky() => _ray.Origin.SetPositionAndRotation(_head.position, Quaternion.LookRotation(Vector3.up));
 
-        private Vector3 AwayFromHead(Vector3 target)
+        protected Vector3 AwayFromHead(Vector3 target)
         {
             var away = _head.position - target;
             if (away.sqrMagnitude < 1e-6f) away = Vector3.back;
@@ -414,7 +418,7 @@ namespace InventorXrSo.Xr
         /// The real double Trigger path: press 1 selects the target under the ray, the runner waits for that selection, then press 2
         /// arrives 0.2 s later on the detector clock (inside the 350 ms window): same target, same ray, so the workspace recognizes it.
         /// </summary>
-        private async Task DoubleTriggerAsync(Func<bool> firstPressDone, CancellationToken ct, double gapSeconds = 0.2)
+        protected async Task DoubleTriggerAsync(Func<bool> firstPressDone, CancellationToken ct, double gapSeconds = 0.2)
         {
             // A press is ignored while the workspace is busy (previous step still refreshing): wait until it is idle and
             // retry the first press (each attempt starts a new detector window) instead of firing once and hoping.
@@ -432,7 +436,7 @@ namespace InventorXrSo.Xr
         }
 
         /// <summary>Enters a component of the open assembly with a double Trigger on its model, then waits for the router to push the level.</summary>
-        private async Task EnterByDoubleTriggerAsync(AssemblyOccurrence occurrence, Func<DocContext?, bool> contextOk, string contextName, CancellationToken ct)
+        protected async Task EnterByDoubleTriggerAsync(AssemblyOccurrence occurrence, Func<DocContext?, bool> contextOk, string contextName, CancellationToken ct)
         {
             int levels = Nav.Levels.Count;
             SnapPoses();
@@ -446,21 +450,21 @@ namespace InventorXrSo.Xr
         }
 
         /// <summary>Waits until the Part workspace of the entered document has its context and history loaded.</summary>
-        private Task WaitDesignReadyAsync(CancellationToken ct) => WaitDiag(() => _design.Active && !ReadBoolean(_design, "_busy")
+        protected Task WaitDesignReadyAsync(CancellationToken ct) => WaitDiag(() => _design.Active && !ReadBoolean(_design, "_busy")
             && Read<DesignContext>(_design, "_context") != null && Read<DesignHistory>(_design, "_history") != null
             && ActionEnabled("design.extrude"), "Progettazione to load its context", ct);
 
-        private Task WaitLamieraReadyAsync(CancellationToken ct) => WaitDiag(() => _lamiera.Active && _lamiera.IsPrimary
+        protected Task WaitLamieraReadyAsync(CancellationToken ct) => WaitDiag(() => _lamiera.Active && _lamiera.IsPrimary
             && !ReadBoolean(_lamiera, "_busy") && Read<DesignContext>(_lamiera, "_designContext") != null
             && ActionEnabled(LamieraWorkspace.IdFlange), "Lamiera to load its context", ct);
 
-        private Task WaitAssemblyReadyAsync(int levels, CancellationToken ct) => WaitDiag(() => Nav.Levels.Count == levels
+        protected Task WaitAssemblyReadyAsync(int levels, CancellationToken ct) => WaitDiag(() => Nav.Levels.Count == levels
             && App.Context == DocContext.Assembly && _assembly.Active && !ReadBoolean(_assembly, "_busy")
             && Read<AssemblyContext>(_assembly, "_context") != null && Session.Scene?.Graph?.Kind == "assembly",
             "the assembly context at level " + levels, ct);
 
         /// <summary>Backs out of whatever is open (feature tab, list, keypad) with X, as a user would, until the workspace is at rest.</summary>
-        private async Task EnsureRestAsync(CancellationToken ct)
+        protected async Task EnsureRestAsync(CancellationToken ct)
         {
             for (int i = 0; i < 6 && !_input.RestingProbe(); i++) { PressX(); await Task.Delay(150, ct); }
             SendRest();
@@ -470,7 +474,7 @@ namespace InventorXrSo.Xr
         /// Torna with X held for 1 s at rest: a SYNTHETIC press at time t and a Poll of the same frame at t + 1.05 s. The XrInput state
         /// machine measures the hold from the timestamps it receives, so no real second is spent.
         /// </summary>
-        private void HoldXForBack()
+        protected void HoldXForBack()
         {
             SendRest();
             Check(_input.RestingProbe != null && _input.RestingProbe(), "the workspace is at rest (no ring, keypad, group, draft or isolation): X is tap/hold");
@@ -485,7 +489,7 @@ namespace InventorXrSo.Xr
 
         // ------------------------------------------------------------------------------- M9-01 / M9-02 blocked / M9-05: Assieme
 
-        private static readonly string[] AssemblyTabs = { "componenti", "vincoli", ContextTabs.Inspect, "vista", ActionCatalog.DocumentTab };
+        protected static readonly string[] AssemblyTabs = { "componenti", "vincoli", ContextTabs.Inspect, "vista", ActionCatalog.DocumentTab };
         private static readonly string[] PartTabs = { "schizzo", "feature", "parametri", ContextTabs.Inspect, "vista", ActionCatalog.DocumentTab };
         private static readonly string[] SheetTabs = { "lamiera", "schizzo", "sviluppo", ContextTabs.Inspect, "vista", ActionCatalog.DocumentTab };
 
@@ -555,7 +559,7 @@ namespace InventorXrSo.Xr
             Pass("M9-02", "double Trigger entry is refused with a reason during a pending CAD review (synthetic guard) and during Sposta; stack, context and revision unchanged");
         }
 
-        private async Task SelectOccurrenceAsync(AssemblyOccurrence occurrence, CancellationToken ct)
+        protected async Task SelectOccurrenceAsync(AssemblyOccurrence occurrence, CancellationToken ct)
         {
             if (Read<AssemblyOccurrence>(_assembly, "_occurrence")?.Id == occurrence.Id && ActionEnabled(AssemblyWorkspace.IdIsolate)) return;
             await WaitDiag(() => ActionEnabled(AssemblyWorkspace.IdComponents), "the Componenti action", ct, 30);
@@ -567,7 +571,7 @@ namespace InventorXrSo.Xr
 
         // ----------------------------------------------------------------------------------------------- M9-05 tab composition
 
-        private async Task CheckTabsAsync(DocContext context, string[] expected, CancellationToken ct)
+        protected async Task CheckTabsAsync(DocContext context, string[] expected, CancellationToken ct)
         {
             Check(App.Context == context, "the app context is " + context + " (found " + App.Context + ")");
             var tabs = Catalog.Tabs.Select(t => t.Id).ToList();
@@ -769,7 +773,7 @@ namespace InventorXrSo.Xr
 
         // ------------------------------------------------------------------------------------------- M9-09: face -> feature edit
 
-        private async Task CheckFeatureEditAsync(CancellationToken ct)
+        protected async Task CheckFeatureEditAsync(CancellationToken ct)
         {
             var context = Read<DesignContext>(_design, "_context");
             var state0 = await BaselineAsync(ct);
@@ -843,14 +847,15 @@ namespace InventorXrSo.Xr
             double back = await ReadParameterMmAsync(restored, chip.Name, face.Id, ct);
             if (Near(back, ExtrudeStartMm, 0.01)) Pass("M9-09", "XR Undo restored " + chip.Name + " = " + F(back) + " mm (cleanup)");
             else NotCovered("M9-09-restore", "after XR Undo Inventor reports " + chip.Name + " = " + F(back) + " mm instead of " + F(ExtrudeStartMm)
-                + " mm: run --restore-quest m6 before rerunning");
+                + " mm: run " + RestoreHint + " before rerunning");
 
+            if (!ReportKnownFeatureGaps) return;
             NotCovered("M9-09-handle", "the extrusion-distance handle on the geometry is not wired for the feature edit (only chips): the spec asks for chip and handle (DesignFeatureEdit.cs)");
             NotCovered("M9-09-highlight", "face_feature returns no list of faces, so only the picked face is highlighted instead of every face of the feature");
             NotCovered("M9-09-expression-suite", "an expression-driven parameter (read-only chip, never overwritten) and a suppressed feature need geometry the M6 fixture does not have: covered by FeatureEditTests and FaceFeatureTests only");
         }
 
-        private async Task<double> ReadParameterMmAsync(DocumentState state, string name, string faceId, CancellationToken ct)
+        protected async Task<double> ReadParameterMmAsync(DocumentState state, string name, string faceId, CancellationToken ct)
         {
             var context = await _backend.GetDesignContextAsync(state, ct);
             var parameter = context.Parameters.OfType<JObject>().FirstOrDefault(p => (string)p["name"] == name);
@@ -1054,8 +1059,8 @@ namespace InventorXrSo.Xr
             var sub = context.Occurrences.FirstOrDefault(o => o.Kind == "assembly");
             if (sub == null)
             {
-                NotCovered("M9-02-subassembly", "the dedicated fixture XR_M6_Quest_Acceptance has no sub-assembly occurrence (" + string.Join(", ", context.Occurrences.Select(o => o.Name + "/" + o.Kind))
-                    + "): the two-level descent assembly > sub-assembly > part and its double Torna were not exercised; add a nested assembly to the fixture to close it");
+                NotCovered("M9-02-subassembly-nested", "the dedicated fixture XR_M6_Quest_Acceptance has no sub-assembly occurrence (" + string.Join(", ", context.Occurrences.Select(o => o.Name + "/" + o.Kind))
+                    + "): the descent assembly > sub-assembly > part and its double Torna are exercised by the separate nested runner (M9NestedQuestAcceptance, fixture m9n, run-m9-nested-acceptance.ps1)");
                 return;
             }
             await EnterByDoubleTriggerAsync(sub, c => c == DocContext.Assembly, "the sub-assembly", ct);
@@ -1289,7 +1294,7 @@ namespace InventorXrSo.Xr
 
         // ---------------------------------------------------------------------------------------------------------------- cleanup
 
-        private async Task CleanupAsync()
+        protected async Task CleanupAsync()
         {
             try
             {
@@ -1303,11 +1308,11 @@ namespace InventorXrSo.Xr
                         await TryWaitUntil(() => Session.Scene?.Graph?.DocumentId == _assemblyDocId && Session.Status == SessionStatus.Online, 30, timeout.Token);
                     }
                 }
-                Record("Clean end: synthetic input removed, probes restored, the assembly document is the active one again (restore the fixture before rerunning: --restore-quest m6)");
+                Record("Clean end: synthetic input removed, probes restored, the assembly document is the active one again (restore the fixture before rerunning: " + RestoreHint + ")");
             }
             catch (Exception ex)
             {
-                Record("Cleanup could not complete: " + ex.GetType().Name + ": " + ex.Message + " (activate the assembly document before --restore-quest m6)");
+                Record("Cleanup could not complete: " + ex.GetType().Name + ": " + ex.Message + " (activate the assembly document before " + RestoreHint + ")");
             }
         }
 

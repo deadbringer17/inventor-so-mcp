@@ -55,12 +55,14 @@ namespace InventorXrSo.Unity.Scene
             RevisionLabel = revisionLabel ?? parent.Graph.Revision;
             Truncated = parent.Omitted.Count > 0 || parent.Graph.Truncated || parent.Models.Count > MaxDefinitions;
 
+            // A sub-assembly entered as a level is already drawn by the real scene: skip it and every part below it (the scene draws leaves only).
+            var skipped = parent.Graph.OccurrenceAndDescendantIds(skipOccurrenceId);
             var allowed = new HashSet<string>(parent.Models.Keys.Take(MaxDefinitions));
             foreach (var placed in parent.Graph.PlacedParts())
             {
                 var definition = placed.Node.DefinitionDocumentId;
                 if (!allowed.Contains(definition) || !parent.Models.TryGetValue(definition, out var model)) continue;
-                if (skipOccurrenceId != null && placed.Node.OccurrenceId == skipOccurrenceId) continue;
+                if (skipped.Contains(placed.Node.OccurrenceId ?? "")) continue;
                 if (!_meshes.TryGetValue(definition, out var meshes))
                 {
                     meshes = model.Primitives.Select(MeshFactory.Build).ToArray();

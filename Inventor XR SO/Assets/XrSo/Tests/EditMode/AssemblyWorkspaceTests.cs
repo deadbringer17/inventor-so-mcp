@@ -61,6 +61,9 @@ namespace InventorXrSo.Tests
             public TaskCompletionSource<DesignPreview> Preview;
             public AssemblyContext Context(DocumentState state, string selected)
             {
+                // The bridge refuses an occurrence that is not a direct child of the active assembly (nested proxy ids).
+                if (selected != null && selected.StartsWith("ent_nested", StringComparison.Ordinal))
+                    throw new ArgumentException("Select a direct occurrence or activate its subassembly first.");
                 JObject Occ(string id) => new JObject { ["occurrence_id"] = id, ["name"] = id, ["editable"] = true, ["grounded"] = Grounded,
                     ["suppressed"] = false, ["adaptive"] = false, ["dof_translation"] = 1, ["dof_rotation"] = 1, ["dof_complete"] = DofComplete,
                     ["definition_document_id"] = "doc_bolt", ["definition_kind"] = id == "ent_b" ? KindOfB : "part",

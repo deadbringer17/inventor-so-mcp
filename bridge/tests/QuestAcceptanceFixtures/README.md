@@ -30,6 +30,7 @@ The milestone is `m1`, `m2`, `m3`, `m5`, `m6` or `m7`. The manifest is written r
 | m5 | `XR_M5_Quest_Acceptance.ipt` | sheet-metal Face 100 x 60 mm, no flat pattern, unconsumed sketch `Taglio_M5` (20 x 10 mm rectangle) |
 | m6 | `XR_M6_Quest_Acceptance.iam` | two occurrences, three documents kept open: `XR_M6_Quest_Acceptance_Block.ipt` (40 x 30 x 10 mm centred block, unconsumed sketch `Base_M6` with a circle R 5 mm on the top face, grounded), `XR_M6_Quest_Acceptance_Sheet.ipt` (sheet-metal Face 100 x 60 mm, unconsumed sketch `Taglio_M6`, +60 mm in X, free) |
 | m7 | `XR_M7_Quest_Acceptance.iam` | four 20 mm cubes: M7_A/M7_B overlap by 2000 mm³, M7_A/M7_C have a 30 mm gap, M7_D is free; unhealthy constraint M7_Sick and empty cube Description (`DESCRIPTION_MISSING` BOM warning) |
+| m9n | `XR_M9N_Quest_Acceptance_Assieme3.iam` | nested assemblies, six documents saved and kept open: `..._Assieme1.iam` (PartA 40 x 30 x 10 mm and PartC 30 x 20 x 10 mm at +60 mm), `..._Assieme2.iam` (PartB 20 x 20 x 10 mm), `..._Assieme3.iam` holds Assieme1 (origin) and Assieme2 (+120 mm), all grounded. Guard prefix `XR_M9N_Quest_Acceptance`, used only by the nested M9 runner (`scripts/run-m9-nested-acceptance.ps1`); inspect also prints dirty flag and volume of every document |
 
 M7 is read-only. `--probe-m7` independently measures the dedicated fixture;
 `--probe-active` measures interference and health timings on an active real

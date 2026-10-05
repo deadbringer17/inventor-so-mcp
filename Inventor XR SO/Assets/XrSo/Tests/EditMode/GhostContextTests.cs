@@ -1,3 +1,4 @@
+using InventorXrSo.Core.Backend;
 using System.Collections.Generic;
 using System.Linq;
 using InventorXrSo.Core.Glb;
@@ -110,6 +111,24 @@ namespace InventorXrSo.Tests
         {
             _ghost.Show(CadSceneViewTests.BoltScene(), Pose, "r1", "ent_occ_2");
             Assert.AreEqual(1, _ghost.RendererCount);
+        }
+
+        [Test]
+        public void AnEnteredSubassemblyIsNotDuplicatedWithItsParts()
+        {
+            var bolt = GlbModel.Parse(System.IO.File.ReadAllBytes(CoreInUnityTests.BoltFixture));
+            var graph = SceneGraph.FromJson(Newtonsoft.Json.Linq.JObject.Parse(@"{""document_id"":""doc_asm"",""kind"":""assembly"",""revision"":""r"",""visual_revision"":""v"",
+                ""definition_document_ids"":[""doc_bolt""],
+                ""root"":{""name"":""Top.iam"",""definition_kind"":""assembly"",""children"":[
+                  {""name"":""Bolt:1"",""occurrence_id"":""ent_occ_1"",""definition_document_id"":""doc_bolt"",""definition_kind"":""part"",""children"":[]},
+                  {""name"":""Sub:1"",""occurrence_id"":""ent_sub"",""definition_document_id"":""doc_sub"",""definition_kind"":""assembly"",""children"":[
+                    {""name"":""Bolt:2"",""occurrence_id"":""ent_nested_1"",""definition_document_id"":""doc_bolt"",""definition_kind"":""part"",""children"":[]}]}]}}"));
+            var scene = new LoadedScene(graph, new Dictionary<string, GlbModel> { ["doc_bolt"] = bolt },
+                new Dictionary<string, string> { ["doc_bolt"] = "a_bolt" }, new List<string>());
+            _ghost.Show(scene, Pose, "r1", "ent_sub");
+            Assert.AreEqual(1, _ghost.RendererCount, "the sub-assembly entered as a level and its nested parts are not drawn twice");
+            _ghost.Show(scene, Pose, "r1");
+            Assert.AreEqual(2, _ghost.RendererCount);
         }
 
         [Test]

@@ -45,6 +45,7 @@ internal static class Fixtures
                 "m5" => PrepareM5(app, directory, created),
                 "m6" => PrepareM6(app, directory, created),
                 "m7" => PrepareM7(app, directory, created),
+                "m9n" => PrepareM9Nested(app, directory, created),
                 _ => throw new ArgumentException("Unknown milestone " + m),
             };
             var active = app.ActiveDocument ?? throw new InvalidOperationException("No active document after preparing the fixture.");
@@ -251,6 +252,68 @@ internal static class Fixtures
     }
 
     /// <summary>
+    /// M9 nested: three assemblies. Assieme1 holds PartA (40 x 30 x 10 mm centred block, sketch Blocco extruded 10 mm, as the M6 block)
+    /// and PartC (30 x 20 x 10 mm, 60 mm in X, so the ghost of Assieme1 is not empty when PartA is entered), Assieme2 holds PartB
+    /// (20 x 20 x 10 mm centred block). Assieme3 holds Assieme1 (grounded at the origin) and Assieme2 (grounded,
+    /// 120 mm in X) so rays reach both. Every document is saved on disk and kept open (definitions can be activated); every name
+    /// starts with XR_M9N_Quest_Acceptance, the guard of the nested M9 runner.
+    /// </summary>
+    private static JObject PrepareM9Nested(global::Inventor.Application app, string directory, List<object> created)
+    {
+        const string prefix = "XR_M9N_Quest_Acceptance_";
+        var partA = (PartDocument)app.Documents.Add(DocumentTypeEnum.kPartDocumentObject);
+        created.Add(partA);
+        CreateBlock(app, partA, 40, 30, 10, true, "Blocco");
+        var partAPath = Path.Combine(directory, prefix + "PartA.ipt");
+        partA.SaveAs(partAPath, false);
+        var partB = (PartDocument)app.Documents.Add(DocumentTypeEnum.kPartDocumentObject);
+        created.Add(partB);
+        CreateBlock(app, partB, 20, 20, 10, true, "Blocco");
+        var partBPath = Path.Combine(directory, prefix + "PartB.ipt");
+        partB.SaveAs(partBPath, false);
+
+        var partC = (PartDocument)app.Documents.Add(DocumentTypeEnum.kPartDocumentObject);
+        created.Add(partC);
+        CreateBlock(app, partC, 30, 20, 10, true, "Blocco");
+        var partCPath = Path.Combine(directory, prefix + "PartC.ipt");
+        partC.SaveAs(partCPath, false);
+
+        var tg = app.TransientGeometry;
+        AssemblyDocument BuildAssembly(string fileName, params (string path, double xCm)[] items)
+        {
+            var doc = (AssemblyDocument)app.Documents.Add(DocumentTypeEnum.kAssemblyDocumentObject);
+            created.Add(doc);
+            foreach (var (path, xCm) in items)
+            {
+                var pose = tg.CreateMatrix();
+                pose.SetTranslation(tg.CreateVector(xCm, 0, 0));
+                var occurrence = doc.ComponentDefinition.Occurrences.Add(path, pose);
+                occurrence.Grounded = true;
+            }
+            doc.SaveAs(Path.Combine(directory, fileName), false);
+            return doc;
+        }
+        var assembly1 = BuildAssembly(prefix + "Assieme1.iam", (partAPath, 0), (partCPath, 6));
+        var assembly2 = BuildAssembly(prefix + "Assieme2.iam", (partBPath, 0));
+        var assembly1Path = assembly1.FullFileName;
+        var assembly2Path = assembly2.FullFileName;
+        var assembly3 = BuildAssembly(prefix + "Assieme3.iam", (assembly1Path, 0), (assembly2Path, 12));
+        var assembly3Path = assembly3.FullFileName;
+        assembly3.Activate();
+        var expected = new JObject
+        {
+            ["occurrences"] = 2, ["part_a_volume_mm3"] = 12000, ["part_b_volume_mm3"] = 4000, ["extrude_mm"] = 10,
+            ["sub_assemblies"] = new JArray("Assieme1", "Assieme2"), ["assieme1_parts"] = new JArray("PartA", "PartC"), ["assieme2_parts"] = new JArray("PartB"), ["fixture_documents"] = 6,
+        };
+        return new JObject
+        {
+            ["assembly"] = assembly3Path, ["assembly1"] = assembly1Path, ["assembly2"] = assembly2Path,
+            ["part_a"] = partAPath, ["part_b"] = partBPath, ["part_c"] = partCPath,
+            ["documents"] = new JArray(assembly3Path, assembly1Path, assembly2Path, partAPath, partBPath, partCPath), ["expected"] = expected,
+        };
+    }
+
+    /// <summary>
     /// M7: four 20 mm cubes of one part (blank part number). M7_A grounded at the origin; M7_B grounded and overlapping M7_A by
     /// 5 mm in X (2000 mm3); M7_C grounded 30 mm from M7_A along Y; M7_D free and unconstrained at X = 100 mm. M7_Sick is a flush
     /// constraint between the M7_Ref work planes of the two grounded cubes M7_B and M7_C with a 5 mm offset they cannot satisfy.
@@ -364,6 +427,7 @@ internal static class Fixtures
                 result["volume_mm3"] = VolumeMm3(partDef);
             result["fixture_documents"] = ManifestDocuments(manifest).Count(p => FindOpen(app, p) != null);
             if (m == "m7") ProbeM7.AddInspection(app, assembly, result);
+            if (m == "m9n") AddNestedInspection(app, manifest, result);
         }
         else if (active is PartDocument part)
         {
@@ -392,6 +456,20 @@ internal static class Fixtures
         }
         Console.WriteLine(result.ToString(Newtonsoft.Json.Formatting.None));
         return 0;
+    }
+
+    /// <summary>m9n: dirty flag and (for parts) volume of every fixture document, so a run can be checked from outside Inventor.</summary>
+    private static void AddNestedInspection(global::Inventor.Application app, JObject manifest, JObject result)
+    {
+        var documents = new JArray();
+        foreach (var path in ManifestDocuments(manifest))
+        {
+            var doc = FindOpen(app, path);
+            var item = new JObject { ["name"] = Path.GetFileName(path), ["open"] = doc != null, ["dirty"] = doc?.Dirty };
+            if (doc is PartDocument part) item["volume_mm3"] = VolumeMm3(part.ComponentDefinition);
+            documents.Add(item);
+        }
+        result["documents_state"] = documents;
     }
 
     // ---------------------------------------------------------------- restore

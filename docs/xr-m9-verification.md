@@ -70,6 +70,27 @@ e non restituivano raggio/distanza; angolo della flangia ora da `FlangeAngle`
 - Il runner ora attende che l'assieme sia libero e ripete la prima pressione
   sintetica; attende anche la lista dei componenti dopo un refresh.
 
+## Sottoassiemi: difetti trovati leggendo il codice (5 ottobre 2026) — corretti, da verificare sul Quest
+
+Segnalazione dell'utente: il doppio Trigger su un sottoassieme di un assieme complesso non lo apre (un errore alla selezione).
+
+- **Causa 1 (selezione e ingresso)**: la scena disegna solo le parti foglia (`SceneGraph.PlacedParts`), quindi `CadBody.Instance.OccurrenceId`
+  e l'id della foglia annidata (proxy `occurrence_proxy`), non quello dell'occorrenza diretta del sottoassieme. `AssemblyWorkspace.PickBodyAsync`
+  lo passava a `get_assembly_context_xr`, che rifiuta ogni occorrenza non diretta («Select a direct occurrence or activate its subassembly
+  first», o `REFERENCE_TYPE_MISMATCH` per l'id proxy): messaggio d'errore sul HUD e nessuna selezione. In `OnPenPressed` il bersaglio del
+  rilevatore (foglia) non coincideva mai con `_occurrence.Id`, quindi il doppio Trigger rispondeva «Seleziona prima un componente» /
+  «Selezione in corso». Correzione: `SceneGraph.TopLevelOccurrenceId` mappa la foglia sull'occorrenza diretta; usata in `PickBodyAsync`,
+  `OnPenPressed` (bersaglio del doppio Trigger) e `HitMoveTarget`. Una parte diretta resta invariata.
+- **Causa 2 (fantasma)**: `GhostContext.Show` saltava l'occorrenza appena aperta confrontando l'id della foglia; per un sottoassieme non
+  coincideva mai e il fantasma ridisegnava le sue parti sopra quelle reali. Correzione: `SceneGraph.OccurrenceAndDescendantIds`.
+- **Non corretto, da sapere**: «Isola» su un sottoassieme dice «Il componente non è nella scena» (`ComponentIsolation` lavora su un'istanza
+  foglia); `Sposta` su un sottoassieme non ha istanza da evidenziare. `activate_open_document_xr` richiede che la definizione del
+  sottoassieme sia nell'elenco dei documenti aperti: se Inventor la tiene solo come riferimento invisibile, `Document.Activate()` potrebbe non
+  portarla in primo piano: **non verificato**, serve Inventor (la fixture `m9n` tiene le definizioni visibili come la M6).
+- Test: `SceneGraph` (core, `DtoTests`), `AssemblyWorkspaceTests` (doppio Trigger e selezione su un corpo di sottoassieme con un backend che
+  rifiuta gli id annidati come il bridge), `GhostContextTests`. Il runner annidato (`M9NestedQuestAcceptance`) riproduce lo scenario e fallisce se la
+  selezione non risolve all'occorrenza diretta. Esito sul Quest: **non eseguito**.
+
 ## Limiti noti da chiudere
 
 - Il runner M9 su fixture M6 terminerà `PARTIAL` per costruzione (nessun

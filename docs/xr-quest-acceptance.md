@@ -49,6 +49,18 @@ Il runner M8 riusa i controlli nativi/input M6 (id M6 nel log) e aggiunge tema,
 font, contrasto, fit e 100 rebuild. Non certifica performance, reale DPI Windows,
 scansione QR o sessione fisica. Stato/evidenze in [verbale M8](xr-m8-verification.md).
 
+### Runner M9 annidato (sottoassiemi, fixture `m9n`)
+
+`Inventor XR SO/Assets/XrSo/Xr/Acceptance/M9NestedQuestAcceptance.cs` (extra Android `xr_m9n_acceptance`, log `m9n-acceptance.txt`),
+orchestrato da `scripts/run-m9-nested-acceptance.ps1` (prepara/ispeziona/ripristina la fixture `m9n`, mai un documento dell'utente).
+Guardia propria `XR_M9N_Quest_Acceptance` (le guardie degli altri runner non cambiano). Fixture: Assieme3 contiene Assieme1 (PartA,
+PartC) e Assieme2 (PartB), tutti salvati su disco e tenuti aperti. Scenario con input **sintetico** e Inventor reale: raggio su un corpo
+di Assieme1 = selezione dell'occorrenza **diretta** del sottoassieme (senza errore); doppio Trigger = nuovo livello Assieme (pila
+Assieme3 > Assieme1, contesto Assembly, fantasma del solo padre diretto, senza le parti appena aperte); doppio Trigger su PartA (pila a tre
+livelli, Progettazione, fantasma = Assieme1); modifica feature (chip 10 -> 12 mm, Applica, riletto da Inventor, Undo XR); primo Torna con X
+tenuto, secondo dalla scheda Documento; Assieme3 elenca di nuovo i due sottoassiemi; Assieme2 entrata e uscita con revisione invariata; marcatore «●»
+confrontato con la revisione. Chiude `M9-02-subassembly` (nel runner M6 il gate si chiama `M9-02-subassembly-nested` e non rende parziale il verdetto).
+
 ### Runner M9 (navigazione per contesto)
 
 M9 (spec `docs/superpowers/specs/2026-10-04-m9-navigazione-contesto-design.md`, piano Task 19):

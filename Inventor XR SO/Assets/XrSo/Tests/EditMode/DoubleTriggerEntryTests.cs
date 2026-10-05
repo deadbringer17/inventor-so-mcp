@@ -1,4 +1,12 @@
+using InventorXrSo.Core.Session;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using InventorXrSo.Core.Backend;
+using InventorXrSo.Core.Glb;
+using InventorXrSo.Unity.Scene;
+using Newtonsoft.Json.Linq;
+using UnityEngine;
 using System.Threading.Tasks;
 using InventorXrSo.Xr;
 using NUnit.Framework;
@@ -107,6 +115,55 @@ namespace InventorXrSo.Tests
             PressTrigger(); ReleaseTrigger();
             now += 0.6; PressTrigger(); ReleaseTrigger();
             Assert.AreEqual(0, entries.Count); Assert.AreEqual(0, _backend.Activations);
+        }
+
+        /// <summary>The scene draws leaf parts only: Assieme3 { Bolt, Sub { Inner } }. A ray on Inner hits the nested leaf id.</summary>
+        private void ShowNestedScene()
+        {
+            _backend.KindOfB = "assembly";
+            var graph = SceneGraph.FromJson(JObject.Parse(@"{""document_id"":""doc_bolt"",""kind"":""assembly"",""revision"":""r"",""visual_revision"":""v"",
+                ""definition_document_ids"":[""doc_bolt""],""root"":{""name"":""Test"",""definition_kind"":""assembly"",""children"":[
+                {""name"":""Bolt"",""occurrence_id"":""ent_a"",""definition_document_id"":""doc_bolt"",""definition_kind"":""part"",""children"":[]},
+                {""name"":""Sub"",""occurrence_id"":""ent_b"",""definition_document_id"":""doc_sub"",""definition_kind"":""assembly"",""children"":[
+                  {""name"":""Inner"",""occurrence_id"":""ent_nested_inner"",""definition_document_id"":""doc_bolt"",""definition_kind"":""part"",
+                   ""matrix_gltf"":[1,0,0,0,0,1,0,0,0,0,1,0,0.03,0,0,1],""children"":[]}]}]}}"));
+            _scene = new LoadedScene(graph, new Dictionary<string, GlbModel> { ["doc_bolt"] = _backend.Model }, new Dictionary<string, string> { ["doc_bolt"] = "a_test" }, new List<string>());
+            _view.Show(_scene); _workspace.SetScene(_scene);
+        }
+
+        private void AimAtNestedBody()
+        {
+            Physics.SyncTransforms();
+            var body = _view.GetComponentsInChildren<CadBody>().First(b => b.Instance.OccurrenceId == "ent_nested_inner");
+            var center = body.GetComponent<Collider>().bounds.center;
+            var position = center + Vector3.back * 0.5f;
+            Hand.SetPositionAndRotation(position, Quaternion.LookRotation(center - position));
+            Physics.SyncTransforms();
+            Assert.True(CadRaycaster.TryPick(new Ray(Hand.position, Hand.forward), 20, out var hit, out _, out _));
+            Assert.AreSame(body, hit);
+        }
+
+        [Test] public async Task DoubleTriggerEntry_TwoPressesOnABodyOfASubassemblySelectAndEnterTheSubassembly()
+        {
+            double now = 10; _workspace.DoubleTriggerClock = () => now;
+            var entries = WatchEntries();
+            ShowNestedScene(); UseInput(); AimAtNestedBody();
+            PressTrigger(); ReleaseTrigger();
+            for (int i = 0; i < 50 && (Field<AssemblyOccurrence>("_occurrence") == null || Field<bool>("_busy")); i++) await Task.Delay(10);
+            Assert.AreEqual("ent_b", Field<AssemblyOccurrence>("_occurrence")?.Id, "the ray selects the direct sub-assembly occurrence, not the nested leaf; hud: " + AllHud());
+            Assert.AreEqual(0, entries.Count, "the first press only selects");
+            now += 0.2; PressTrigger(); ReleaseTrigger();
+            Assert.AreEqual(1, entries.Count, "the second press enters the sub-assembly; hud: " + AllHud());
+            Assert.AreEqual("ent_b", entries[0].occ); Assert.AreEqual(1, _backend.Activations);
+        }
+
+        [Test] public async Task SubassemblyBodyPickSelectsTheDirectOccurrenceWithoutAnError()
+        {
+            ShowNestedScene(); UseInput(); AimAtNestedBody();
+            PressTrigger(); ReleaseTrigger();
+            for (int i = 0; i < 50 && (Field<AssemblyOccurrence>("_occurrence") == null || Field<bool>("_busy")); i++) await Task.Delay(10);
+            Assert.AreEqual("ent_b", Field<AssemblyOccurrence>("_occurrence")?.Id);
+            StringAssert.DoesNotContain("direct occurrence", AllHud());
         }
 
         [Test] public async Task DoubleTriggerEntry_RingApriStaysAvailable()

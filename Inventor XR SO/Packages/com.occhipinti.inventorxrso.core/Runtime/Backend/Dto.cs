@@ -119,6 +119,50 @@ namespace InventorXrSo.Core.Backend
             DefinitionIds = (json["definition_document_ids"] as JArray ?? new JArray()).Select(v => (string)v).ToList(),
         };
 
+        /// <summary>
+        /// The id of the DIRECT occurrence of the root assembly that contains <paramref name="occurrenceId"/> (itself when it is
+        /// already a direct child). The scene draws only the leaf parts, so a ray on a body of a sub-assembly yields the nested
+        /// leaf id, while the assembly context, the selection and the entry (double Trigger) work on direct occurrences.
+        /// Unknown ids are returned unchanged.
+        /// </summary>
+        public string TopLevelOccurrenceId(string occurrenceId)
+        {
+            if (string.IsNullOrEmpty(occurrenceId) || Root == null) return occurrenceId;
+            foreach (var child in Root.Children)
+                if (Contains(child, occurrenceId)) return child.OccurrenceId;
+            return occurrenceId;
+        }
+
+        /// <summary>The occurrence with this id and every occurrence below it (a sub-assembly and its parts); empty when the id is unknown.</summary>
+        public ISet<string> OccurrenceAndDescendantIds(string occurrenceId)
+        {
+            var ids = new HashSet<string>();
+            if (string.IsNullOrEmpty(occurrenceId) || Root == null) return ids;
+            var stack = new Stack<SceneNode>();
+            stack.Push(Root);
+            while (stack.Count > 0)
+            {
+                var node = stack.Pop();
+                if (node.OccurrenceId == occurrenceId) { Collect(node, ids); return ids; }
+                foreach (var child in node.Children) stack.Push(child);
+            }
+            return ids;
+        }
+
+        private static void Collect(SceneNode node, ISet<string> ids)
+        {
+            if (node.OccurrenceId != null) ids.Add(node.OccurrenceId);
+            foreach (var child in node.Children) Collect(child, ids);
+        }
+
+        private static bool Contains(SceneNode node, string occurrenceId)
+        {
+            if (node.OccurrenceId == occurrenceId) return true;
+            foreach (var child in node.Children)
+                if (Contains(child, occurrenceId)) return true;
+            return false;
+        }
+
         /// <summary>Every visible, unsuppressed part to draw, with its top-level transform (leaves already carry it).</summary>
         public IEnumerable<PlacedPart> PlacedParts() => Walk(Root);
 

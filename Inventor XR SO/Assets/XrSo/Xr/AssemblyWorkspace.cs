@@ -724,6 +724,12 @@ namespace InventorXrSo.Xr
             CancelReads(); await LoadAsync(id);
         }
 
+        /// <summary>
+        /// A ray hits the leaf parts drawn by the scene; the assembly context and the entry work on direct occurrences. A body of a
+        /// sub-assembly therefore selects the sub-assembly occurrence (the bridge refuses nested occurrence ids).
+        /// </summary>
+        private string TopLevelId(string leafId) => _graph == null ? leafId : _graph.TopLevelOccurrenceId(leafId);
+
         private async void PickBody(CadBody body, int triangle, Vector3 hit)
         {
             try { await PickBodyAsync(body, triangle, hit); }
@@ -733,7 +739,7 @@ namespace InventorXrSo.Xr
         private async Task PickBodyAsync(CadBody body, int triangle, Vector3 hit)
         {
             if (!Editable || body == null) return;
-            string id = body.Instance.OccurrenceId;
+            string id = TopLevelId(body.Instance.OccurrenceId);
             await SelectOccurrenceAsync(id);
             if (!Active || _context == null || _busy || _occurrence?.Id != id) return;
             if (IsMove) { Draw(); Refresh(); return; }
@@ -1104,7 +1110,7 @@ namespace InventorXrSo.Xr
             if (overUi || GripDown || _dragging || _twoHandActive) return;
             if (CanCapture && HitMoveTarget(ray)) { _doubleTrigger.Reset(); BeginDrag(); return; }
             bool picked = CadRaycaster.TryPick(ray, 20, out var body, out int triangle, out var hit);
-            string target = picked ? ControllerRay.TargetId(body) : null;
+            string target = picked ? TopLevelId(ControllerRay.TargetId(body)) : null;
             var dir = ray.direction;
             double now = DoubleTriggerClock != null ? DoubleTriggerClock() : Time.unscaledTimeAsDouble;
             if (_doubleTrigger.Press(now, target, dir.x, dir.y, dir.z))
@@ -1126,7 +1132,7 @@ namespace InventorXrSo.Xr
         {
             if (_visuals.HitHandle(ray)) return true;
             return _occurrence != null && CadRaycaster.TryPick(ray, 20, out var body, out _, out _)
-                && body.Instance?.OccurrenceId == _occurrence.Id;
+                && TopLevelId(body.Instance?.OccurrenceId) == _occurrence.Id;
         }
 
         private void BeginDrag()

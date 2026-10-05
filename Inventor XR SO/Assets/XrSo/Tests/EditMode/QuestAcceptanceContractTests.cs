@@ -26,6 +26,7 @@ namespace InventorXrSo.Tests
             "M7QuestAcceptance",
             "M8QuestAcceptance",
             "M9QuestAcceptance",
+            "M9NestedQuestAcceptance",
         };
 
         private const BindingFlags PerLevel =
@@ -68,6 +69,7 @@ namespace InventorXrSo.Tests
         [TestCase("M7QuestAcceptance")]
         [TestCase("M8QuestAcceptance")]
         [TestCase("M9QuestAcceptance")]
+        [TestCase("M9NestedQuestAcceptance")]
         public void ReflectedMembersExist(string runner)
         {
             var missing = new List<string>();
@@ -106,6 +108,7 @@ namespace InventorXrSo.Tests
         [TestCase("M7QuestAcceptance")]
         [TestCase("M8QuestAcceptance")]
         [TestCase("M9QuestAcceptance")]
+        [TestCase("M9NestedQuestAcceptance")]
         public void ReflectedMembersListIsComplete(string runner)
         {
             var declared = new HashSet<string>();
@@ -212,7 +215,7 @@ namespace InventorXrSo.Tests
             var suffixBlock = new Regex(@"OutsideRunnerSuffixes\s*=\s*\{(?<body>.*?)\}\s*;", RegexOptions.Singleline).Match(source);
             Assert.IsTrue(suffixBlock.Success);
             var allowed = StringLiteral.Matches(suffixBlock.Groups["body"].Value).Cast<Match>().Select(m => m.Groups["s"].Value).ToList();
-            CollectionAssert.AreEquivalent(new[] { "-physical", "-probe", "-suite" }, allowed);
+            CollectionAssert.AreEquivalent(new[] { "-physical", "-probe", "-suite", "-nested" }, allowed);
 
             // I gate fisici, di sonda e di suite sono dichiarati, mai passati dal runner.
             foreach (var gate in new[] { "M9-08-probe", "M9-11-suite", "M9-12-physical" })
@@ -253,6 +256,7 @@ namespace InventorXrSo.Tests
         [TestCase("M7QuestAcceptance")]
         [TestCase("M8QuestAcceptance")]
         [TestCase("M9QuestAcceptance")]
+        [TestCase("M9NestedQuestAcceptance")]
         public void MigratedRunnersNoLongerOpenWorkspacesByTheRemovedSpacesActions(string runner)
         {
             var code = StripComments(ReadSource(runner));
@@ -281,6 +285,55 @@ namespace InventorXrSo.Tests
             var code = StripComments(File.ReadAllText(path));
             StringAssert.Contains("DoubleTriggerClock = () =>", code, runner + ": i tocchi sintetici sullo stesso corpo vanno su finestre separate");
             Assert.IsTrue(code.Contains("_doubleClock += 5") || code.Contains("_clock += 5"), runner + ": ogni pressione avanza l'orologio del rilevatore");
+        }
+
+        // ---- M9 nested: runner dei sottoassiemi (fixture m9n)
+
+        [Test]
+        public void M9NestedRunnerHasItsOwnFixtureAndGuardAndCoversTheUserScenario()
+        {
+            var source = ReadSource("M9NestedQuestAcceptance");
+            StringAssert.Contains("protected override string Milestone => \"m9n\"", source);
+            StringAssert.Contains("protected override string FixtureMilestone => \"m9n\"", source);
+            StringAssert.Contains("StartIfRequested<M9NestedQuestAcceptance>(\"xr_m9n_acceptance\")", source);
+            StringAssert.Contains("class M9NestedQuestAcceptance : M9QuestAcceptance", source);
+            var wait = source.IndexOf("await WaitForFixture(ct)", StringComparison.Ordinal);
+            var guard = source.IndexOf("RequireFixture();", StringComparison.Ordinal);
+            var synthetic = source.IndexOf("BeginSynthetic();", StringComparison.Ordinal);
+            Assert.That(guard, Is.GreaterThan(wait), "RequireFixture() deve seguire WaitForFixture");
+            Assert.That(synthetic, Is.GreaterThan(guard), "nessun input sintetico prima della guardia di fixture");
+            // La guardia degli altri runner non si allenta: M6 resta M6, M9N e una guardia a parte.
+            StringAssert.Contains("protected override string FixtureMilestone => \"m6\"", ReadSource("M9QuestAcceptance"));
+            StringAssert.Contains("protected override string FixtureMilestone => \"m6\"", ReadSource("M8QuestAcceptance"));
+            // Scenario: salita per doppio Trigger, parte del sottoassieme, modifica, due Torna (X tenuto e scheda Documento), Assieme2.
+            foreach (var needle in new[] { "EnterAsync(a1", "EnterByDoubleTriggerAsync(partA", "CheckFeatureEditAsync", "HoldXForBack()", "DocumentActions.IdBack",
+                "EnterAsync(a2", "GhostNames()", "Nav.Levels", "Dirty", "AssertUnchanged", "TopLevel", "direct occurrence" })
+                StringAssert.Contains(needle.Replace("TopLevel", "direct sub-assembly occurrence"), source, "scenario: " + needle);
+            foreach (var gate in new[] { "M9-02", "M9-03", "M9-04" })
+                Assert.IsTrue(Regex.IsMatch(source, "Pass\\(\\s*\"" + gate + "\""), "il log del runner annidato passa il gate " + gate);
+            StringAssert.Contains("NotCovered(\"M9-12-physical\"", source);
+            Assert.IsFalse(Regex.IsMatch(StripComments(source), "Pass\\(\\s*\"M9-(08|11|12)\""), "M9-08, M9-11 e M9-12 non si passano dal runner");
+            Assert.IsFalse(StripComments(source).Contains("PASS COMPLETE"), "PASS COMPLETE puo essere scritto solo dal Completion() di M9");
+            StringAssert.Contains("ReportKnownFeatureGaps => false", source);
+            StringAssert.Contains("RestoreHint => \"--restore-quest m9n\"", source);
+        }
+
+        [Test]
+        public void M9NestedFixtureAndScriptsExist()
+        {
+            var fixtures = RepoRootFile("bridge/tests/QuestAcceptanceFixtures/Fixtures.cs");
+            StringAssert.Contains("\"m9n\" => PrepareM9Nested", fixtures);
+            StringAssert.Contains("XR_M9N_Quest_Acceptance_", fixtures);
+            foreach (var name in new[] { "Assieme1.iam", "Assieme2.iam", "Assieme3.iam", "PartA.ipt", "PartB.ipt", "PartC.ipt" })
+                StringAssert.Contains(name, fixtures);
+            StringAssert.Contains("\"m9n\"", RepoRootFile("bridge/tests/QuestAcceptanceFixtures/Program.cs"));
+            var generic = RepoRootFile("scripts/run-quest-acceptance.ps1");
+            StringAssert.Contains("'m9n'", generic);
+            var script = RepoRootFile("scripts/run-m9-nested-acceptance.ps1");
+            StringAssert.Contains("--prepare-quest m9n", script);
+            StringAssert.Contains("-Milestone m9n", script);
+            StringAssert.Contains("--restore-quest m9n", script);
+            StringAssert.Contains("--inspect-quest m9n", script);
         }
 
         private static string ReadSource(string runner)
