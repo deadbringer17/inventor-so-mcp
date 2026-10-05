@@ -46,7 +46,8 @@ internal static class Fixtures
                 "m6" => PrepareM6(app, directory, created),
                 "m7" => PrepareM7(app, directory, created),
                 "m9n" => PrepareM9Nested(app, directory, created),
-                "m9f" => PrepareM9Flex(app, directory, created),
+                "m9f" => PrepareM9Flex(app, directory, created, hiddenDefinitions: false),
+                "m9h" => PrepareM9Flex(app, directory, created, hiddenDefinitions: true),
                 _ => throw new ArgumentException("Unknown milestone " + m),
             };
             var active = app.ActiveDocument ?? throw new InvalidOperationException("No active document after preparing the fixture.");
@@ -325,9 +326,15 @@ internal static class Fixtures
     /// ungrounded and unconstrained. Every document is saved and kept open (definitions can be activated); every name starts with
     /// XR_M9F_Quest_Acceptance, the guard of the flex M9 runner.
     /// </summary>
-    private static JObject PrepareM9Flex(global::Inventor.Application app, string directory, List<object> created)
+    /// <remarks>
+    /// With <paramref name="hiddenDefinitions"/> (fixture m9h, guard prefix XR_M9H_Quest_Acceptance) the same structure is built and saved,
+    /// then EVERYTHING is closed and reloaded the way the user's real assembly looks: every definition with Documents.Open(path, false)
+    /// (loaded, no window) and only the top assembly Robot with Documents.Open(path, true). The preparation reads Documents.VisibleDocuments
+    /// back and fails when a definition still has a window (the scenario depends on it).
+    /// </remarks>
+    private static JObject PrepareM9Flex(global::Inventor.Application app, string directory, List<object> created, bool hiddenDefinitions)
     {
-        const string prefix = "XR_M9F_Quest_Acceptance_";
+        string prefix = hiddenDefinitions ? "XR_M9H_Quest_Acceptance_" : "XR_M9F_Quest_Acceptance_";
         string SavePart(string name, double w, double d, double h)
         {
             var part = (PartDocument)app.Documents.Add(DocumentTypeEnum.kPartDocumentObject);
@@ -394,9 +401,10 @@ internal static class Fixtures
         MakeFlexible(flexOccurrence, "AsmFlex inside Robot");
         robot.Save();
         var robotPath = robot.FullFileName;
-        robot.Activate();
         var documents = new JArray(robotPath, asmFixed.FullFileName, asmInner.FullFileName, asmFlex.FullFileName, asmFlexInner.FullFileName,
             partL1, partI, partF, partX, partY, partG);
+        if (hiddenDefinitions) ReopenDefinitionsWithoutWindow(app, created, documents, robotPath);
+        else robot.Activate();
         var expected = new JObject
         {
             ["occurrences"] = 3, ["root_occurrences"] = new JArray("PartL1", "AsmFixed", "AsmFlex"),
@@ -414,6 +422,39 @@ internal static class Fixtures
             ["documents"] = documents, ["expected"] = expected,
         };
     }
+
+    /// <summary>
+    /// m9h: closes every saved fixture document (top assembly first) and loads them again: definitions with OpenVisible = false (no window),
+    /// the top assembly with OpenVisible = true and activated. Fails when a definition ends up with a window or the top has none.
+    /// </summary>
+    private static void ReopenDefinitionsWithoutWindow(global::Inventor.Application app, List<object> created, JArray documents, string robotPath)
+    {
+        var paths = documents.Select(t => (string)t!).ToArray();
+        // Top first, then the other assemblies, then the parts: nothing is closed while an open document still owns it.
+        foreach (var path in paths.OrderBy(p => SamePath(p, robotPath) ? 0 : p.EndsWith(".iam", StringComparison.OrdinalIgnoreCase) ? 1 : 2))
+        {
+            var doc = FindOpen(app, path);
+            if (doc != null) doc.Close(true);   // everything was saved: nothing is discarded
+        }
+        created.Clear();
+        foreach (var path in paths.Where(p => !SamePath(p, robotPath)))
+            created.Add(app.Documents.Open(path, false));
+        var robot = app.Documents.Open(robotPath, true);
+        created.Add(robot);
+        robot.Activate();
+        var visible = VisiblePaths(app);
+        var withWindow = paths.Where(p => !SamePath(p, robotPath) && visible.Contains(p, StringComparer.OrdinalIgnoreCase)).ToArray();
+        if (withWindow.Length > 0)
+            throw new InvalidOperationException("m9h: definitions still have a window after Documents.Open(path, false): " + string.Join(", ", withWindow.Select(Path.GetFileName)));
+        if (!visible.Contains(robotPath, StringComparer.OrdinalIgnoreCase))
+            throw new InvalidOperationException("m9h: the top assembly Robot has no window after Documents.Open(path, true).");
+        if (paths.Any(p => FindOpen(app, p) == null))
+            throw new InvalidOperationException("m9h: a fixture document is not loaded after reopening it.");
+    }
+
+    /// <summary>Full file names of the documents that have a window (Documents.VisibleDocuments).</summary>
+    private static string[] VisiblePaths(global::Inventor.Application app) =>
+        app.Documents.VisibleDocuments.Cast<Document>().Select(d => d.FullFileName).ToArray();
 
     /// <summary>
     /// M7: four 20 mm cubes of one part (blank part number). M7_A grounded at the origin; M7_B grounded and overlapping M7_A by
@@ -529,8 +570,8 @@ internal static class Fixtures
                 result["volume_mm3"] = VolumeMm3(partDef);
             result["fixture_documents"] = ManifestDocuments(manifest).Count(p => FindOpen(app, p) != null);
             if (m == "m7") ProbeM7.AddInspection(app, assembly, result);
-            if (m == "m9n" || m == "m9f") AddNestedInspection(app, manifest, result);
-            if (m == "m9f") AddFlexInspection(assembly, result);
+            if (m == "m9n" || m == "m9f" || m == "m9h") AddNestedInspection(app, manifest, result);
+            if (m == "m9f" || m == "m9h") AddFlexInspection(assembly, result);
         }
         else if (active is PartDocument part)
         {
@@ -565,10 +606,13 @@ internal static class Fixtures
     private static void AddNestedInspection(global::Inventor.Application app, JObject manifest, JObject result)
     {
         var documents = new JArray();
+        var visible = VisiblePaths(app);
+        result["visible_documents"] = visible.Length;
         foreach (var path in ManifestDocuments(manifest))
         {
             var doc = FindOpen(app, path);
-            var item = new JObject { ["name"] = Path.GetFileName(path), ["open"] = doc != null, ["dirty"] = doc?.Dirty };
+            // has_window: the document is in Documents.VisibleDocuments (a loaded document without a window cannot be activated until it is shown).
+            var item = new JObject { ["name"] = Path.GetFileName(path), ["open"] = doc != null, ["has_window"] = doc != null && visible.Contains(path, StringComparer.OrdinalIgnoreCase), ["dirty"] = doc?.Dirty };
             if (doc is PartDocument part) item["volume_mm3"] = VolumeMm3(part.ComponentDefinition);
             documents.Add(item);
         }
@@ -618,7 +662,9 @@ internal static class Fixtures
         if (previousPath != null && previous == null)
             throw new InvalidOperationException("The previous Inventor document is no longer open: " + previousPath);
         // Assembly first, so the parts are no longer referenced when they are closed.
-        var ordered = ManifestDocuments(manifest).OrderBy(p => p.EndsWith(".iam", StringComparison.OrdinalIgnoreCase) ? 0 : 1);
+        var assemblyPath = (string?)manifest["assembly"];
+        var ordered = ManifestDocuments(manifest).OrderBy(p => p.EndsWith(".iam", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ThenBy(p => SamePath(p, assemblyPath) ? 0 : 1);
         foreach (var path in ordered)
         {
             var doc = FindOpen(app, path);

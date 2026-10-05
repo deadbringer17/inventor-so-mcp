@@ -86,6 +86,23 @@ che attivava il documento senza aggiungere un livello alla pila.
 Aperto: vincolo su sottoassieme flessibile (la fixture non ne ha), sottoassieme con finestra
 di definizione non aperta, prova fisica sul robot reale.
 
+## Definizioni senza finestra — difetto trovato dal vivo (5 ottobre 2026)
+
+Nell'assieme reale dell'utente solo l'assieme di livello superiore ha una finestra; le altre ~100 definizioni
+sono **caricate ma senza finestra** (`Documents.VisibleDocuments` = 1). `Document.Activate()` su un documento senza
+finestra lancia `COMException 0x80004005` (E_FAIL): l'audit mostrava `inventor_activate_open_document_xr` ->
+`API_ERROR` in 3-5 ms per APE-A-0112. Le fixture tenevano ogni definizione aperta *con* finestra, per questo
+nessuna corsa lo aveva visto. Correzione (software, **non ancora provata dal vivo**): il gestore, dopo le guardie,
+prova `Activate()`; su E_FAIL (o se il documento attivo non e quello richiesto) mostra la finestra del documento
+gia caricato con `Documents.Open(FullFileName, true)` (nessun caricamento da disco, nessun salvataggio) e riattiva;
+senza nome di file mantiene l'errore con messaggio chiaro; conferma finale `ACTIVATE_NOT_CONFIRMED` e guardie di
+transazione invariate. Logica di decisione pura in `DocumentActivationPolicy` (test unitari). Lato XR un `API_ERROR`
+dell'attivazione mostra «Inventor non riesce ad attivare il documento. Aprilo in una finestra in Inventor e riprova.»
+con codice e testo originale nel dettaglio (`ActivationErrors`). Fixture `m9h` e runner `M9HiddenQuestAcceptance`
+(`scripts/run-m9-hidden-acceptance.ps1`) riproducono la situazione: **non ancora eseguiti**. Aperto: corsa del
+runner sul Quest, ricarica dell'add-in e prova sull'assieme reale (che il `Documents.Open(.., true)` su un documento
+gia caricato restituisca lo stesso documento senza ricaricarlo e senza sporcarlo non e verificato senza Inventor).
+
 ## Sonda live `face_feature` — 5 ottobre 2026
 
 `dotnet run --project bridge/tests/M3LiveProbe -- --face-feature` contro Inventor

@@ -40,7 +40,7 @@ public sealed class XrTools
             ? Task.FromResult(Error(InventorErrorCodes.INVALID_ARGUMENT, "face_id is required."))
             : Call("face_feature", new JObject { ["document_id"] = document_id, ["expected_revision"] = expected_revision, ["face_id"] = face_id.Trim() }, ct);
 
-    [McpServerTool(Name = "inventor_activate_open_document_xr"), Description("Activate exactly one already-open part or assembly by document_id for XR inspection. View/context only: no open-file, save, close, rebuild or CAD edit. Refuses an active transaction and duplicate ids. Experimental.")]
+    [McpServerTool(Name = "inventor_activate_open_document_xr"), Description("Activate exactly one already-loaded part or assembly by document_id for XR inspection. If the loaded document has no window it shows that window (no load from disk, no save, close, rebuild or CAD edit). View/context only. Refuses an active transaction and duplicate ids. Experimental.")]
     public Task<string> ActivateOpen(string document_id, CancellationToken ct = default)
         => Call("activate_open_document_xr", new JObject { ["document_id"] = document_id }, ct);
 

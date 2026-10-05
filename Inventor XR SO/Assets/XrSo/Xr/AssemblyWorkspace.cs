@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using InventorXrSo.Core.Backend;
+using InventorXrSo.Core.Mcp;
 using InventorXrSo.Core.Session;
 using InventorXrSo.Core.Ui;
 using InventorXrSo.Core.Voice;
@@ -967,7 +968,7 @@ namespace InventorXrSo.Xr
                 return true;
             }
             catch (OperationCanceledException) { return false; }
-            catch (Exception ex) { if (generation == _generation) SetNotice(ex.Message); return false; }
+            catch (Exception ex) { if (generation == _generation) SetNotice(ActivationErrors.Describe(ex)); return false; }
             finally { if (generation == _generation) { _busy = false; Refresh(); } }
         }
 

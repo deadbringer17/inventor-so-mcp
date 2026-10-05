@@ -392,7 +392,7 @@ namespace InventorXrSo.Xr
                 _selected = node; _info = null; ShowNodeSelection(node); SetNotice(SelectionSummary()); LoadInfo();
             }
             catch (OperationCanceledException) { }
-            catch (Exception ex) { if (generation == _generation) ReportError(ex); }
+            catch (Exception ex) { if (generation == _generation) { if (ActivationErrors.IsActivationApiError(ex)) SetNotice(ActivationErrors.Describe(ex)); else ReportError(ex); } }
             finally { if (generation == _generation) { _busy = false; Refresh(); } }
         }
 

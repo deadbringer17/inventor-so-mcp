@@ -28,6 +28,7 @@ namespace InventorXrSo.Tests
             "M9QuestAcceptance",
             "M9NestedQuestAcceptance",
             "M9FlexQuestAcceptance",
+            "M9HiddenQuestAcceptance",
         };
 
         private const BindingFlags PerLevel =
@@ -72,6 +73,7 @@ namespace InventorXrSo.Tests
         [TestCase("M9QuestAcceptance")]
         [TestCase("M9NestedQuestAcceptance")]
         [TestCase("M9FlexQuestAcceptance")]
+        [TestCase("M9HiddenQuestAcceptance")]
         public void ReflectedMembersExist(string runner)
         {
             var missing = new List<string>();
@@ -112,6 +114,7 @@ namespace InventorXrSo.Tests
         [TestCase("M9QuestAcceptance")]
         [TestCase("M9NestedQuestAcceptance")]
         [TestCase("M9FlexQuestAcceptance")]
+        [TestCase("M9HiddenQuestAcceptance")]
         public void ReflectedMembersListIsComplete(string runner)
         {
             var declared = new HashSet<string>();
@@ -261,6 +264,7 @@ namespace InventorXrSo.Tests
         [TestCase("M9QuestAcceptance")]
         [TestCase("M9NestedQuestAcceptance")]
         [TestCase("M9FlexQuestAcceptance")]
+        [TestCase("M9HiddenQuestAcceptance")]
         public void MigratedRunnersNoLongerOpenWorkspacesByTheRemovedSpacesActions(string runner)
         {
             var code = StripComments(ReadSource(runner));
@@ -386,6 +390,44 @@ namespace InventorXrSo.Tests
             StringAssert.Contains("-Milestone m9f", script);
             StringAssert.Contains("--restore-quest m9f", script);
             StringAssert.Contains("--inspect-quest m9f", script);
+        }
+
+        // ---- M9 hidden: runner delle definizioni caricate senza finestra (fixture m9h)
+
+        [Test]
+        public void M9HiddenRunnerReusesTheFlexScenarioOnWindowlessDefinitionsAndReportsTheNotice()
+        {
+            var source = ReadSource("M9HiddenQuestAcceptance");
+            StringAssert.Contains("protected override string Milestone => \"m9h\"", source);
+            StringAssert.Contains("protected override string FixtureMilestone => \"m9h\"", source);
+            StringAssert.Contains("StartIfRequested<M9HiddenQuestAcceptance>(\"xr_m9h_acceptance\")", source);
+            StringAssert.Contains("class M9HiddenQuestAcceptance : M9FlexQuestAcceptance", source);
+            StringAssert.Contains("RestoreHint => \"--restore-quest m9h\"", source);
+            StringAssert.Contains("await base.Run(ct)", source);
+            StringAssert.Contains("_assembly?.Notice", source);
+            StringAssert.Contains("HudText()", source);
+            Assert.IsTrue(Regex.IsMatch(source, "Pass\\(\\s*\"M9H-hidden-entry\""), "il log passa il gate M9H-hidden-entry solo dopo lo scenario completo");
+            Assert.IsFalse(StripComments(source).Contains("PASS COMPLETE"), "PASS COMPLETE puo essere scritto solo dal Completion() di M9");
+            // Le guardie del runner flessibile e annidato non si allentano.
+            StringAssert.Contains("protected override string FixtureMilestone => \"m9f\"", ReadSource("M9FlexQuestAcceptance"));
+            StringAssert.Contains("class M9FlexQuestAcceptance : M9NestedQuestAcceptance", ReadSource("M9FlexQuestAcceptance"));
+        }
+
+        [Test]
+        public void M9HiddenFixtureAndScriptsExist()
+        {
+            var fixtures = RepoRootFile("bridge/tests/QuestAcceptanceFixtures/Fixtures.cs");
+            StringAssert.Contains("\"m9h\" => PrepareM9Flex", fixtures);
+            StringAssert.Contains("XR_M9H_Quest_Acceptance_", fixtures);
+            foreach (var name in new[] { "app.Documents.Open(path, false)", "app.Documents.Open(robotPath, true)", "VisibleDocuments", "has_window" })
+                StringAssert.Contains(name, fixtures);
+            StringAssert.Contains("\"m9h\"", RepoRootFile("bridge/tests/QuestAcceptanceFixtures/Program.cs"));
+            StringAssert.Contains("'m9h'", RepoRootFile("scripts/run-quest-acceptance.ps1"));
+            var script = RepoRootFile("scripts/run-m9-hidden-acceptance.ps1");
+            StringAssert.Contains("--prepare-quest m9h", script);
+            StringAssert.Contains("-Milestone m9h", script);
+            StringAssert.Contains("--restore-quest m9h", script);
+            StringAssert.Contains("--inspect-quest m9h", script);
         }
 
         private static string ReadSource(string runner)

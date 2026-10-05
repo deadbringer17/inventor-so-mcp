@@ -30,7 +30,7 @@ namespace InventorXrSo.Xr
     /// Inventor answers are real, PASS COMPLETE only without NOT COVERED sub-cases. Written without a device: compiled and
     /// contract-tested, never run.
     /// </summary>
-    internal sealed class M9FlexQuestAcceptance : M9NestedQuestAcceptance
+    internal class M9FlexQuestAcceptance : M9NestedQuestAcceptance
     {
         internal new static readonly string[] ReflectedMembers =
         {

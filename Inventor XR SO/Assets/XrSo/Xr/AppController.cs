@@ -792,7 +792,7 @@ namespace InventorXrSo.Xr
                 _badge?.Flash("Documento attivato. Attendo la scena da Inventor…", 4f);
             }
             catch (OperationCanceledException) { _contextSwitcher.CancelJump(); }
-            catch (Exception ex) { _contextSwitcher.CancelJump(); _badge?.Flash(UiText.Error(ex), 6f); }
+            catch (Exception ex) { _contextSwitcher.CancelJump(); _badge?.Flash(ActivationErrors.IsActivationApiError(ex) ? ActivationErrors.Describe(ex) : UiText.Error(ex), 6f); }
         }
 
         private void LeaveSession()

@@ -75,6 +75,18 @@ Robot > AsmFlex > AsmFlexInner > PartX (Progettazione, stessa modifica feature e
 con pila, fantasma del solo padre diretto, nulla salvato e marcatore coerente con la revisione visuale; poi Robot > AsmFixed > AsmInner (con l'Apri dell'anello) e ritorno con
 revisione visuale invariata. Se l'HUD non mostra la nuova dicitura il gate `M9F-hud-text` e NOT COVERED (verdetto PARTIAL).
 
+### Runner M9 hidden (definizioni caricate senza finestra, fixture `m9h`)
+
+`Inventor XR SO/Assets/XrSo/Xr/Acceptance/M9HiddenQuestAcceptance.cs` (sottoclasse di `M9FlexQuestAcceptance`; extra Android `xr_m9h_acceptance`, log
+`m9h-acceptance.txt`, timeout 960 s), orchestrato da `scripts/run-m9-hidden-acceptance.ps1`. Guardia propria `XR_M9H_Quest_Acceptance`. Fixture: la struttura di
+`m9f`, ma dopo il salvataggio la preparazione chiude tutto e ricarica ogni definizione con `Documents.Open(path, false)` (caricata, **senza finestra**) e solo
+Robot con `Documents.Open(path, true)`; rilegge `Documents.VisibleDocuments` e fallisce se una definizione ha una finestra. E la situazione reale dell'utente
+(solo l'assieme di livello superiore ha una finestra), che le altre fixture non coprono. `--inspect-quest m9h` stampa per ogni documento `has_window`
+(e `visible_documents`); lo script lo salva prima (`native-fixture-inspection-before.log`) e dopo la corsa. Scenario: lo stesso di m9f (Robot > AsmFlex >
+AsmFlexInner > PartX e ritorno con Torna, poi AsmFixed > AsmInner), che passa solo se le definizioni senza finestra si possono attivare (`M9H-hidden-entry`).
+Se l'ingresso fallisce il runner registra il testo esatto del notice del workspace Assieme e dell'HUD (oltre alla diagnostica dello scenario). Il percorso
+Torna attiva il padre: i documenti attraversati hanno una finestra dopo l'ingresso. Il Quest non puo osservare le finestre: l'evidenza e `--inspect-quest`.
+
 ### Runner M9 (navigazione per contesto)
 
 M9 (spec `docs/superpowers/specs/2026-10-04-m9-navigazione-contesto-design.md`, piano Task 19):

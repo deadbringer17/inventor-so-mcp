@@ -56,7 +56,7 @@ namespace InventorXrSo.Tests
             public JArray LastOperations;
             public bool Grounded, DofComplete = true;
             public Exception PreviewError;
-            public string LastActivated, KindOfB = "part";
+            public string LastActivated, KindOfB = "part"; public Exception ActivateError;
             /// <summary>ent_b is a FLEXIBLE sub-assembly occurrence, as the bridge reports it: editable=false, flexible=true, unavailable_reason=flexible.</summary>
             public bool FlexibleB;
             public TaskCompletionSource<DocumentState> Mutation;
@@ -95,7 +95,7 @@ namespace InventorXrSo.Tests
             public int FaceFeatureCalls; public Task<FaceFeatureInfo> GetFaceFeatureAsync(DocumentState state, string faceId, CancellationToken ct) { FaceFeatureCalls++; throw new NotImplementedException(); }
             public Task<IReadOnlyList<OpenDocument>> ListOpenAsync(CancellationToken ct) =>
                 Task.FromResult<IReadOnlyList<OpenDocument>>(new[] { new OpenDocument("doc_bolt", "Bolt", "kPartDocumentObject") });
-            public Task ActivateOpenAsync(string documentId, CancellationToken ct) { Activations++; LastActivated = documentId; return Task.CompletedTask; }
+            public Task ActivateOpenAsync(string documentId, CancellationToken ct) { Activations++; LastActivated = documentId; return ActivateError != null ? Task.FromException(ActivateError) : Task.CompletedTask; }
         }
 
         [SetUp] public void Setup()
@@ -787,6 +787,20 @@ namespace InventorXrSo.Tests
             Do(AssemblyWorkspace.IdOpenLamiera);
             Assert.AreEqual(2, entries.Count); Assert.True(entries[1].sheet); Assert.AreEqual(2, _backend.Activations);
             Assert.AreEqual(0, _backend.Commits); Assert.AreEqual(0, _backend.Previews);
+        }
+
+        [Test] public async Task OpenOfADefinitionWithoutWindowExplainsInItalianAndKeepsTheCode()
+        {
+            await Select();
+            Do(AssemblyWorkspace.IdIsolate);
+            var entries = new List<(string doc, string occ, float[] pose, bool sheet)>();
+            _workspace.EntryRequested += (d, o, p, m) => entries.Add((d, o, p, m));
+            _backend.ActivateError = new InventorXrSo.Core.Mcp.McpToolException("inventor_activate_open_document_xr", "API_ERROR", "Errore non specificato", new JObject());
+            Do(AssemblyWorkspace.IdOpenDesign);
+            Assert.AreEqual(0, entries.Count, "a failed activation never enters");
+            StringAssert.Contains("Inventor non riesce ad attivare il documento. Aprilo in una finestra in Inventor e riprova.", _workspace.Notice);
+            StringAssert.Contains("API_ERROR", _workspace.Notice);
+            StringAssert.Contains("Errore non specificato", _workspace.Notice);
         }
 
         [Test] public async Task RingApriIsolatesAPartAndOffersTheOpenActions()

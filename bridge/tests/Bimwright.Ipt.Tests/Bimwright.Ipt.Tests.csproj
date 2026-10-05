@@ -40,6 +40,7 @@
     <!-- Pure face_feature rules (no Inventor reference): the unit tests and FakeAddIn use them directly. -->
     <Compile Include="..\..\src\shared\Handlers\UnitConvert.cs" LinkBase="Shared\Handlers" />
     <Compile Include="..\..\src\shared\Handlers\Core\FaceFeatureModel.cs" LinkBase="Shared\Handlers\Core" />
+    <Compile Include="..\..\src\shared\Handlers\Core\DocumentActivationPolicy.cs" LinkBase="Shared\Handlers\Core" />
   </ItemGroup>
 
 </Project>

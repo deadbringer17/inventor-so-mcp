@@ -90,7 +90,25 @@ public sealed class ActivateOpenDocumentXrHandler : ExperimentalHandler
             if (identified) throw ConcurrencyFailure.TransactionBusy();
         }
         X.Deadline(ctx, "before activation");
-        doc.Activate();
+        // A loaded document without a window (typical for assembly definitions) makes Activate() fail
+        // with E_FAIL. Showing its window is a view operation on an already-loaded document: no load
+        // from disk, no save, no model change. Documents.Open(path, true) on a loaded document returns
+        // the same Document and creates its window.
+        Exception? activateError = null;
+        try { doc.Activate(); }
+        catch (COMException ex) { activateError = ex; }
+        string? activeId = null;
+        if (activateError == null) { try { activeId = EntityReferences.DocumentId(X.Active(app)); } catch { activeId = null; } }
+        if (DocumentActivationPolicy.ShouldShowWindowAndRetry(activateError, id, activeId))
+        {
+            string fileName = string.Empty;
+            try { fileName = doc.FullFileName; } catch { fileName = string.Empty; }
+            if (!DocumentActivationPolicy.HasFileName(fileName))
+                throw new InvalidOperationException(DocumentActivationPolicy.NoWindowNoFileMessage, activateError);
+            X.Deadline(ctx, "before showing the document window");
+            app.Documents.Open(fileName, true);
+            doc.Activate();
+        }
         if (EntityReferences.DocumentId(X.Active(app)) != id) throw new InvalidOperationException("ACTIVATE_NOT_CONFIRMED");
         return new JObject { ["document_id"] = id, ["status"] = "activated" };
     }
