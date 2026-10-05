@@ -6,7 +6,7 @@ using Newtonsoft.Json.Linq;
 namespace InventorXrSo.Core.Backend
 {
     public enum SheetMetalAvailability { NoDocument, NotAPart, NoRead, NotSheetMetal, Stale, Offline, Unreadable, Ready }
-    public enum SheetMetalCommand { None, Rule, Face, Flange, Cut, FlatPattern }
+    public enum SheetMetalCommand { None, Rule, Face, Flange, Cut, FlatPattern, FeatureEdit }
     public enum FlatPatternCreation { Allowed, AlreadyExists, MultiBody, Unavailable }
 
     /// <summary>
@@ -108,6 +108,19 @@ namespace InventorXrSo.Core.Backend
                 if (CheckFlatPattern(out var message) != FlatPatternCreation.Allowed) throw new ArgumentException(message);
                 return SheetMetalOperations.CreateFlatPattern(alignToEdgeId, alignment, reversed);
             });
+
+        /// <summary>M9 §4: N <c>set_parameter</c> of the opened feature, in the same draft/preview/Apply as every Lamiera command.</summary>
+        public bool SubmitFeatureEdit(DesignSession session, FeatureEditModel model)
+        {
+            LastError = null;
+            if (!CanWrite) { LastError = Reason ?? "Lamiera non disponibile."; return false; }
+            if (_armed != SheetMetalCommand.FeatureEdit) { LastError = "Arma prima il comando."; return false; }
+            if (session == null || !session.CanEdit) { LastError = "Design non disponibile finché il documento non è online e aggiornato."; return false; }
+            var operations = model?.BuildOperations();
+            if (operations == null || operations.Count == 0) { LastError = "Nessuna differenza rispetto ai parametri della feature."; return false; }
+            session.SetDraft(operations);
+            return true;
+        }
 
         /// <summary>Local validation failure keeps the ghost but drops the executable draft; nothing is written to CAD.</summary>
         private bool Submit(DesignSession session, SheetMetalCommand command, Func<JObject> build)

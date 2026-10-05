@@ -39,12 +39,11 @@ namespace InventorXrSo.Core.Backend
         }
     }
 
-    public interface IInspectionBackend
+    public interface IInspectionBackend : IFaceFeatureBackend
     {
         Task<InspectionInfo> InspectAsync(DocumentState state, string occurrenceId, CancellationToken ct);
         Task<IReadOnlyList<OpenDocument>> ListOpenAsync(CancellationToken ct);
         Task ActivateOpenAsync(string documentId, CancellationToken ct);
-        Task<FaceFeatureInfo> GetFaceFeatureAsync(DocumentState state, string faceId, CancellationToken ct);
     }
 
     public sealed partial class InventorBackend : IInspectionBackend

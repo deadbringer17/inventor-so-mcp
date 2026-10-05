@@ -57,8 +57,10 @@ namespace InventorXrSo.Xr
         {
             get
             {
-                if (_picker == null) return StaticTabs;
+                if (_picker == null && _featureEdit == null) return StaticTabs;
                 var tabs = new List<XrTab>(StaticTabs);
+                if (_featureEdit != null) tabs.Add(new XrTab(FeatureTabId, "Feature: " + _featureEdit.Name));
+                if (_picker == null) return tabs;
                 for (int page = 0; page < _picker.Pages; page++)
                     tabs.Add(new XrTab(PickTabPrefix + page, _picker.Pages == 1 ? _picker.Title : _picker.Title + " " + (page + 1) + "/" + _picker.Pages));
                 return tabs;
@@ -249,6 +251,7 @@ namespace InventorXrSo.Xr
                     new[] { "aggiorna documento", "ho controllato il cad" }),
             };
 
+            if (_featureEdit != null) list.AddRange(BuildFeatureEditActions());
             if (_picker != null)
             {
                 var picker = _picker;

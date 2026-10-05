@@ -105,7 +105,8 @@ namespace InventorXrSo.Xr
         /// <summary>M9 input state: a sketch is open on its plane (A = Snap si/no).</summary>
         public bool SketchOpen => Active && _screen == "sketch" && _sketch?.Frame != null;
         /// <summary>M9: what is true now (sketch open, feature/move in progress): decides the tabs that appear by themselves.</summary>
-        public TabState TabState => new TabState { SketchOpen = _screen == "sketch" && _sketch != null, FeatureInProgress = _screen == "feature" };
+        public TabState TabState => new TabState { SketchOpen = _screen == "sketch" && _sketch != null, FeatureInProgress = _screen == "feature",
+            FeatureEditOpen = Active && _featureEdit != null, FeatureName = _featureEdit?.Name };
         public Func<bool> CanEnter { get; set; }
         public event Action<bool> ActiveChanged;
         /// <summary>Raised only when an open workspace closes: the shell restores the Inspect placement of the model.</summary>
@@ -267,7 +268,7 @@ namespace InventorXrSo.Xr
             _constraintKind=null; _constraintPicks.Clear(); _parameterName=null;
             _dimensionStep = 0; _dimensionIndex = -1;
             _history = null;
-            _sketch = null; _first = null; _feature = null; _existingSketch = null; _face = null;
+            _sketch = null; _first = null; _feature = null; _existingSketch = null; _face = null; _featureEdit = null; _doubleTrigger.Reset();
             _faceSelection = null; _ringEdge = null; _ask = null; _lastErrorShown = null;
             _edges.Clear(); _snapLocked = false; _dimensionDrag = false; _grab = null; _gripHeld = false; _twoHandActive = false; _renderedPlan = null;
             _previewView?.Clear(); _geometry?.Clear();
@@ -478,7 +479,7 @@ namespace InventorXrSo.Xr
         /// a held X means "Torna". Mirrors the <see cref="Back"/> chain.
         /// </summary>
         public bool AtRest => Active && !(_shell != null && (_shell.Palette.KeypadVisible || _shell.Palette.InTabGroup))
-            && _ask == null && !(_ring != null && _ring.Visible) && _picker == null && !InDraftScreen
+            && _ask == null && !(_ring != null && _ring.Visible) && _picker == null && !InDraftScreen && _featureEdit == null
             && (_session == null || _session.Status == DesignStatus.Empty);
 
         /// <summary>
@@ -493,6 +494,7 @@ namespace InventorXrSo.Xr
             if (_ring != null && _ring.Visible) { HideRing(); return; }
             if (_picker != null) { ClosePicker(); return; }
             if (_shell != null && _shell.Palette.TryLeaveGroup(ContextTabs.Inspect)) return;
+            if (_featureEdit != null && _screen != "parameter") { CloseFeatureEdit(); return; }
             DiscardLastDraftStep();
         }
 
@@ -1060,15 +1062,17 @@ namespace InventorXrSo.Xr
             if (_feature == null && _sketch == null)
             {
                 string edge = CadCoordinates.PickEdge(_view.transform,_context.Edges,ray,requireVisible:true);
-                if (edge != null) { SelectEdge(edge); return; }
+                if (edge != null) { _doubleTrigger.Reset(); SelectEdge(edge); return; }
             }
             if (CadRaycaster.TryPick(ray,20,out var body,out int triangle,out var hit))
             {
+                // M9 §4: the second press on the same face opens the feature edit; the first selects as today.
+                if (_feature == null && _sketch == null && DoublePressOnFace(ray,body,triangle)) return;
                 _ringEdge = null;
                 SelectPlanarFace(body, triangle, hit);
                 if (_feature == null && _face != null) ShowRing(UiSelectionKind.PlanarFace, hit);
             }
-            else HideRing();
+            else { _doubleTrigger.Reset(); HideRing(); }
         }
 
         private void SketchPress(Ray ray)

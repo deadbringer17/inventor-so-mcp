@@ -1,11 +1,19 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using InventorXrSo.Core.Mcp;
 using Newtonsoft.Json.Linq;
 
 namespace InventorXrSo.Core.Backend
 {
+    /// <summary>Reads the feature that owns a face (implemented by the MCP backend; also by the inspection backend).</summary>
+    public interface IFaceFeatureBackend
+    {
+        Task<FaceFeatureInfo> GetFaceFeatureAsync(DocumentState state, string faceId, CancellationToken ct);
+    }
+
     public sealed class FeatureParameter
     {
         public string Name { get; set; }

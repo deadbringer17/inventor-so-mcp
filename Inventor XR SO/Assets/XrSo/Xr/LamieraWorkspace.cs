@@ -326,7 +326,7 @@ namespace InventorXrSo.Xr
 
         private void ResetDraft()
         {
-            _mode.Disarm();
+            _mode.Disarm(); _featureEdit = null; _doubleTrigger.Reset();
             _flange.Clear();
             _sketchName = null; _ruleName = null; _thicknessMm = null;
             _extent = "thickness"; _direction = "positive"; _acrossBends = false;
@@ -580,7 +580,7 @@ namespace InventorXrSo.Xr
 
         /// <summary>M9: nothing for X to back out of; only then a held X means "Torna". Mirrors the <see cref="Back"/> chain.</summary>
         public bool AtRest => Active && !(_shell != null && (_shell.Palette.KeypadVisible || _shell.Palette.InTabGroup))
-            && _ask == null && !(_ring != null && _ring.Visible) && _picker == null && _armedField == null && !InDraftScreen && _mode.Armed == SheetMetalCommand.None && !(_manip != null && _manip.Dragging)
+            && _ask == null && !(_ring != null && _ring.Visible) && _picker == null && _armedField == null && !InDraftScreen && _featureEdit == null && _mode.Armed == SheetMetalCommand.None && !(_manip != null && _manip.Dragging)
             && !Locked && !RequiresCadReview && (_session == null || _session.Status == DesignStatus.Empty);
 
         /// <summary>
@@ -596,6 +596,7 @@ namespace InventorXrSo.Xr
             if (_picker != null) { ClosePicker(); return; }
             if (_shell != null && _shell.Palette.TryLeaveGroup(ContextTabs.Inspect)) return;
             if (_armedField != null) { DisarmField(); return; }
+            if (_featureEdit != null && _mode.Armed == SheetMetalCommand.None) { CloseFeatureEdit(); return; }
             DiscardLastDraftStep();
         }
 
@@ -862,6 +863,7 @@ namespace InventorXrSo.Xr
                 case SheetMetalCommand.Cut: return "taglio da " + _sketchName;
                 case SheetMetalCommand.Rule: return "modifica regola/spessore";
                 case SheetMetalCommand.FlatPattern: return "creazione dello sviluppo piano";
+                case SheetMetalCommand.FeatureEdit: return "modifica dei parametri di " + _featureEdit?.Name;
                 default: return "modifica CAD";
             }
         }
@@ -987,6 +989,7 @@ namespace InventorXrSo.Xr
                     return _mode.SubmitCut(_session, _sketchName, _extent, _direction, _acrossBends);
                 case SheetMetalCommand.Rule: return SubmitRuleDraft();
                 case SheetMetalCommand.FlatPattern: return _mode.SubmitFlatPattern(_session);
+                case SheetMetalCommand.FeatureEdit: return _mode.SubmitFeatureEdit(_session, _featureEdit);
                 default: return false;
             }
         }
@@ -1264,10 +1267,12 @@ namespace InventorXrSo.Xr
             {
                 // Idle: an edge or a real planar face opens the ring; any other hit or the empty space closes it.
                 string edge = CadCoordinates.PickEdge(_view.transform, _designContext.Edges, ray, requireVisible: true);
-                if (edge != null) { SelectEdge(edge); return; }
+                if (edge != null) { _doubleTrigger.Reset(); SelectEdge(edge); return; }
                 HideRing();
-                if (CadRaycaster.TryPick(ray, 20, out var body, out int triangle, out var hit) && SelectPlanarFace(body, triangle, hit))
-                    ShowRing(UiSelectionKind.PlanarFace, hit);
+                if (!CadRaycaster.TryPick(ray, 20, out var body, out int triangle, out var hit)) { _doubleTrigger.Reset(); return; }
+                // M9 §4: the second press on the same face opens the feature edit; the first selects as today.
+                if (DoublePressOnFace(ray, body, triangle)) return;
+                if (SelectPlanarFace(body, triangle, hit)) ShowRing(UiSelectionKind.PlanarFace, hit);
             }
         }
 
