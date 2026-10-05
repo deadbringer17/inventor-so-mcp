@@ -70,6 +70,64 @@ namespace XrSo.Core.Tests.Ui
             Assert.Throws<InvalidOperationException>(() => c.Context(SelectionKind.Edge));
         }
 
+        private static ActionCatalog RingCatalog(Provider active, bool withMeasure = true)
+        {
+            var c = new ActionCatalog(Spaces());
+            if (withMeasure)
+            {
+                var inspect = new Provider();
+                inspect.All.Add(A(ActionCatalog.MeasureId, "Misura", "misura"));
+                c.AddShared(inspect);
+            }
+            c.SetActive(active);
+            return c;
+        }
+
+        private static Provider Ring(params (SelectionKind kind, string[] ids)[] rows)
+        {
+            var p = new Provider();
+            foreach (var (kind, ids) in rows) p.Ctx[kind] = ids.Select(i => A(i, i, "t")).ToList();
+            return p;
+        }
+
+        // M9 §2 table: (contesto, selezione) -> elenco ordinato di id dell'anello.
+        [Theory]
+        [InlineData("assembly", SelectionKind.Component, "isola,sposta,vincola,apri")]
+        [InlineData("assembly", SelectionKind.PlanarFace, "inspect.measure")]
+        [InlineData("assembly", SelectionKind.None, "")]
+        [InlineData("part", SelectionKind.PlanarFace, "schizzo,estrudi,foro,inspect.measure")]
+        [InlineData("part", SelectionKind.Edge, "raccordo,smusso,inspect.measure")]
+        [InlineData("part", SelectionKind.Face, "inspect.measure")]
+        [InlineData("part", SelectionKind.Component, "")]
+        [InlineData("part", SelectionKind.None, "")]
+        [InlineData("sheetmetal", SelectionKind.PlanarFace, "schizzo,taglio,inspect.measure")]
+        [InlineData("sheetmetal", SelectionKind.Edge, "flangia,inspect.measure")]
+        [InlineData("sheetmetal", SelectionKind.Face, "inspect.measure")]
+        [InlineData("sheetmetal", SelectionKind.None, "")]
+        public void Ring_is_exactly_the_table_of_the_context(string context, SelectionKind selection, string expected)
+        {
+            var active = context == "assembly" ? Ring((SelectionKind.Component, new[] { "isola", "sposta", "vincola", "apri" }))
+                : context == "part" ? Ring((SelectionKind.PlanarFace, new[] { "schizzo", "estrudi", "foro" }), (SelectionKind.Edge, new[] { "raccordo", "smusso" }))
+                : Ring((SelectionKind.PlanarFace, new[] { "schizzo", "taglio" }), (SelectionKind.Edge, new[] { "flangia" }));
+            var ids = RingCatalog(active).Context(selection).Select(a => a.Id).ToArray();
+            Assert.Equal(expected.Length == 0 ? new string[0] : expected.Split(','), ids);
+            Assert.True(ids.Length <= ActionCatalog.MaxContext);
+        }
+
+        [Fact]
+        public void Ring_without_the_shared_measure_provider_is_the_active_list_only()
+        {
+            var active = Ring((SelectionKind.Edge, new[] { "raccordo", "smusso" }));
+            Assert.Equal(new[] { "raccordo", "smusso" }, RingCatalog(active, withMeasure: false).Context(SelectionKind.Edge).Select(a => a.Id));
+        }
+
+        [Fact]
+        public void Measure_already_in_the_active_ring_is_not_duplicated()
+        {
+            var active = Ring((SelectionKind.Component, new[] { "inspect.proprieta", ActionCatalog.MeasureId }));
+            Assert.Equal(new[] { "inspect.proprieta", ActionCatalog.MeasureId }, RingCatalog(active).Context(SelectionKind.Component).Select(a => a.Id));
+        }
+
         [Fact]
         public void Duplicate_ids_between_provider_and_spaces_are_rejected()
         {

@@ -585,7 +585,7 @@ namespace InventorXrSo.Xr
         private void ShowRing(SelectionKind kind, Vector3 worldPoint)
         {
             if (_ring == null || _head == null) return;
-            var actions = ContextActions(kind).ToArray();
+            var actions = (_catalog != null && ReferenceEquals(_catalog.Active, this) ? _catalog.Context(kind) : ContextActions(kind)).ToArray();
             if (actions.Length == 0) { HideRing(); return; }
             _ring.Show(worldPoint + Vector3.up * 0.01f, actions, _head);
         }

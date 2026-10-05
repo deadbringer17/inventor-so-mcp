@@ -11,8 +11,40 @@ using Object = UnityEngine.Object;
 
 namespace InventorXrSo.Tests
 {
+    /// <summary>Stand-in for the shared Ispeziona provider: only the transversal Misura action (M9 ring table).</summary>
+    internal sealed class MeasureStubProvider : IActionProvider
+    {
+        public IReadOnlyList<XrTab> Tabs { get; } = new[] { new XrTab("misura", "Misura") };
+        public IEnumerable<XrAction> Actions { get; } = new[] { new XrAction(ActionCatalog.MeasureId, "Misura", "misura", () => true, () => { }) };
+        public IEnumerable<XrAction> ContextActions(SelectionKind selection) => Array.Empty<XrAction>();
+        public CommitBarState CommitBar => null;
+    }
+
+    internal static class RingTable
+    {
+        /// <summary>The ring of (active context, selection) is exactly the ordered list of the M9 §2 table and fits MaxContext.</summary>
+        public static void Assert(ActionCatalog catalog, SelectionKind selection, string[] expected)
+        {
+            var ids = catalog.Context(selection).Select(a => a.Id).ToArray();
+            CollectionAssert.AreEqual(expected, ids, selection.ToString());
+            NUnit.Framework.Assert.LessOrEqual(ids.Length, ActionCatalog.MaxContext);
+        }
+    }
+
     public class RingViewTests
     {
+        [Test]
+        public void M9TableRingsRenderOneButtonPerActionAndFitTheRing()
+        {
+            var ring = Ring();
+            foreach (var ids in new[] { new[] { "a", "b", "c", "d" }, new[] { "a", "b", "c" }, new[] { "a", "b" } })
+            {
+                ring.Show(Vector3.zero, ids.Select(i => A(i)).ToArray(), _head.transform);
+                Assert.AreEqual(ids.Length, Buttons(ring).Length);
+                ring.Hide();
+            }
+        }
+
         private readonly List<GameObject> _roots = new List<GameObject>();
         private GameObject _head;
 

@@ -36,6 +36,9 @@ namespace InventorXrSo.Core.Ui
         public const int MaxPalette = 8;
         public const int MaxContext = 6;
 
+        /// <summary>Id dell'azione Misura del fornitore Ispeziona: compare in coda all'anello di facce e bordi.</summary>
+        public const string MeasureId = "inspect.measure";
+
         /// <summary>Scheda di uscita dal gruppo Ispeziona («◂»): interna, mai tra le principali.</summary>
         public const string InspectExitTab = "_ispeziona_esci";
 
@@ -143,9 +146,16 @@ namespace InventorXrSo.Core.Ui
         public IReadOnlyList<XrAction> Context(SelectionKind selection)
         {
             if (_active == null || selection == SelectionKind.None) return Array.Empty<XrAction>();
-            var list = _active.ContextActions(selection).ToArray();
-            if (list.Length > MaxContext) throw new InvalidOperationException($"Anello {selection}: {list.Length} azioni, massimo {MaxContext}.");
-            return list;
+            var list = _active.ContextActions(selection).ToList();
+            // M9 §2: Misura e trasversale. Sulle facce e sui bordi l'anello la prende dal fornitore Ispeziona condiviso
+            // (stessa azione della palette); un componente non la riceve (in Assieme l'anello e Isola·Sposta·Vincola·Apri).
+            if (selection != SelectionKind.Component && list.All(a => a.Id != MeasureId))
+            {
+                var measure = _shared.SelectMany(p => p.Actions).FirstOrDefault(a => a.Id == MeasureId);
+                if (measure != null) list.Add(measure);
+            }
+            if (list.Count > MaxContext) throw new InvalidOperationException($"Anello {selection}: {list.Count} azioni, massimo {MaxContext}.");
+            return list.ToArray();
         }
 
         public XrAction Find(string id) => All().FirstOrDefault(a => a.Id == id);

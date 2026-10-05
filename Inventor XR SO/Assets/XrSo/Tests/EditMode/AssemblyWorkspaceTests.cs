@@ -665,6 +665,14 @@ namespace InventorXrSo.Tests
             CollectionAssert.AreEqual(new[] { "Vincola" }, enabled, "no component selected yet: the ring disables like the palette (Vincola opens the list of constraint types)");
         }
 
+        [Test] public void RingTableM9ComponentIsolateMoveConstrainOpenWithoutMeasure()
+        {
+            AttachShell(out _, out var catalog); catalog.AddShared(new MeasureStubProvider());
+            RingTable.Assert(catalog, UiSelectionKind.Component,
+                new[] { AssemblyWorkspace.IdIsolate, AssemblyWorkspace.IdMove, AssemblyWorkspace.IdConstrain, AssemblyWorkspace.IdOpen });
+            RingTable.Assert(catalog, UiSelectionKind.None, new string[0]);
+        }
+
         [Test] public async Task TriggerOnAComponentSelectsItAndOpensTheRing()
         {
             UseInput(); AttachShell(out _, out _);

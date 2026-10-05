@@ -67,10 +67,13 @@ namespace InventorXrSo.Xr
 
         public IEnumerable<XrAction> Actions => _actions ?? (_actions = BuildActions());
 
-        /// <summary>Ring: planar face = Flangia, Faccia, Taglio; edge = Flangia (same actions as the palette).</summary>
+        /// <summary>
+        /// Ring (M9 §2): planar face = Schizzo (faccia da schizzo), Taglio; edge = Flangia. Misura is appended by
+        /// <see cref="ActionCatalog.Context"/> (shared Ispeziona action).
+        /// </summary>
         public IEnumerable<XrAction> ContextActions(UiSelectionKind selection)
         {
-            string[] ids = selection == UiSelectionKind.PlanarFace ? new[] { IdFlange, IdFace, IdCut }
+            string[] ids = selection == UiSelectionKind.PlanarFace ? new[] { IdFace, IdCut }
                 : selection == UiSelectionKind.Edge ? new[] { IdFlange } : Array.Empty<string>();
             var all = Actions.ToList();
             return ids.Select(id => all.First(a => a.Id == id)).ToArray();

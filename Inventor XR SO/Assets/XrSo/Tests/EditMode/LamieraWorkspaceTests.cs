@@ -1254,16 +1254,25 @@ namespace InventorXrSo.Tests
 
         [Test] public void RingActionsForPlanarFaceAndEdgeUseTheSameDeclaredActions()
         {
-            CollectionAssert.AreEqual(new[] { FlangeAction, Face, Cut }, _workspace.ContextActions(UiSelectionKind.PlanarFace).Select(a => a.Id).ToArray());
+            CollectionAssert.AreEqual(new[] { Face, Cut }, _workspace.ContextActions(UiSelectionKind.PlanarFace).Select(a => a.Id).ToArray());
             CollectionAssert.AreEqual(new[] { FlangeAction }, _workspace.ContextActions(UiSelectionKind.Edge).Select(a => a.Id).ToArray());
             Assert.IsEmpty(_workspace.ContextActions(UiSelectionKind.None));
             Assert.IsEmpty(_workspace.ContextActions(UiSelectionKind.Face));
             Assert.IsEmpty(_workspace.ContextActions(UiSelectionKind.Component));
             var catalog = CatalogFor();
-            Assert.AreEqual(3, catalog.Context(UiSelectionKind.PlanarFace).Count); Assert.AreEqual(1, catalog.Context(UiSelectionKind.Edge).Count);
+            Assert.AreEqual(2, catalog.Context(UiSelectionKind.PlanarFace).Count); Assert.AreEqual(1, catalog.Context(UiSelectionKind.Edge).Count);
             Assert.True(_workspace.ContextActions(UiSelectionKind.Edge).All(a => a.Enabled));
             _workspace.SetOnline(false);
             Assert.True(_workspace.ContextActions(UiSelectionKind.PlanarFace).All(a => !a.Enabled), "the ring disables like the palette");
+        }
+
+        [Test] public void RingTableM9WithTheSharedMeasureAction()
+        {
+            var catalog = CatalogFor(); catalog.AddShared(new MeasureStubProvider());
+            RingTable.Assert(catalog, UiSelectionKind.PlanarFace, new[] { Face, Cut, ActionCatalog.MeasureId });
+            RingTable.Assert(catalog, UiSelectionKind.Edge, new[] { FlangeAction, ActionCatalog.MeasureId });
+            RingTable.Assert(catalog, UiSelectionKind.Face, new[] { ActionCatalog.MeasureId });   // non-planar face: Misura only
+            RingTable.Assert(catalog, UiSelectionKind.None, new string[0]);
         }
 
         // ---------------------------------------------------------------- with the shell and the bench
@@ -1350,12 +1359,12 @@ namespace InventorXrSo.Tests
             Assert.AreEqual(0, _backend.Commits);
         }
 
-        [Test] public void RingOnAFaceOffersFlangeFaceAndCut()
+        [Test] public void RingOnAFaceOffersSketchFaceAndCut()
         {
             AttachShell(out _);
             var ring = Field<RingView>("_ring");
             typeof(LamieraWorkspace).GetMethod("ShowRing", Flags).Invoke(_workspace, new object[] { UiSelectionKind.PlanarFace, Vector3.zero });
-            Assert.True(ring.Visible); Assert.AreEqual(3, ring.Canvas.GetComponentsInChildren<UnityEngine.UI.Button>().Length);
+            Assert.True(ring.Visible); Assert.AreEqual(2, ring.Canvas.GetComponentsInChildren<UnityEngine.UI.Button>().Length, "M9: Schizzo, Taglio (+ Misura when Ispeziona is shared)");
         }
 
         [Test] public void ChipsAppearWithTheFlangeAndTheKeypadSetsTheDraft()

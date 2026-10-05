@@ -485,6 +485,14 @@ namespace InventorXrSo.Tests
             _workspace.SetOnline(false);
             Assert.True(_workspace.ContextActions(UiSelectionKind.Edge).All(a=>!a.Enabled),"the ring disables like the palette");
         }
+        [Test] public void RingTableM9WithTheSharedMeasureAction()
+        {
+            var catalog=CatalogFor(); catalog.AddShared(new MeasureStubProvider());
+            RingTable.Assert(catalog,UiSelectionKind.PlanarFace,new[]{Create,Extrude,Hole,ActionCatalog.MeasureId});
+            RingTable.Assert(catalog,UiSelectionKind.Edge,new[]{Fillet,Chamfer,ActionCatalog.MeasureId});
+            RingTable.Assert(catalog,UiSelectionKind.Face,new[]{ActionCatalog.MeasureId});   // non-planar face: Misura only
+            RingTable.Assert(catalog,UiSelectionKind.None,new string[0]);
+        }
         [Test] public void DimensionKeypadThumbstickAndDictationShareOneEntry()
         {
             SketchOnXy(); Do(Extrude); Do(CommitIds.Preview);
