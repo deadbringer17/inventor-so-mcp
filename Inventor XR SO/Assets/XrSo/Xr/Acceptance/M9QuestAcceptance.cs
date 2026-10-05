@@ -72,6 +72,12 @@ namespace InventorXrSo.Xr
             "AssemblyWorkspace._busy",
             "LamieraWorkspace._busy",
             "LamieraWorkspace._designContext",
+            "LamieraWorkspace._visible",
+            "LamieraWorkspace._online",
+            "LamieraWorkspace._kind",
+            "LamieraWorkspace._sheetContext",
+            "LamieraWorkspace._mode",
+            "LamieraWorkspace._state",
         };
 
         /// <summary>Every gate of the spec (spec section "Gate di consegna M9"): the log must name each of them (PASS, NOT COVERED or the verdict).</summary>
@@ -249,6 +255,14 @@ namespace InventorXrSo.Xr
                 + " penTracked=" + _input.PenTracked + " origin=" + _ray.Origin.position + " fwd=" + _ray.Origin.forward + "]";
         }
 
+        private string DescribeSheetContext()
+        {
+            var c = Read<SheetMetalContext>(_lamiera, "_sheetContext");
+            var mode = Read<SheetMetalMode>(_lamiera, "_mode");
+            return c == null ? "null" : "{isSheetMetal=" + c.IsSheetMetal + " complete=" + c.IsComplete + " reason=" + c.Reason + " ctxRev=" + c.State?.Revision
+                + " availability=" + mode?.Availability + " modeReason=" + mode?.Reason + " stateRev=" + Read<DocumentState>(_lamiera, "_state")?.Revision + "}";
+        }
+
         private string HudText() => _shell?.Hud == null ? ""
             : string.Join("\n", _shell.Hud.Canvas.GetComponentsInChildren<TextMeshProUGUI>(true).Select(t => t.text));
 
@@ -295,6 +309,14 @@ namespace InventorXrSo.Xr
             Check(instance != null, "the occurrence " + occurrenceId + " is in the scene");
             var bounds = ScenePlacement.LocalBounds(instance.transform);
             return instance.transform.TransformPoint(bounds.center);
+        }
+
+        /// <summary>The assembly context can still be refreshing after a previous step (partial occurrence list): wait for the fragment instead of failing on the first look.</summary>
+        private async Task<AssemblyOccurrence> FindOccurrenceAsync(string nameFragment, CancellationToken ct)
+        {
+            await TryWaitUntil(() => Read<AssemblyContext>(_assembly, "_context")?.Occurrences
+                .Any(o => o.Name.IndexOf(nameFragment, StringComparison.OrdinalIgnoreCase) >= 0) == true, 20, ct);
+            return FindOccurrence(nameFragment);
         }
 
         private AssemblyOccurrence FindOccurrence(string nameFragment)
@@ -394,10 +416,17 @@ namespace InventorXrSo.Xr
         /// </summary>
         private async Task DoubleTriggerAsync(Func<bool> firstPressDone, CancellationToken ct, double gapSeconds = 0.2)
         {
-            _clock += 5;   // far from any earlier press: this one starts a new window
-            TriggerTap();
-            try { await WaitDiag(firstPressDone, "the first Trigger press to select its target", ct, 30); }
-            catch (InvalidOperationException ex) { throw new InvalidOperationException(ex.Message + " " + PressDiagnostics()); }
+            // A press is ignored while the workspace is busy (previous step still refreshing): wait until it is idle and
+            // retry the first press (each attempt starts a new detector window) instead of firing once and hoping.
+            for (int attempt = 1; attempt <= 6; attempt++)
+            {
+                await TryWaitUntil(() => !ReadBoolean(_assembly, "_busy"), 10, ct);
+                _clock += 5;   // far from any earlier press: this one starts a new window
+                TriggerTap();
+                if (await TryWaitUntil(firstPressDone, 5, ct)) break;
+                if (attempt == 6) throw new InvalidOperationException("timed out after 6 attempts waiting for the first Trigger press to select its target [context="
+                    + App.Context + ", levels=" + Nav.Levels.Count + ", top=" + Nav.Top?.Name + ", assembly.notice='" + _assembly.Notice + "'] " + PressDiagnostics());
+            }
             _clock += gapSeconds;
             TriggerTap();
         }
@@ -493,7 +522,7 @@ namespace InventorXrSo.Xr
             Pass("M9-05", "Assieme: tabs " + string.Join(", ", Catalog.Tabs.Select(t => t.Id)) + ", none inert; Ispeziona group with Misura, Sezione, Visibilita, Verifica; one Vista tab");
 
             // M9-02: the double Trigger is refused with a reason while a CAD review is pending; nothing is activated.
-            var block = FindOccurrence("Block");
+            var block = await FindOccurrenceAsync("Block", ct);
             await SelectOccurrenceAsync(block, ct);
             _assembly.Session.RequireCadReview();
             Check(_assembly.RequiresCadReview, "a pending CAD review is set on Assieme (synthetic guard, no commit was made)");
@@ -510,7 +539,7 @@ namespace InventorXrSo.Xr
         /// <summary>M9-02: a command in progress (Sposta on the free sheet) also blocks the entry; the HUD/notice carries the reason.</summary>
         private async Task TryBlockedByCommandAsync(DocumentState state0, CancellationToken ct)
         {
-            var sheet = FindOccurrence("Sheet");
+            var sheet = await FindOccurrenceAsync("Sheet", ct);
             await SelectOccurrenceAsync(sheet, ct);
             if (!ActionEnabled(AssemblyWorkspace.IdMove))
             {
@@ -581,7 +610,7 @@ namespace InventorXrSo.Xr
 
         private async Task CheckBlockAsync(CancellationToken ct)
         {
-            var block = FindOccurrence("Block");
+            var block = await FindOccurrenceAsync("Block", ct);
             var assemblyScene = Session.Scene;
             var assemblyRevision = assemblyScene.Graph.Revision;
             await EnterByDoubleTriggerAsync(block, c => c == DocContext.Part, "Progettazione", ct);
@@ -837,10 +866,17 @@ namespace InventorXrSo.Xr
 
         private async Task CheckSheetAsync(CancellationToken ct)
         {
-            var sheet = FindOccurrence("Sheet");
+            var sheet = await FindOccurrenceAsync("Sheet", ct);
             var assemblyScene = Session.Scene;
             await EnterByDoubleTriggerAsync(sheet, c => c == DocContext.Part || c == DocContext.SheetMetal, "Lamiera", ct);
-            await WaitDiag(() => App.Context == DocContext.SheetMetal && _lamiera.Active, "sheet-metal detection to open Lamiera", ct, 60);
+            try { await WaitDiag(() => App.Context == DocContext.SheetMetal && _lamiera.Active, "sheet-metal detection to open Lamiera", ct, 60); }
+            catch (InvalidOperationException ex)
+            {
+                throw new InvalidOperationException(ex.Message + " [lamiera: IsPrimary=" + _lamiera.IsPrimary + " busy=" + ReadBoolean(_lamiera, "_busy")
+                    + " visible=" + ReadBoolean(_lamiera, "_visible") + " online=" + ReadBoolean(_lamiera, "_online") + " kind=" + Read<string>(_lamiera, "_kind")
+                    + " sheetContext=" + DescribeSheetContext() + " stateDoc=" + Read<DocumentState>(_lamiera, "_state")?.DocumentId
+                    + " activeDoc=" + Nav.Top?.DocumentId + " sceneDoc=" + Session.Scene?.Graph.DocumentId + " sceneKind=" + Session.Scene?.Graph.Kind + "]");
+            }
             await WaitLamieraReadyAsync(ct);
             RequireFixture();
             Check(Nav.Levels.Count == 2 && Nav.Top.FromOccurrenceId == sheet.Id && Nav.Parent.DocumentId == _assemblyDocId, "the sheet level sits above the assembly");
@@ -930,8 +966,8 @@ namespace InventorXrSo.Xr
             var bridge = new VoiceCommandBridge(voiceTarget, recognizer, armingThreshold: TimeSpan.Zero);
             Record("Speech is injected text pushed through the real PushToTalkController (SYNTHETIC: no microphone, no audio)");
             var state0 = await BaselineAsync(ct);
-            var sheet = FindOccurrence("Sheet");
-            var blockName = FindOccurrence("Block").Name;
+            var sheet = await FindOccurrenceAsync("Sheet", ct);
+            var blockName = (await FindOccurrenceAsync("Block", ct)).Name;
             try
             {
                 // Space commands change nothing and explain the new way.
@@ -1218,7 +1254,7 @@ namespace InventorXrSo.Xr
                 _legend.Tick();
                 Check(xLabel.Progress == 0f, "the X progress ring clears on release");
 
-                var block = FindOccurrence("Block");
+                var block = await FindOccurrenceAsync("Block", ct);
                 SnapPoses();
                 var center = OccurrenceCenter(block.Id);
                 AimAt(center, AwayFromHead(center));

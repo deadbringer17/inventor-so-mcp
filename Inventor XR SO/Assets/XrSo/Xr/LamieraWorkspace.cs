@@ -246,6 +246,7 @@ namespace InventorXrSo.Xr
             { _renderedPlan = null; _session.RejectDraft("Scena aggiornata: ricalcola l'anteprima prima di applicare."); }
             _sceneState = scene?.Graph.State; _kind = scene?.Graph.Kind;
             SetDocumentState(_sceneState);
+            EnsureSheetContext();
             RequestRender();
         }
 
@@ -256,6 +257,18 @@ namespace InventorXrSo.Xr
             _session?.SetContext(state, _online, _kind == "part");
             if (changed) StateMoved(); else RefreshMode();
             if (changed && _visible && _online && _kind == "part") LoadContext();
+            else EnsureSheetContext();
+        }
+
+        /// <summary>
+        /// M9: the document can change before its scene arrives (the kind is still the previous document's), so the change-triggered read
+        /// is skipped and the later scene sees an unchanged state. Whenever the part has no read for ITS document, read it now.
+        /// </summary>
+        private void EnsureSheetContext()
+        {
+            if (!_visible || !_online || _kind != "part" || _state == null || _busy || _sheet == null) return;
+            if (_sheetContext != null && _sheetContext.State?.DocumentId == _state.DocumentId) return;
+            LoadContext();
         }
 
         public void SetOnline(bool online)
