@@ -64,6 +64,10 @@ namespace InventorXrSo.Xr
 
         private ContextWorkspaceSwitcher _contextSwitcher;
         private LoadedScene _currentScene;
+        // M9 assieme fantasma: ultima scena caricata per documento (serve la scena del padre prima che quella nuova la sostituisca).
+        private readonly Dictionary<string, LoadedScene> _sceneByDocument = new Dictionary<string, LoadedScene>();
+        private GhostContext _ghost;
+        private string _ghostKey;
 
         /// <summary>Pila di navigazione Assieme › Sub › Parte, guidata dal documento attivo (ContextRouter).</summary>
         public NavigationStack Navigation { get; } = new NavigationStack();
@@ -95,6 +99,10 @@ namespace InventorXrSo.Xr
             _lamiera = gameObject.AddComponent<LamieraWorkspace>();
             _lamiera.Initialize(sceneView, selectionVisuals, ray, head);
             // One shared CAD guard: an uncertain commit in any authoring workspace blocks entering the others.
+            // Il fantasma e figlio della radice della scena: Workbench (Adatta/Ricentra) lo sposta insieme alla parte.
+            _ghost = new GameObject("GhostContextHost").AddComponent<GhostContext>();
+            _ghost.transform.SetParent(sceneView.transform, false);
+            Navigation.Changed += UpdateGhost;
             _contextSwitcher = new ContextWorkspaceSwitcher(Navigation, OpenContext, CloseAuthoring,
                 text => _badge?.Flash(text, 6f), () => _inSession);
             _design.CanEnter = () => !_assembly.RequiresCadReview && !_lamiera.RequiresCadReview;
@@ -200,7 +208,9 @@ namespace InventorXrSo.Xr
             _assembly?.Bind(null);
             _lamiera?.Bind(null, null);
             _currentScene = null;
+            _sceneByDocument.Clear();
             _contextSwitcher?.Clear();
+            ClearGhost();
             if (_session != null)
             {
                 _session.StatusChanged -= OnStatusChanged; _session.SceneLoaded -= OnSceneLoaded;
@@ -372,7 +382,9 @@ namespace InventorXrSo.Xr
             _assembly.SetScene(scene);
             _lamiera.SetScene(scene);
             _currentScene = scene;
+            if (scene != null) _sceneByDocument[scene.Graph.DocumentId] = scene;
             RouteCurrentScene();
+            UpdateGhost();
             if (scene != null && _inSession && !_placed) Place();
             RefreshOpenDocuments();
             _design.RefreshWorkbench();
@@ -414,6 +426,7 @@ namespace InventorXrSo.Xr
             _assembly?.SetVisible(false);
             _lamiera?.SetVisible(false);
             _contextSwitcher?.Leave();
+            ClearGhost();
             _voice?.NotifyModeChanged();
             ray.CanPick = false;
             sceneView.gameObject.SetActive(false);
@@ -444,6 +457,50 @@ namespace InventorXrSo.Xr
             RefreshHome();
             // The active document decides the workspace (Assieme / Progettazione / Lamiera).
             _contextSwitcher.Sync();
+            UpdateGhost();
+        }
+
+        // --- assieme fantasma (M9) ---
+
+        private void ClearGhost()
+        {
+            _ghost?.Clear();
+            _ghostKey = null;
+        }
+
+        /// <summary>
+        /// Mostra il padre diretto del livello in cima alla pila come fantasma, posato con l'inversa dell'occorrenza (vedi GhostPose).
+        /// Il fantasma e una fotografia: finche il livello (padre, documento, occorrenza) non cambia non si ricostruisce, quindi non segue
+        /// le modifiche alla parte. Pila alla radice, fuori sessione o padre non in cache: nessun fantasma.
+        /// </summary>
+        private void UpdateGhost()
+        {
+            if (_ghost == null) return;
+            var top = Navigation.Top;
+            var parent = Navigation.Parent;
+            if (!_inSession || top == null || parent == null || !_sceneByDocument.TryGetValue(parent.DocumentId, out var parentScene))
+            {
+                ClearGhost();
+                PruneSceneCache();
+                return;
+            }
+            PruneSceneCache();
+            var key = parent.DocumentId + "|" + top.DocumentId + "|" + top.FromOccurrenceId;
+            if (key == _ghostKey && _ghost.IsShowing) return;
+            _ghost.Show(parentScene, top.OccurrencePose, parentScene.Graph.Revision, top.FromOccurrenceId);
+            _ghostKey = key;
+            var note = _ghost.Label + " (rev. " + _ghost.RevisionLabel + ")";
+            if (_ghost.Truncated) note += ". Contesto parziale: l'assieme supera i limiti di mesh, mostro solo le definizioni caricate.";
+            _badge?.Flash(note, _ghost.Truncated ? 8f : 5f);
+        }
+
+        /// <summary>Tiene in cache solo le scene dei livelli della pila e del documento corrente.</summary>
+        private void PruneSceneCache()
+        {
+            if (_sceneByDocument.Count == 0) return;
+            var keep = new HashSet<string>(Navigation.Levels.Select(l => l.DocumentId));
+            if (_currentScene != null) keep.Add(_currentScene.Graph.DocumentId);
+            foreach (var id in _sceneByDocument.Keys.Where(k => !keep.Contains(k)).ToList()) _sceneByDocument.Remove(id);
         }
 
         // --- contesto guidato dal documento attivo (M9) ---
