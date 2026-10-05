@@ -2,6 +2,15 @@
 
 Target: Inventor 2027 x64. Full functional scope remains the 80-point assessment in `analisi-spec-inventor-so-mcp.md`; the work below does not replace it with a smaller goal.
 
+## M9 navigazione per contesto — 2026-10-05
+
+Client Quest guidato dal documento attivo (pila di navigazione, doppio Trigger,
+Torna, schede per contesto, `InputMap` e legenda, modifica feature da faccia).
+Nel backend: nuovo tool sperimentale `inventor_face_feature` (sola lettura).
+Software implementato; **gate aperti**: M9-08 (sonda live `face_feature`
+contro Inventor 2027), M9-09 e runner Quest, M9-12 prova fisica. Dettagli:
+[verbale M9](xr-m9-verification.md).
+
 ## M8 grapics — tema HIVE A.P.E. — 2026-10-04
 
 Preparati [spec di adattamento](superpowers/specs/2026-10-04-m8-grapics-design.md)

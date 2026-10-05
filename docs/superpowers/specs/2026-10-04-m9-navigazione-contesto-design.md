@@ -1,7 +1,6 @@
 # Inventor XR SO — M9: navigazione per contesto
 
-Data: 4 ottobre 2026, Europe/Rome. Stato: **design approvato, da pianificare**.
-Collaudo Quest e prova fisica aperti.
+Data: 4 ottobre 2026, Europe/Rome. Stato: **implementato (software); collaudo Quest, sonda live `face_feature` e prova fisica aperti** — vedi [verbale](../../xr-m9-verification.md).
 
 ## Obiettivo e perimetro
 

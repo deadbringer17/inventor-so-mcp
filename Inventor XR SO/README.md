@@ -179,3 +179,14 @@ Il tema Windows di pairing usa gli stessi riferimenti. [Spec M8](../docs/superpo
 e [verifica](../docs/xr-m8-verification.md): software in verifica, collaudo Quest
 e fisico aperto. Il runner M8 usa la fixture dedicata M6 attraverso
 `scripts/run-m8-acceptance.ps1` dalla radice del repository.
+
+## M9 navigazione per contesto
+
+Il contesto (Assieme, Parte, Lamiera) segue il documento attivo di Inventor.
+Doppio Trigger su un componente lo apre; **X tenuto 1 s** a riposo (o «Torna»
+nella scheda Documento) risale; il doppio Trigger su una faccia in Parte o
+Lamiera apre la modifica della feature. Misura e Sezione sono nel gruppo
+«Ispeziona ▸». I tasti sono definiti da `InputMap` e mostrati dalla legenda 3D
+(si spegne dalla scheda Vista). Y = Adatta; Ricentra è nella scheda Documento.
+[Spec M9](../docs/superpowers/specs/2026-10-04-m9-navigazione-contesto-design.md),
+[verbale](../docs/xr-m9-verification.md): collaudo Quest e prova fisica aperti.
