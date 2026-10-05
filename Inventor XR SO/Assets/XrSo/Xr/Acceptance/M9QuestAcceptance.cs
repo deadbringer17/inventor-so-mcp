@@ -233,6 +233,22 @@ namespace InventorXrSo.Xr
                 + "', lamiera.notice='" + _lamiera.Notice + "', hud='" + HudText().Replace('\n', '|') + "']");
         }
 
+        /// <summary>Why a synthetic Trigger press did not select: ray hit, selected occurrence, workspace state (read by reflection).</summary>
+        private string PressDiagnostics()
+        {
+            var ray = new Ray(_ray.Origin.position, _ray.Origin.forward);
+            bool hit = CadRaycaster.TryPick(ray, 20, out var body, out _, out var point);
+            bool Prop(string name)
+            {
+                var info = typeof(AssemblyWorkspace).GetProperty(name, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+                return info != null && (bool)info.GetValue(_assembly);
+            }
+            return "[diag: rayHit=" + hit + " body=" + (body?.Instance?.OccurrenceId ?? "-") + " selected=" + (Read<AssemblyOccurrence>(_assembly, "_occurrence")?.Id ?? "-")
+                + " Editable=" + Prop("Editable") + " CanCapture=" + Prop("CanCapture") + " Idle=" + Prop("Idle")
+                + " busy=" + ReadBoolean(_assembly, "_busy") + " pickSuppressed=" + (_assembly.PickSuppressed?.Invoke() == true)
+                + " penTracked=" + _input.PenTracked + " origin=" + _ray.Origin.position + " fwd=" + _ray.Origin.forward + "]";
+        }
+
         private string HudText() => _shell?.Hud == null ? ""
             : string.Join("\n", _shell.Hud.Canvas.GetComponentsInChildren<TextMeshProUGUI>(true).Select(t => t.text));
 
@@ -380,7 +396,8 @@ namespace InventorXrSo.Xr
         {
             _clock += 5;   // far from any earlier press: this one starts a new window
             TriggerTap();
-            await WaitDiag(firstPressDone, "the first Trigger press to select its target", ct, 30);
+            try { await WaitDiag(firstPressDone, "the first Trigger press to select its target", ct, 30); }
+            catch (InvalidOperationException ex) { throw new InvalidOperationException(ex.Message + " " + PressDiagnostics()); }
             _clock += gapSeconds;
             TriggerTap();
         }
