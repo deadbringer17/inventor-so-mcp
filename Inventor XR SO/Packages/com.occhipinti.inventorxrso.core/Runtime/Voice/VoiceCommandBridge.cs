@@ -164,7 +164,7 @@ namespace InventorXrSo.Core.Voice
             ClearPending();
             _lastContextId = action.Id; _lastContextLabel = action.Label;
             if (!action.Enabled || !_target.IsEnabled(action.Id))
-            { Set(VoiceOutcomeKind.NotExecuted, "Comando non disponibile ora."); return; }
+            { Set(VoiceOutcomeKind.NotExecuted, string.IsNullOrEmpty(action.Reply) ? "Comando non disponibile ora." : action.Reply); return; }
             if (action.RequiresConfirmation)
             {
                 PendingConfirmationCommandId = action.Id;

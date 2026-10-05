@@ -21,6 +21,16 @@ namespace InventorXrSo.Tests
             public bool Invoke(string id) { LastInvoked = id; return true; }
             public DictationField ArmedField { get; set; }
             public bool SetArmedField(string id, double v) { LastField = id; LastValue = v; return true; }
+            public KeyValuePair<string, string>[] Occurrences;
+            public string Opened;
+            public VoiceOpenResult FindOccurrence(string name) => Occurrences == null
+                ? VoiceOpenResult.UnavailableHere : OccurrenceNameMatcher.Match(Occurrences, name);
+            public VoiceOpenResult OpenOccurrence(string name)
+            {
+                var r = FindOccurrence(name);
+                if (r.Found) Opened = r.OccurrenceId;
+                return r;
+            }
         }
 
         /// <summary>Workspace M6: declares its actions to the catalog; voice labels come from there.</summary>
@@ -106,6 +116,101 @@ namespace InventorXrSo.Tests
             Assert.IsTrue(target.Invoke(connection.Id));
             CollectionAssert.AreEqual(new[] { "back", "save", "connection" }, opened);
         }
+        // ---- M9-10: voce coerente con il contesto
+
+        [Test]
+        public void Actions_of_other_contexts_are_not_found_or_disabled()
+        {
+            var assembly = new Provider(); assembly.Add("assembly.isolate", "Isola", synonyms: new[] { "isola componente" });
+            assembly.Add("assembly.move", "Sposta", enabled: false, reason: "Seleziona un componente.");
+            var part = new Provider(); part.Add("design.extrude", "Estrusione", synonyms: new[] { "estrudi" });
+            var inAssembly = new WorkspaceVoiceTarget(null) { InSession = true, Catalog = CatalogWith(assembly) };
+            var inPart = new WorkspaceVoiceTarget(null) { InSession = true, Catalog = CatalogWith(part) };
+            Assert.IsFalse(inAssembly.TryResolveAction("estrudi", out _), "Estrudi does not exist in Assembly");
+            Assert.IsFalse(inPart.TryResolveAction("isola", out _));
+            Assert.IsFalse(inPart.TryResolveAction("sposta", out _), "Sposta does not exist in Part");
+            Assert.IsTrue(inAssembly.TryResolveAction("sposta", out var move));
+            Assert.IsFalse(move.Enabled, "present but not usable: Disabled, never invoked");
+            Assert.IsFalse(inAssembly.Invoke(move.Id));
+            Assert.AreEqual(VoiceMatchKind.NotFound, inAssembly.Catalog.ResolveVoice("estrudi").Kind);
+            Assert.AreEqual(VoiceMatchKind.NotFound, inPart.Catalog.ResolveVoice("sposta").Kind);
+        }
+
+        [Test]
+        public void Space_phrases_never_resolve_to_an_action_or_a_command()
+        {
+            var provider = new Provider(); provider.Add("design.hole", "Foro");
+            var surface = new Surface { Active = true };
+            var target = new WorkspaceVoiceTarget(surface) { InSession = true, Catalog = CatalogWith(provider) };
+            foreach (var phrase in new[] { "vai in progettazione", "progettazione", "lamiera", "assieme", "assemblaggio", "vai in lamiera", "vai in assieme" })
+            {
+                Assert.IsFalse(target.TryResolveAction(phrase, out _), phrase);
+                var route = new VoiceCommandRouter().Route(phrase, new DelegateCommandAvailability(_ => CommandAvailability.Available));
+                Assert.AreEqual(VoiceRejectReason.SpaceCommand, route.RejectReason, phrase);
+            }
+            Assert.IsEmpty(provider.Invoked);
+            Assert.IsNull(surface.LastInvoked);
+        }
+
+        [Test]
+        public void Apri_name_opens_the_unique_occurrence_in_assembly_only()
+        {
+            var surface = new Surface
+            {
+                Active = true,
+                Occurrences = new[]
+                {
+                    new KeyValuePair<string, string>("o1", "Staffa:1"), new KeyValuePair<string, string>("o2", "Staffa:2"),
+                    new KeyValuePair<string, string>("o3", "Piastra base:1"),
+                }
+            };
+            var target = new WorkspaceVoiceTarget(null, null, surface) { InSession = true, Catalog = CatalogWith(new Provider()) };
+            Assert.IsTrue(target.TryResolveAction("apri piastra base", out var open));
+            Assert.IsTrue(open.Enabled);
+            Assert.IsTrue(target.IsEnabled(open.Id));
+            Assert.IsNull(surface.Opened, "resolving does not open");
+            Assert.IsTrue(target.Invoke(open.Id));
+            Assert.AreEqual("o3", surface.Opened);
+
+            surface.Opened = null;
+            Assert.IsTrue(target.TryResolveAction("apri staffa", out var ambiguous));
+            Assert.IsFalse(ambiguous.Enabled);
+            StringAssert.Contains("Più componenti", ambiguous.Reply);
+            Assert.IsFalse(target.Invoke(ambiguous.Id));
+            Assert.IsTrue(target.TryResolveAction("apri flangia", out var missing));
+            Assert.IsFalse(missing.Enabled);
+            StringAssert.Contains("non trovato", missing.Reply);
+            Assert.IsNull(surface.Opened);
+            Assert.IsTrue(target.TryResolveAction("apri staffa 2", out var second));
+            Assert.IsTrue(target.Invoke(second.Id));
+            Assert.AreEqual("o2", surface.Opened);
+        }
+
+        [Test]
+        public void Apri_name_outside_assembly_is_not_available_and_declared_apri_actions_still_win()
+        {
+            var provider = new Provider(); provider.Add("inspect.context.enter", "Apri contesto");
+            var part = new Surface { Active = true };      // nessun elenco di occorrenze: non e un Assieme
+            var target = new WorkspaceVoiceTarget(null, part) { InSession = true, Catalog = CatalogWith(provider) };
+            Assert.IsTrue(target.TryResolveAction("apri staffa", out var refused));
+            Assert.IsFalse(refused.Enabled);
+            StringAssert.Contains("non è disponibile", refused.Reply);
+            Assert.IsFalse(target.Invoke(refused.Id));
+            Assert.IsNull(part.Opened);
+            Assert.IsTrue(target.TryResolveAction("apri contesto", out var declared));
+            Assert.AreEqual("act:inspect.context.enter", declared.Id);
+        }
+
+        [Test]
+        public void Apply_is_not_resolved_by_voice_with_or_without_the_apri_prefix()
+        {
+            var provider = new Provider(); provider.Add(CommitIds.Apply, "Applica", voice: false);
+            var target = new WorkspaceVoiceTarget(null) { InSession = true, Catalog = CatalogWith(provider) };
+            Assert.IsFalse(target.TryResolveAction("applica", out _));
+            Assert.IsFalse(target.TryResolveAction("premi applica", out _));
+            Assert.IsEmpty(provider.Invoked);
+        }
+
         [Test]
         public void Catalog_actions_are_refused_outside_a_session_or_without_a_catalog()
         {

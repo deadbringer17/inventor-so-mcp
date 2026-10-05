@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace InventorXrSo.Core.Voice
 {
@@ -40,7 +41,7 @@ namespace InventorXrSo.Core.Voice
         ShowApplyConfirmation,
     }
 
-    public enum VoiceRejectReason { None, Empty, NotInVocabulary }
+    public enum VoiceRejectReason { None, Empty, NotInVocabulary, SpaceCommand }
 
     public sealed class VoiceRouteResult
     {
@@ -128,7 +129,7 @@ namespace InventorXrSo.Core.Voice
         }
 
         /// <summary>Tutte le frasi normalizzate del vocabolario (per grammatiche vincolate del motore STT).</summary>
-        public IReadOnlyCollection<string> GrammarPhrases => Index.Keys;
+        public IReadOnlyCollection<string> GrammarPhrases => Index.Keys.Concat(SpaceCommands.Phrases).ToArray();
 
         public VoiceRouteResult Route(string transcript, ICommandAvailability availability)
         {
@@ -136,6 +137,8 @@ namespace InventorXrSo.Core.Voice
             string key = ItalianTextNormalizer.Normalize(transcript);
             if (key.Length == 0)
                 return VoiceRouteResult.Rejected(VoiceRejectReason.Empty, key, "Nessun comando riconosciuto.");
+            if (SpaceCommands.IsSpaceCommand(key))   // M9: gli spazi non si scelgono piu; nessuna azione, solo la spiegazione
+                return VoiceRouteResult.Rejected(VoiceRejectReason.SpaceCommand, key, SpaceCommands.Explanation);
             if (!Index.TryGetValue(key, out string id))
                 return VoiceRouteResult.Rejected(VoiceRejectReason.NotInVocabulary, key, "Comando non riconosciuto. Usa i pulsanti oppure ripeti.");
 

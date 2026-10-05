@@ -13,6 +13,10 @@ namespace InventorXrSo.Xr.Voice
         bool Invoke(string commandId);
         DictationField ArmedField { get; }
         bool SetArmedField(string fieldId, double value);
+        /// <summary>M9 «apri &lt;componente&gt;»: ricerca per nome senza eseguire. Solo l'Assieme la offre.</summary>
+        VoiceOpenResult FindOccurrence(string spokenName) => VoiceOpenResult.UnavailableHere;
+        /// <summary>M9 «apri &lt;componente&gt;»: seleziona ed entra come il doppio Trigger.</summary>
+        VoiceOpenResult OpenOccurrence(string spokenName) => VoiceOpenResult.UnavailableHere;
     }
 
     /// <summary>
@@ -63,6 +67,8 @@ namespace InventorXrSo.Xr.Voice
         }
 
         private const string ActionPrefix = "act:";
+        private const string OpenPrefix = "open:";
+        private const string ReplyPrefix = "reply:";
 
         public bool TryResolveAction(string transcript, out ContextVoiceAction action)
         {
@@ -70,10 +76,26 @@ namespace InventorXrSo.Xr.Voice
             string spoken = ItalianTextNormalizer.Normalize(transcript);
             if (spoken.Length == 0 || Catalog == null) return false;
             if (TryResolveExact(spoken, out action)) return true;
-            foreach (var prefix in new[] { "premi ", "apri ", "seleziona ", "mostra " })
+            foreach (var prefix in new[] { "premi ", "seleziona ", "mostra " })
                 if (spoken.StartsWith(prefix, StringComparison.Ordinal))
                     return TryResolveExact(spoken.Substring(prefix.Length), out action);
+            if (spoken.StartsWith("apri ", StringComparison.Ordinal))
+            {
+                string name = spoken.Substring(5).Trim();
+                if (TryResolveExact(name, out action)) return true;       // «apri contesto»: azione dichiarata
+                return TryResolveOpen(name, out action);
+            }
             return false;
+        }
+
+        /// <summary>«apri &lt;componente&gt;» (M9): solo in Assieme; altrove, ignoto o ambiguo risponde senza eseguire.</summary>
+        private bool TryResolveOpen(string name, out ContextVoiceAction action)
+        {
+            var found = Current?.FindOccurrence(name) ?? VoiceOpenResult.UnavailableHere;
+            action = found.Found
+                ? new ContextVoiceAction(OpenPrefix + name, "Apri " + name, true, false)
+                : new ContextVoiceAction(ReplyPrefix + name, "Apri " + name, false, false, found.Message);
+            return true;
         }
 
         private bool TryResolveExact(string spoken, out ContextVoiceAction action)
@@ -99,6 +121,9 @@ namespace InventorXrSo.Xr.Voice
 
         public bool IsEnabled(string commandId)
         {
+            if (commandId != null && commandId.StartsWith(OpenPrefix, StringComparison.Ordinal))
+                return InSession && Current != null && Current.FindOccurrence(commandId.Substring(OpenPrefix.Length)).Found;
+            if (commandId != null && commandId.StartsWith(ReplyPrefix, StringComparison.Ordinal)) return false;
             if (commandId != null && commandId.StartsWith(ActionPrefix, StringComparison.Ordinal))
             {
                 var action = CatalogAction(commandId);
@@ -110,6 +135,8 @@ namespace InventorXrSo.Xr.Voice
         public string DisabledReason(string commandId)
         {
             if (IsEnabled(commandId)) return "";
+            if (commandId != null && commandId.StartsWith(OpenPrefix, StringComparison.Ordinal))
+                return (Current?.FindOccurrence(commandId.Substring(OpenPrefix.Length)) ?? VoiceOpenResult.UnavailableHere).Message;
             var action = CatalogAction(commandId);
             if (action != null) return string.IsNullOrEmpty(action.DisabledReason) ? UnavailableReason : action.DisabledReason;
             return commandId == CommandIds.Isolate && Current != null ? IsolateUnavailableReason : UnavailableReason;
@@ -117,6 +144,9 @@ namespace InventorXrSo.Xr.Voice
 
         public bool Invoke(string commandId)
         {
+            if (commandId != null && commandId.StartsWith(OpenPrefix, StringComparison.Ordinal))
+                return InSession && Current != null && Current.OpenOccurrence(commandId.Substring(OpenPrefix.Length)).Found;
+            if (commandId != null && commandId.StartsWith(ReplyPrefix, StringComparison.Ordinal)) return false;
             if (commandId != null && commandId.StartsWith(ActionPrefix, StringComparison.Ordinal))
             {
                 var action = CatalogAction(commandId);
@@ -151,6 +181,8 @@ namespace InventorXrSo.Xr.Voice
             public bool IsEnabled(string commandId) => _ws.IsEnabled(commandId);
             public bool Invoke(string commandId) => _ws.Invoke(commandId);
             public bool SetArmedField(string fieldId, double value) => _ws.SetArmedField(fieldId, value);
+            public VoiceOpenResult FindOccurrence(string spokenName) => _ws.FindOccurrenceByName(spokenName);
+            public VoiceOpenResult OpenOccurrence(string spokenName) => _ws.OpenByName(spokenName);
             public DictationField ArmedField
             {
                 get

@@ -3,12 +3,14 @@ namespace InventorXrSo.Core.Voice
     /// <summary>Un'azione del pannello corrente, risolta sul thread principale.</summary>
     public sealed class ContextVoiceAction
     {
-        public ContextVoiceAction(string id, string label, bool enabled, bool confirm)
-        { Id = id; Label = label; Enabled = enabled; RequiresConfirmation = confirm; }
+        public ContextVoiceAction(string id, string label, bool enabled, bool confirm, string reply = null)
+        { Id = id; Label = label; Enabled = enabled; RequiresConfirmation = confirm; Reply = reply ?? ""; }
         public string Id { get; }
         public string Label { get; }
         public bool Enabled { get; }
         public bool RequiresConfirmation { get; }
+        /// <summary>Risposta italiana da mostrare quando l'azione non e eseguibile (non trovata, ambigua, non disponibile).</summary>
+        public string Reply { get; }
     }
 
     /// <summary>Azioni contestuali dei workspace, oltre al vocabolario fisso.</summary>

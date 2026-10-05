@@ -998,6 +998,36 @@ namespace InventorXrSo.Xr
             return true;
         }
 
+        /// <summary>Voice «apri &lt;componente&gt;»: finds a unique occurrence of the loaded assembly by normalized name (no side effects).</summary>
+        public VoiceOpenResult FindOccurrenceByName(string spokenName)
+        {
+            if (!Active || _context == null)
+                return new VoiceOpenResult(VoiceOpenStatus.Unavailable, null, "Componenti non ancora caricati.");
+            return OccurrenceNameMatcher.Match(_context.Occurrences.Select(o => new KeyValuePair<string, string>(o.Id, o.Name)), spokenName);
+        }
+
+        /// <summary>
+        /// Voice «apri &lt;componente&gt;»: selects the unique occurrence with that name and enters it through the same path as the
+        /// double Trigger (<see cref="TryEnterSelected"/>, same guards and HUD). Ambiguous or unknown names change nothing.
+        /// </summary>
+        public VoiceOpenResult OpenByName(string spokenName)
+        {
+            var found = FindOccurrenceByName(spokenName);
+            if (found.Found) OpenOccurrenceAsync(found.OccurrenceId);
+            return found;
+        }
+
+        private async void OpenOccurrenceAsync(string id)
+        {
+            try
+            {
+                await SelectOccurrenceAsync(id);
+                if (!Active || _occurrence?.Id != id) { SetNotice(Editable ? "Componente non selezionabile." : CommandReason()); Refresh(); return; }
+                TryEnterSelected(out _);
+            }
+            catch (Exception ex) { SetNotice(ex.Message); Refresh(); }
+        }
+
         /// <summary>Test seam: seconds clock of the double Trigger detector (default: unscaled game time).</summary>
         public Func<double> DoubleTriggerClock { get; set; }
         /// <summary>0..1 of the double-Trigger window after a first valid press (for the controller legend ring); 0 otherwise.</summary>
