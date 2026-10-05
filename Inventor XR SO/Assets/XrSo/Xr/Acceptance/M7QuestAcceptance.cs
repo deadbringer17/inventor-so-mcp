@@ -19,17 +19,25 @@ namespace InventorXrSo.Xr
     /// <summary>
     /// Opt-in, fixture-scoped M7 acceptance runner (Ispeziona, engineering verification). Every action is invoked by id through the
     /// catalog: SYNTHETIC input. Interference, distance and health run against the real Inventor fixture.
+    /// M9 migration (UNVERIFIED without a device): Ispeziona is no longer a workspace of its own but the tool provider of every context,
+    /// and the fixture assembly opens Assieme by itself (the active document decides the context). Components are therefore selected
+    /// through the Assieme "Componenti" list (the selection Visibilita and Verifica act on, see InspectWorkspace.ExternalSelection)
+    /// instead of Esplora; every Ispeziona action is still invoked by id. The M7 gates (M7-01..M7-05, M7-07) keep their assertions.
     /// </summary>
     internal sealed class M7QuestAcceptance : QuestAcceptanceRunner
     {
         internal static readonly string[] ReflectedMembers =
         {
             "AppController._inspect",
+            "AppController._assembly",
             "AppController._catalog",
             "AppController.sceneView",
             "AppController.EnterSession",
             "InspectWorkspace._context",
             "InspectWorkspace._busy",
+            "AssemblyWorkspace._busy",
+            "AssemblyWorkspace._context",
+            "AssemblyWorkspace._occurrence",
             "InspectWorkspace._documentState",
             "InspectWorkspace._verifySession",
             "InspectWorkspace._visibility",
@@ -57,6 +65,10 @@ namespace InventorXrSo.Xr
             RequireFixture();
             Check(fixture.Graph.Kind == "assembly", "fixture scene is the assembly");
             Call(App, "EnterSession", EnvironmentMode.MixedReality);
+            var assembly = Read<AssemblyWorkspace>(App, "_assembly");
+            Check(assembly != null, "AppController owns the Assieme workspace");
+            await WaitUntil(() => assembly.Active && !ReadBoolean(assembly, "_busy") && Read<AssemblyContext>(assembly, "_context") != null, ct);
+            Record("M9: the fixture assembly opened Assieme by itself; Ispeziona tools act on the component selected there");
             var inspect = Inspect;
             var view = Read<CadSceneView>(App, "sceneView");
             var context = Read<BrowserContext>(inspect, "_context");
@@ -68,7 +80,7 @@ namespace InventorXrSo.Xr
             Record("Actions are invoked by id through the catalog (synthetic input); Inventor answers are real");
 
             // M7-01: visibility, local only.
-            await SelectByBrowser(inspect, "M7_C", ct);
+            await SelectComponentAsync(assembly, "M7_C", ct);
             var c = view.Find(Node(context, "M7_C").OccurrenceId);
             RunAction(InspectWorkspace.IdHide);
             Check(visibility.Get(c.OccurrenceId) == OccurrenceVisibility.Hidden, "M7_C is hidden");
@@ -102,9 +114,9 @@ namespace InventorXrSo.Xr
             Pass("M7-02", "1 pair M7_A/M7_B, " + F(pair.VolumeMm3) + " mm3, " + pair.Boxes.Count + " box(es), elapsed " + (interference.ElapsedMs?.ToString() ?? "?") + " ms; row focus and Back verified");
 
             // M7-03: minimum distance M7_A - M7_C.
-            await SelectByBrowser(inspect, "M7_A", ct);
+            await SelectComponentAsync(assembly, "M7_A", ct);
             RunAction(InspectWorkspace.IdDistance);
-            await SelectByBrowser(inspect, "M7_C", ct);
+            await SelectComponentAsync(assembly, "M7_C", ct);
             RunAction(InspectWorkspace.IdDistance);
             await WaitUntil(() => session.Distance.Status != VerifyStatus.Running, ct, 180);
             Check(session.Distance.Status == VerifyStatus.Done, "distance finished: " + session.Distance.ErrorMessage);
@@ -196,14 +208,18 @@ namespace InventorXrSo.Xr
             Check(action != null && action.TryInvoke(), "the open list has an entry containing '" + text + "'");
         }
 
-        /// <summary>Esplora, then the component by name: the same path as the palette (synthetic).</summary>
-        private async Task SelectByBrowser(InspectWorkspace inspect, string name, CancellationToken ct)
+        /// <summary>
+        /// The Assieme "Componenti" list, then the component by name: the palette path of M9 (synthetic). Ispeziona follows that selection
+        /// on its next frame, so the Visibilita and Verifica actions become enabled once it has been taken over.
+        /// </summary>
+        private async Task SelectComponentAsync(AssemblyWorkspace assembly, string name, CancellationToken ct)
         {
-            await WaitUntil(() => !ReadBoolean(inspect, "_busy"), ct);
-            RunAction(InspectWorkspace.IdBrowse);
-            var action = Inspect.Actions.FirstOrDefault(a => a.Id.StartsWith(InspectWorkspace.IdPickPrefix, StringComparison.Ordinal) && a.Label.EndsWith(name, StringComparison.Ordinal));
-            Check(action != null && action.TryInvoke(), "Esplora lists " + name);
-            await WaitUntil(() => !ReadBoolean(inspect, "_busy"), ct);
+            await WaitUntil(() => !ReadBoolean(assembly, "_busy") && Catalog.Find(AssemblyWorkspace.IdComponents)?.Enabled == true, ct);
+            RunAction(AssemblyWorkspace.IdComponents);
+            var action = assembly.Actions.FirstOrDefault(a => a.Id.StartsWith(AssemblyWorkspace.IdPickPrefix, StringComparison.Ordinal) && a.Label.Contains(name));
+            Check(action != null && action.Enabled && action.TryInvoke(), "Assieme lists " + name);
+            await WaitUntil(() => Read<AssemblyOccurrence>(assembly, "_occurrence")?.Name?.Contains(name) == true && !ReadBoolean(assembly, "_busy"), ct);
+            await WaitUntil(() => Catalog.Find(InspectWorkspace.IdHide)?.Enabled == true, ct);
         }
 
         private static bool RayHits(CadSceneView view, CadInstance instance)

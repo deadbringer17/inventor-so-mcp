@@ -29,6 +29,7 @@ namespace InventorXrSo.Xr
             "AppController.selectionVisuals",
             "AppController.environment",
             "AppController.EnterSession",
+            "AppController.CloseAuthoring",
             "AppController.OnPicked",
             "InspectWorkspace._context",
             "InspectWorkspace._section",
@@ -69,6 +70,10 @@ namespace InventorXrSo.Xr
             Record("Dedicated fixture loaded: " + fixture.Graph.Root.Name);
 
             Call(App, "EnterSession", EnvironmentMode.MixedReality);
+            // M9 migration (UNVERIFIED without a device): the router opens Assieme for the fixture assembly. M2 exercises the Ispeziona
+            // workspace (Esplora, Proprieta, measure, section, scale, document activation), so the authoring workspace is parked here and
+            // again after each document change (the router opens Progettazione for the activated part). The navigation is the M9 runner's.
+            Call(App, "CloseAuthoring");
             var view = Read<CadSceneView>(App, "sceneView");
             var visuals = Read<SelectionVisuals>(App, "selectionVisuals");
             var environment = Read<EnvironmentModeController>(App, "environment");
@@ -90,11 +95,11 @@ namespace InventorXrSo.Xr
             Record("Actions are invoked by id through the catalog and numbers typed on the keypad entry (synthetic input)");
             Check(inspect.Active && ReferenceEquals(Catalog.Active, inspect), "Ispeziona is the active workspace of the palette");
             var tabs = Catalog.Tabs.Select(t => t.Label).ToList();
-            Check(tabs.SequenceEqual(new[] { "Misura", "Sezione", "Vista", "Visibilità", "Verifica", "Spazi" }), "palette tabs are " + string.Join(" / ", tabs));
+            Check(tabs.SequenceEqual(new[] { "Misura", "Sezione", "Esplora", "Vista", "Documento" }), "palette tabs without an authoring workspace are " + string.Join(" / ", tabs));
             foreach (var id in new[] { InspectWorkspace.IdBrowse, InspectWorkspace.IdProperties, InspectWorkspace.IdMeasure, InspectWorkspace.IdSection,
                 InspectWorkspace.IdScale, InspectWorkspace.IdEnvironment, InspectWorkspace.IdDocuments })
                 Check(Catalog.Find(id) != null, "the catalog declares '" + id + "'");
-            Pass("M2-Inspect", "Ispeziona on the palette with tabs Misura, Sezione, Vista, Visibilita, Verifica; Esplora, Proprieta, Misura, Sezione, Scala and the environment switch are declared actions");
+            Pass("M2-Inspect", "Ispeziona on the palette (no authoring workspace open) with tabs Misura, Sezione, Esplora, Vista, Documento; Esplora, Proprieta, Misura, Sezione, Scala and the environment switch are declared actions");
 
             // M2-Browser: fixture hierarchy as a picker list of the Vista tab.
             RunAction(InspectWorkspace.IdBrowse);
@@ -253,6 +258,7 @@ namespace InventorXrSo.Xr
                 ? Session.Scene : null, ct);
             await WaitUntil(() => context.Graph != null && context.Graph.DocumentId == partScene.Graph.DocumentId
                 && view.DocumentId == partScene.Graph.DocumentId && view.Instances.Count >= 1, ct);
+            Call(App, "CloseAuthoring");   // M9: the router opened Progettazione for the part; the Ispeziona pick path below needs it closed
             Pass("M2-Activate", "Browser activated " + partDoc.Name + "; session scene root is now the part " + partScene.Graph.Root.Name);
 
             // M2-Stale: the scene change invalidated measurements, selection and section.
@@ -293,6 +299,7 @@ namespace InventorXrSo.Xr
                 ? Session.Scene : null, ct);
             await WaitUntil(() => context.Graph != null && context.Graph.DocumentId == backScene.Graph.DocumentId && view.Instances.Count == 2, ct);
             RequireFixture();
+            Call(App, "CloseAuthoring");   // M9: the router reopened Assieme for the assembly
             Check(measure.PinnedCount == 0 && selection.Current.Kind == SelectionKind.None && !section.Active,
                 "nothing from the previous scene survived the return to the assembly");
             Pass("M2-Activate", "assembly " + backScene.Graph.Root.Name + " reactivated through the Browser; 2 occurrences shown again");

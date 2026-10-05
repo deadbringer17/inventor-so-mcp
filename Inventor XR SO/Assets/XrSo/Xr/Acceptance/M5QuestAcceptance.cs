@@ -118,7 +118,8 @@ namespace InventorXrSo.Xr
             _ws = Read<LamieraWorkspace>(App, "_lamiera");
             Check(_ws != null, "AppController owns a Lamiera workspace");
             await WaitUntil(() => _ws.IsPrimary, ct);
-            if (!_ws.Active) { Record("Lamiera opened by invoking the Spazi action 'spaces.lamiera' (synthetic input)"); RunAction("spaces.lamiera"); }
+            // M9: the router opens Lamiera by itself once sheet-metal detection flips the context of the active part (no Spazi action any more).
+            if (!_ws.Active) { Record("Lamiera opened by the context router after sheet-metal detection (M9 navigation)"); await WaitUntil(() => _ws.Active, ct, 90); }
             Check(_ws.Active, "Lamiera workspace is open");
             // The whole run uses the synthetic pen: real controllers (held, resting or untracked) must not nudge chips or arm fields.
             BeginSyntheticInput(); _holdSynthetic = true;
@@ -420,6 +421,10 @@ namespace InventorXrSo.Xr
         private XrInput _appInput, _syntheticInput;
         private SyntheticInputSource _syntheticSource;
         private float _syntheticClock;
+        // M9: two Trigger presses on the same face inside 350 ms are a double Trigger (feature edit). The synthetic frames are
+        // microseconds apart, so every press gets its own far-away window on a clock the runner owns.
+        private double _doubleClock = 1000;
+        private bool _lastTrigger;
 
         /// <summary>
         /// The workspace listens to a synthetic <see cref="XrInput"/> for the duration of the gesture checks (the application's
@@ -438,6 +443,7 @@ namespace InventorXrSo.Xr
             _syntheticInput.Source = _syntheticSource;
             Check(_syntheticInput.Synthetic, "the gesture input is flagged synthetic");
             Call(_ws, "AttachInput", _syntheticInput);
+            _ws.DoubleTriggerClock = () => _doubleClock;
             Frame(true, false, false, false, false, false);
         }
 
@@ -447,6 +453,7 @@ namespace InventorXrSo.Xr
             Frame(true, false, false, false, false, false);
             Call(_ws, "AttachInput", _appInput);
             _ws.UiHitOverride = null;
+            _ws.DoubleTriggerClock = null;
             Destroy(_syntheticInput);
             _syntheticInput = null; _syntheticSource = null;
         }
@@ -458,6 +465,8 @@ namespace InventorXrSo.Xr
         private void Frame(bool tracked, bool grip, bool trigger, bool gripDown, bool triggerDown, bool ui)
         {
             var frame = new XrInputFrame { PenTracked = tracked, PenGrip = grip, PenTrigger = trigger, PaletteTracked = true };
+            if (trigger && !_lastTrigger) _doubleClock += 5;   // a new press never joins the previous one into a double Trigger
+            _lastTrigger = trigger;
             _ws.UiHitOverride = () => ui;   // deterministic UI hit: the real controller's ray must not decide the gesture
             _syntheticSource.Next = frame;   // the component's own Update polls the same state: no phantom release between frames
             _syntheticInput.Poll(frame, _syntheticClock += 0.016f);

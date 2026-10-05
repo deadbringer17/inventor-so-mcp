@@ -25,6 +25,9 @@ namespace InventorXrSo.Xr
         protected string FixturePrefix => "XR_" + FixtureMilestone.ToUpperInvariant() + "_Quest_Acceptance";
         protected string LogPath { get; private set; }
 
+        /// <summary>Every gate id passed to <see cref="NotCovered"/> in this run, in order (a runner may decide its verdict on it).</summary>
+        protected readonly System.Collections.Generic.List<string> NotCoveredGates = new System.Collections.Generic.List<string>();
+
         protected AppController App { get; private set; }
         protected SessionController Session { get; private set; }
 
@@ -54,6 +57,12 @@ namespace InventorXrSo.Xr
 
         protected abstract Task Run(CancellationToken ct);
 
+        /// <summary>
+        /// Final verdict line written after <see cref="Run"/> returns without throwing (a throw is always "FAIL; ..."). The default is
+        /// "PASS COMPLETE; note" (runners M1-M8); a runner whose verdict depends on its NOT COVERED sub-cases (M9) overrides it.
+        /// </summary>
+        protected virtual string Completion() => "PASS COMPLETE; " + CompletionNote;
+
         private async void Start()
         {
             LogPath = Path.Combine(Application.persistentDataPath, Milestone + "-acceptance.txt");
@@ -64,7 +73,7 @@ namespace InventorXrSo.Xr
                 File.WriteAllText(LogPath, string.Empty);
                 Record("START; waiting for online Inventor fixture");
                 await Run(timeout.Token);
-                Record("PASS COMPLETE; " + CompletionNote);
+                Record(Completion());
             }
             catch (Exception ex)
             {
@@ -85,7 +94,11 @@ namespace InventorXrSo.Xr
         }
 
         protected void Pass(string gate, string message) => Record("PASS [" + gate + "] " + message);
-        protected void NotCovered(string gate, string reason) => Record("NOT COVERED [" + gate + "] " + reason);
+        protected void NotCovered(string gate, string reason)
+        {
+            NotCoveredGates.Add(gate);
+            Record("NOT COVERED [" + gate + "] " + reason);
+        }
 
         protected static void Check(bool condition, string message)
         {

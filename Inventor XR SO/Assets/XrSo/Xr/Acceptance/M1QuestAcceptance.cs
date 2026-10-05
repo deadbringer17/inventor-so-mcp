@@ -37,6 +37,7 @@ namespace InventorXrSo.Xr
             "AppController.environment",
             "AppController.RefreshHome",
             "AppController.EnterSession",
+            "AppController.CloseAuthoring",
             "AppController.OnPicked",
             "HomePanel._title",
             "HomePanel._body",
@@ -96,6 +97,11 @@ namespace InventorXrSo.Xr
             // Enter the session as the Home button does.
             Call(App, "EnterSession", EnvironmentMode.MixedReality);
             Check(ReadBoolean(App, "_inSession"), "EnterSession switched the app into the session");
+            // M9 migration (UNVERIFIED without a device): the active document decides the workspace, so a session on the fixture assembly
+            // opens Assieme and raises the model on the bench. The M1 gates exercise the Ispeziona-only selection path and the 1:1 scene,
+            // so the runner parks the authoring workspace; the router reopens a workspace only on a document change. Context navigation
+            // itself is covered by the M9 runner.
+            Call(App, "CloseAuthoring");
             var view = Read<CadSceneView>(App, "sceneView");
             var visuals = Read<SelectionVisuals>(App, "selectionVisuals");
             var environment = Read<EnvironmentModeController>(App, "environment");

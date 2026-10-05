@@ -23,13 +23,15 @@ namespace InventorXrSo.Xr
         protected override string Milestone => "m4";
         protected override int TimeoutSeconds => 180;
 
-        private const string SpaceAssembly = "spaces.assembly", SpaceInspect = "spaces.inspect";
-
         private AssemblyWorkspace _ws;
         private bool _syntheticKeypadNoted;
         private XrInput _appInput, _syntheticInput;
         private SyntheticInputSource _syntheticSource;
         private float _syntheticClock;
+        // M9: two Trigger presses on the same component inside 350 ms are a double Trigger (enter the component). The synthetic frames
+        // are microseconds apart, so every press gets its own far-away window on a clock the runner owns.
+        private double _doubleClock = 1000;
+        private bool _lastTrigger;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AfterSceneLoad() => StartIfRequested<M4QuestAcceptance>("xr_m4_acceptance");
@@ -110,8 +112,8 @@ namespace InventorXrSo.Xr
 
             Call(app, "EnterSession", EnvironmentMode.StudioVr);
             _ws = Read<AssemblyWorkspace>(app, "_assembly");
-            // Open Assieme like the Spazi tab does: the action "Assieme" of the catalog, by id.
-            RunAction(SpaceAssembly);
+            // M9: the router opens Assieme for the fixture assembly (no Spazi action any more).
+            await WaitUntil(() => _ws.Active, ct, 60);
             var workspace = _ws;
             var backend = Read<IAssemblyWorkspaceBackend>(workspace, "_backend");
             var view = Read<CadSceneView>(workspace, "_view");
@@ -269,9 +271,10 @@ namespace InventorXrSo.Xr
             }, ct);
             await WaitFor(() => appSession.Scene?.Graph?.State?.Revision == redoneState.Revision
                 ? appSession.Scene : null, ct);
-            RunAction(SpaceInspect);
-            Check(!workspace.Active, "Assembly workspace closes from the Spazi tab");
-            RunAction(SpaceAssembly);
+            // M9: Close()/Open() are the calls the router makes when the context changes (UNVERIFIED without a device).
+            workspace.Close();
+            Check(!workspace.Active, "Assembly workspace closes");
+            workspace.Open();
             var reopened = await WaitFor(() => Ctx, ct);
             Check(reopened.Occurrences.Any(item => item.CanMove), "reopened Assembly context exposes movable DOF");
             Record("PASS; reopened Assembly context and DOF");
@@ -333,6 +336,7 @@ namespace InventorXrSo.Xr
             _syntheticInput.Source = _syntheticSource;
             Check(_syntheticInput.Synthetic, "the gesture input is flagged synthetic");
             Call(_ws, "AttachInput", _syntheticInput);
+            _ws.DoubleTriggerClock = () => _doubleClock;
             Frame(true, false, false, false);
             Record("Controller gestures are fed as SYNTHETIC XrInput frames, not a person's hand");
         }
@@ -343,6 +347,7 @@ namespace InventorXrSo.Xr
             Frame(true, false, false, false);
             Call(_ws, "AttachInput", _appInput);
             _ws.UiHitOverride = null;
+            _ws.DoubleTriggerClock = null;
             Destroy(_syntheticInput);
             _syntheticInput = null; _syntheticSource = null;
         }
@@ -353,6 +358,8 @@ namespace InventorXrSo.Xr
         private void Frame(bool tracked, bool grip, bool trigger, bool ui)
         {
             var frame = new XrInputFrame { PenTracked = tracked, PenGrip = grip, PenTrigger = trigger, PaletteTracked = true };
+            if (trigger && !_lastTrigger) _doubleClock += 5;   // a new press never joins the previous one into a double Trigger
+            _lastTrigger = trigger;
             _ws.UiHitOverride = () => ui;   // deterministic UI hit: the real controller's ray must not decide the gesture
             _syntheticSource.Next = frame;   // the component's own Update polls the same state: no phantom release between frames
             _syntheticInput.Poll(frame, _syntheticClock += 0.016f);
@@ -457,8 +464,8 @@ namespace InventorXrSo.Xr
                 Pass("A14-programmatic", "UI hit prevents gesture; tracking loss cancels armed gesture without CAD mutation");
                 Frame(true, false, false, false);
                 RunAction(CommitIds.Cancel);
-                RunAction(SpaceInspect);
-                RunAction(SpaceAssembly);
+                workspace.Close();   // M9: the calls the router makes (UNVERIFIED without a device)
+                workspace.Open();
                 await WaitFor(() => Ctx, ct);
                 Check(workspace.Active && !ReadBoolean(workspace, "_dragging") && !designSession.CanApply,
                     "Assembly reopens clean after tracking loss");

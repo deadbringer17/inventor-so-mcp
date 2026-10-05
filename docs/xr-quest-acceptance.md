@@ -1,4 +1,4 @@
-# Test automatici sul Quest 3 — standard M1–M8
+# Test automatici sul Quest 3 — standard M1–M9
 
 Standard nato con M4 ([collaudo M4](xr-m4-collaudo.md)) ed esteso il 29 settembre
 2026 a M1, M2, M3 e M5 ([piano](superpowers/plans/2026-09-29-quest-acceptance-runners.md)).
@@ -11,11 +11,11 @@ reale, su un documento di prova dedicato, e scrive log e screenshot come evidenz
 | Pezzo | Percorso |
 |---|---|
 | Base comune (intent Android, log, attese, riflessione, screenshot, guardia fixture) | `Inventor XR SO/Assets/XrSo/Xr/Acceptance/QuestAcceptanceRunner.cs` |
-| Runner M1, M2, M3, M5, M6, M7, M8 | `Inventor XR SO/Assets/XrSo/Xr/Acceptance/M{1,2,3,5,6,7,8}QuestAcceptance.cs` |
+| Runner M1, M2, M3, M5, M6, M7, M8, M9 | `Inventor XR SO/Assets/XrSo/Xr/Acceptance/M{1,2,3,5,6,7,8,9}QuestAcceptance.cs` |
 | Runner M4 (stessi passi del collaudo del 28 settembre, ora sulla base comune) | `Inventor XR SO/Assets/XrSo/Xr/M4QuestAcceptance.cs` |
-| Fixture Inventor M1, M2, M3, M5, M6, M7 | `bridge/tests/QuestAcceptanceFixtures/` |
+| Fixture Inventor M1, M2, M3, M5, M6, M7 (M8 e M9 riusano la M6) | `bridge/tests/QuestAcceptanceFixtures/` |
 | Fixture Inventor M4 | `bridge/tests/M4LiveProbe -- --prepare-quest / --restore-quest` |
-| Orchestrazione ADB | `scripts/run-quest-acceptance.ps1` |
+| Orchestrazione ADB | `scripts/run-quest-acceptance.ps1` (M8: `scripts/run-m8-acceptance.ps1`, M9: `scripts/run-m9-acceptance.ps1`) |
 | Test di contratto (campi/metodi letti per riflessione, runner esclusi dall'APK ordinario) | `Inventor XR SO/Assets/XrSo/Tests/EditMode/QuestAcceptanceContractTests.cs` |
 
 Regole:
@@ -27,13 +27,14 @@ Regole:
 - Prima di ogni mutazione verificano che il documento attivo inizi con
   `XR_MN_Quest_Acceptance`. Dopo ogni preview controllano, tramite il backend,
   che documento e revisione di Inventor non siano cambiati.
-  M8 riusa esplicitamente la fixture **M6**, non un documento M8 o dell'utente.
+  M8 e M9 riusano esplicitamente la fixture **M6** (guardia `XR_M6_Quest_Acceptance`), non un documento M8, M9 o dell'utente.
 - Usano gli oggetti reali costruiti da `AppController`: workspace, `DesignSession`,
   backend su TLS pinnato. I percorsi sono gli stessi dei pulsanti UI.
 - Evidenza nell'area persistente dell'app: `mN-acceptance.txt` e
   `mN-acceptance-*.png`. Ogni riga ha la forma `PASS [gate] ...`,
   `NOT COVERED [gate] motivo` oppure `Screenshot: ...`. L'ultima riga è
-  `PASS COMPLETE; ...` oppure `FAIL; ...`.
+  `PASS COMPLETE; ...` oppure `FAIL; ...` (il runner M9 può chiudere anche con
+  `PARTIAL; NOT COVERED: ...`, vedi sotto).
 - Il runner **non** esercita controller fisici, leggibilità, tracking, microfono
   né audio. Un `PASS COMPLETE` chiude solo i sottocasi programmatici elencati
   sotto. I gate fisici restano aperti finché non vengono provati sul visore.
@@ -47,6 +48,59 @@ M6, esegue il runner M8 in un processo figlio e ripristina documento e APK nel
 Il runner M8 riusa i controlli nativi/input M6 (id M6 nel log) e aggiunge tema,
 font, contrasto, fit e 100 rebuild. Non certifica performance, reale DPI Windows,
 scansione QR o sessione fisica. Stato/evidenze in [verbale M8](xr-m8-verification.md).
+
+### Runner M9 (navigazione per contesto)
+
+M9 (spec `docs/superpowers/specs/2026-10-04-m9-navigazione-contesto-design.md`, piano Task 19):
+`scripts/run-m9-acceptance.ps1 -Apk <qa.apk> -OrdinaryApk <ordinario.apk> -Serial <seriale>` ha la stessa
+struttura dello script M8: verifica che il Quest sia sveglio, prepara la fixture **M6** (il runner M9 non ha una
+fixture propria, come M8), lancia `run-quest-acceptance.ps1 -Milestone m9` in un processo figlio (timeout 960 s) e
+nel `finally` ispeziona e ripristina la fixture, riattiva il documento dell'utente e reinstalla l'APK ordinario.
+Richiede PowerShell 7, ADB sul PATH e Inventor 2027 con host connesso. Intent `xr_m9_acceptance`; log
+`m9-acceptance.txt`; screenshot `m9-acceptance-ghost-context.png`, `-legend-rest.png`, `-legend-armed.png`,
+`-legend-component.png`; ogni riga ha prefisso `[M9Quest]` e i gate `M9-01`...`M9-12`.
+
+Che cosa esercita (input **sintetico** e risposte di Inventor reali; nessun comando CAD diverso da quelli sotto):
+
+| Sottocaso | Gate | Come |
+|---|---|---|
+| Assieme aperto dal documento attivo, scheda Documento (percorso, Torna, Salva, documenti aperti, Ricentra), nessuna azione `spaces.*` | M9-01 | stato della pila, catalogo e palette |
+| Il documento cambia dal PC e dalla scheda Documento (elenco documenti aperti) | M9-01 | `ActivateOpenAsync` diretto (come farebbe il PC) e azione `doc.open.*` |
+| Doppio Trigger su componente: parte e lamiera nel contesto giusto, livello nella pila con occorrenza e posa; ingresso rifiutato con motivo a revisione CAD pendente (guardia sintetica) e durante Sposta | M9-02 | due pressioni sintetiche sul corpo nel modello, con l'orologio del rilevatore pilotato dal runner (finestra di 350 ms, nessuno sleep) |
+| Sottoassieme a due livelli e doppio Torna | M9-02 | solo se la fixture ha un'occorrenza di assieme (la M6 non ce l'ha: NOT COVERED) |
+| Fantasma: presente, semitrasparente, non selezionabile (nessun collider né `CadBody`, layer Ignore Raycast, niente ombre), posato all'occorrenza (distanza dall'origine della parte), etichetta e revisione, coerente dopo Adatta, screenshot | M9-03 | `GhostContext` letto per riflessione dall'`AppController` |
+| Torna: X breve = solo suggerimento, X tenuto 1 s (Poll sintetico con timestamp) e `doc.back` dalla scheda; «●» dopo una modifica; nessun salvataggio (l'unica chiamata di Torna è l'attivazione del padre) | M9-04 | `XrInput.Poll` con tempi espliciti |
+| Schede per contesto (Assieme, Parte, Lamiera) senza schede inerti, gruppo Ispeziona scorso con lo stick e lasciato con X, Vista unica, Opzioni e Vincoli che compaiono da soli, Misura e Sezione attive durante la modifica e sospese solo da una revisione CAD | M9-05 | catalogo reale e palette |
+| Ogni riga di `InputMap` per ogni stato (12 tasti x 5 stati): l'azione attesa, le righe senza voce restano mute, secondarie (doppio Trigger, X tenuto), rotazione di 15 gradi a riposo; stati Rest, SketchOpen, ArmedOrHandle, Keypad osservati anche dal vivo | M9-06 | frame sintetici su `XrInput` e `InputDispatcher` con sonda di stato forzata |
+| Legenda 3D per stato: etichette = `InputMap.Active`, al massimo 12 caratteri, applicate entro 150 ms, anellini di X tenuto e doppio Trigger, interruttore Vista, screenshot | M9-07 | `ControllerLegend.Labels` |
+| Doppio Trigger su faccia: scheda «Feature: nome», chip di distanza 10 mm, un solo `set_parameter` in anteprima, Applica dalla barra, parametro riletto da Inventor (12 mm), Undo XR di pulizia; tipo non supportato sulla lamiera | M9-09 | backend reale (`inventor_face_feature`, `inventor_plan_change`, commit) |
+| Voce: comandi di spazio rifiutati con la spiegazione, vocabolario del contesto, Applica mai a voce, «apri <componente>» come il doppio Trigger, «torna» | M9-10 | testo iniettato nel `PushToTalkController` reale |
+
+Esiti. `PASS COMPLETE` solo se nessun sottocaso del runner è rimasto NOT COVERED; altrimenti l'ultima riga è
+`PARTIAL; NOT COVERED: <elenco>` e `run-quest-acceptance.ps1` esce con codice **4** (`outcome` `PARTIAL` nel
+manifest). Le prove che stanno fuori dal runner sono dichiarate NOT COVERED con suffisso `-physical`, `-probe` o
+`-suite` e non rendono il verdetto parziale, ma **restano aperte**: M9-08-probe (sonda live di `face_feature` su
+ogni tipo), M9-11-suite (suite core/EditMode/bridge e runner M1-M8 migrati da rieseguire), M9-12-physical,
+M9-07-physical (posizione e leggibilità delle etichette sui controller reali), M9-06-B-physical (tasto B passa da
+`PushToTalkInput`), M9-10-physical (microfono). Con la fixture M6 il runner chiude oggi `PARTIAL` per costruzione:
+`M9-02-subassembly` (la fixture non ha un sottoassieme), `M9-09-handle` (la maniglia di estrusione non è collegata
+alla modifica feature: solo chip) e `M9-09-highlight` (`face_feature` non restituisce le facce: si evidenzia solo
+quella scelta). Un sottoassieme annidato nella fixture e il collegamento della maniglia li chiuderebbero.
+
+Il run **non è di sola lettura**: un Apply reale di `set_parameter` sull'estrusione del blocco (10 mm -> 12 mm)
+e l'Undo XR; poi riattiva l'assieme. Dopo un run interrotto riattivare l'assieme a mano ed eseguire
+`--restore-quest m6` prima di ripetere. Scritto e compilato (`XR_SO_ACCEPTANCE`) senza visore: **non ancora
+eseguito** sul Quest. Gli esiti andranno in `docs/xr-m9-verification.md`.
+
+Migrazione dei runner M1-M8 alla navigazione M9 (il Quest non era disponibile: restano da **rieseguire**, M9-11):
+la scelta manuale dello spazio (`spaces.*`) non esiste più e il documento attivo apre da solo il workspace. M1 e M2
+parcheggiano il workspace di authoring con `AppController.CloseAuthoring` (i loro gate sono sul percorso Ispeziona e
+sulla scena 1:1) e M2 lo riparcheggia dopo ogni cambio documento; M3, M4 e M5 attendono l'apertura del router e
+usano `Open()`/`Close()` dove prima c'era il ritorno a Ispeziona; M6 entra nel blocco con un doppio Trigger
+sintetico, torna con `doc.back` dalla scheda Documento e controlla le schede del contesto; M7 seleziona i componenti
+dalla lista Componenti di Assieme (la selezione su cui agiscono Visibilità e Verifica) al posto di Esplora. M4, M5 e
+M6 spostano l'orologio del rilevatore a ogni pressione sintetica, così due tocchi sullo stesso corpo non diventano un
+doppio Trigger involontario. Il test di contratto controlla che non restino azioni `spaces.*`.
 
 ```powershell
 # 1. Test EditMode (include il contratto dei runner) e APK di collaudo
@@ -124,6 +178,7 @@ modificata (estrusione, flangia, sviluppo): va sempre eseguito
 | M4 | A/B e vincoli compatibili, preview Move, Cancel, Apply, centro nativo, Undo/Redo, stale, riapertura; runner esteso con A/B dopo CAD Move, gesture sintetiche a 0,25×, blocco UI e perdita tracking | gesto reale, leggibilità, click-through e tracking fisico di A02/A07/A14 |
 | M5 | M5-01, M5-02, M5-03 (campo numerico; gesto **sintetico** Grip+Trigger sul pomello a 1:1 e a 0,25× con +10 mm e preview nativa a revisione invariata, Grip semplice che non scrive la bozza, rilascio del Trigger e perdita tracking che chiudono il drag senza CAD, Trigger sintetico su un bordo reale), M5-04 (Cut preview/Annulla/Applica/Undo), M5-05, M5-06 (Detach senza chiamate al backend; Grip **sintetico** che sposta solo la mesh piana, non il modello), M5-07 (solo stale), M5-09, M5-10, M5-11 con testo iniettato nel push-to-talk reale senza microfono | `M5-03-physical` e `M5-06-physical`: controller e tracking reali, sensazione a scala ridotta, leggibilità, confronto visivo dello sviluppo col piegato; Face e regola/spessore, rete/preview tardiva/commit incerto, M5-08 microfono e pulsante B, M5-12 |
 | M6 | Input **sintetico** (frame di `SyntheticInputSource` sull'`XrInput` dell'app, azioni invocate per id sull'`ActionCatalog` reale). M6-01 tavolozza figlia del controller sinistro, schede e scheda Spazi su Ispeziona, Progettazione, Lamiera e Assieme, rotazione delle schede con lo stick sinistro, nessun pannello fluttuante accanto alla testa; M6-02 schizzo sul foglio orizzontale all'altezza del piano, linea con la punta penna e linea col raggio, «Vista modello» ↔ «Foglio» senza variare elementi e piano di schizzo, stesso punto fisico → stesse coordinate CAD; M6-03 chip e tastierino, passi dello stick 1/10/0,1, modalità precisione (drag della maniglia della flangia: +10 mm normale, +1 mm con Trigger sinistro), dettatura nel campo armato; M6-04 anello su componente, bordo e faccia piana, chiusura con X e col vuoto, azione dell'anello; M6-05 barra Empty, Draft, Previewing, Ready, Error, Offline, Uncertain, Applied (un Apply reale e il suo Undo), Applica solo dalla barra, tabella pura con Stale; M6-06 Assieme sollevato, isolamento solo visivo (revisione e occorrenze di Inventor invariate), «Apri in Progettazione» e «Apri in Lamiera» dal componente isolato; M6-07 una e due mani solo vista, Adatta, Ricentra; M6-08 `ResolveVoice` (disabilitato e frase ignota rifiutati, «applica» non committa, ambiguità su un catalogo controllato) con testo iniettato | M6-10 prova fisica da seduto (leggibilità, comfort, precisione della penna, aptica, trascinamento a Trigger); ergonomia e tracking reali; microfono e audio; calibrazione dell'altezza del piano (M6-07: nessun percorso nell'app la usa); Stale dal vivo; anello di Ispeziona; M6-09 (i runner M1–M5 migrati vanno rieseguiti) |
+| M9 | vedi la tabella dei sottocasi nella sezione «Runner M9»: pila e contesto che seguono il documento (Quest e PC), doppio Trigger su componente, fantasma, Torna, schede per contesto, ogni riga di `InputMap`, legenda per stato, modifica feature da faccia con parametro riletto da Inventor, voce per contesto; input **sintetico** | M9-12 prova fisica da seduto; posizione e leggibilità della legenda sui controller; tasto B e microfono; sonda live `face_feature` su ogni tipo (M9-08); regressioni M1-M8 (M9-11); con la fixture M6: sottoassieme, maniglia e evidenziazione di tutte le facce (PARTIAL) |
 
 ## Stato
 
@@ -208,3 +263,8 @@ uguale all'hash dell'APK installato sul Quest.
 Runner M6 (3 ottobre 2026): scritto e compilato con `XR_SO_ACCEPTANCE`, **non ancora
 eseguito** sul Quest con Inventor reale (stato NOT RUN). Gli esiti andranno in
 [xr-m6-verification.md](xr-m6-verification.md), sezione «Fase 5 — Collaudo».
+
+Runner M9 (5 ottobre 2026): scritto e compilato con `XR_SO_ACCEPTANCE`, coperto dal test di contratto (gate
+M9-01...M9-12 nel log, guardia sulla fixture M6, `PASS COMPLETE` solo senza sottocasi NOT COVERED), **non ancora
+eseguito** sul Quest con Inventor reale (stato NOT RUN). I runner M1-M8 migrati alla navigazione M9 compilano ma non
+sono stati rieseguiti. Gli esiti andranno in `docs/xr-m9-verification.md`.

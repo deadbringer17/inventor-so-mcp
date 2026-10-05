@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using InventorXrSo.Core.Backend;
+using InventorXrSo.Core.Navigation;
 using InventorXrSo.Core.Session;
 using InventorXrSo.Core.Ui;
 using InventorXrSo.Core.Voice;
@@ -27,6 +28,10 @@ namespace InventorXrSo.Xr
     /// The fixture is one assembly with two parts (a block and a sheet-metal sheet, both kept open): Ispeziona and Assieme run on
     /// the assembly, Progettazione on the block and Lamiera on the sheet, reached the way a user does (Apri in ... from the
     /// isolated component).
+    /// M9 migration (UNVERIFIED without a device; the gate coverage is kept): the active document decides the workspace, so there is no
+    /// Spazi tab. The fixture assembly opens Assieme by itself; the block is entered with a SYNTHETIC double Trigger on its model
+    /// (two presses on the body, the detector clock driven by the runner) and the sheet through "Apri in Lamiera" of the isolated
+    /// component (still offered); Torna from the Documento tab brings the assembly back. Palette tabs are the ones of the context.
     /// </summary>
     internal class M6QuestAcceptance : QuestAcceptanceRunner
     {
@@ -79,8 +84,6 @@ namespace InventorXrSo.Xr
         };
 
         private const string SketchName = "Base_M6";
-        private const string SpacesInspect = "spaces.inspect", SpacesDesign = "spaces.design",
-            SpacesLamiera = "spaces.lamiera", SpacesAssembly = "spaces.assembly";
         private const double FlangeHeightMm = 20;
         private const double DictatedHeightMm = 20.5;
         private const string DictatedPhrase = "venti virgola cinque";
@@ -110,6 +113,9 @@ namespace InventorXrSo.Xr
         private SyntheticInputSource _source;
         private IXrInputSource _originalSource;
         private int _fitEvents;
+        // M9: presses on the same body inside 350 ms are a double Trigger (enter the component / open the feature). Each tap of this
+        // runner is a separate press far from the previous one on a clock the runner owns, except the deliberate double Trigger.
+        private double _clock = 1000;
         private bool _syntheticKeypadNoted;
 
         private ActionCatalog Catalog => Read<ActionCatalog>(App, "_catalog");
@@ -169,7 +175,7 @@ namespace InventorXrSo.Xr
             NotCovered("M6-03-physical", "thumbstick feel (flick thresholds, accidental repeats), real keypad pointing and the microphone: dictation here is injected text, not audio");
             NotCovered("M6-04-Inspect", "Ispeziona has no contextual ring yet (it needs the picked point of the ControllerRay path, which still reads OVRInput)");
             NotCovered("M6-05-Stale-live", "a live STALE_REVISION on the commit bar needs a revision change of the active document; the backend rejection is asserted by M3-Stale and M5-07, here only the pure state table (M6-05-core) is checked");
-            NotCovered("M6-07-calibration", "no action or gesture calls Workbench.SetDeskHeight (the API exists, nothing in the app uses it) and a real calibration needs a hand at table height");
+            NotCovered("M6-07-calibration", "since M9 the Documento tab offers 'Calibra piano' (it calls Workbench.SetDeskHeight with the controller height) but a real calibration needs a hand at table height: not exercised");
             NotCovered("M6-07-physical", "one and two hand manipulation with real tracking, drift and comfort: grabs here were synthetic frames with the hand transforms placed by the runner");
             NotCovered("M6-08-physical", "push-to-talk button B, microphone and audio: recognized text was injected into the real PushToTalkController with silent samples");
             NotCovered("M6-09", "this runner does not certify the migrated M1-M5 runners: they have to be re-run on the Quest with Inventor (PASS COMPLETE each) before the gate can close");
@@ -278,6 +284,9 @@ namespace InventorXrSo.Xr
             _assembly.UiHitOverride = () => false;   // deterministic UI hit: the real controller's ray must not decide the gesture
             _lamiera.UiHitOverride = () => false;
             _design.UiHitOverride = () => false;
+            _assembly.DoubleTriggerClock = () => _clock;
+            _design.DoubleTriggerClock = () => _clock;
+            _lamiera.DoubleTriggerClock = () => _clock;
             Send(Rest());
             Record("Controller events of this run are SYNTHETIC XrInput frames (palette stick, pen trigger/grip, X, Y); the hand transforms are placed by the runner");
         }
@@ -291,6 +300,9 @@ namespace InventorXrSo.Xr
             if (_assembly != null) _assembly.UiHitOverride = null;
             if (_lamiera != null) _lamiera.UiHitOverride = null;
             if (_design != null) _design.UiHitOverride = null;
+            if (_assembly != null) _assembly.DoubleTriggerClock = null;
+            if (_lamiera != null) _lamiera.DoubleTriggerClock = null;
+            if (_design != null) _design.DoubleTriggerClock = null;
             _source = null;
         }
 
@@ -324,8 +336,14 @@ namespace InventorXrSo.Xr
             var frame = Rest(); frame.X = true; Send(frame); SendRest();
         }
 
-        /// <summary>A full pen Trigger click (release first: the events are edge based).</summary>
+        /// <summary>A full pen Trigger click (release first: the events are edge based) in its own double-Trigger window.</summary>
         private void TriggerTap()
+        {
+            _clock += 5;
+            PressTrigger();
+        }
+
+        private void PressTrigger()
         {
             SendRest();
             var frame = Rest(); frame.PenTrigger = true; Send(frame);
@@ -351,38 +369,25 @@ namespace InventorXrSo.Xr
 
         private async Task CheckShellAsync(CancellationToken ct)
         {
+            // M9: the fixture assembly is the active document, so the router opens Assieme by itself: no Spazi tab, no manual choice.
+            await WaitUntil(() => _assembly.Active && App.Context == DocContext.Assembly && !ReadBoolean(_assembly, "_busy")
+                && Read<AssemblyContext>(_assembly, "_context") != null, ct);
             var left = LeftAnchor();
             Check(left != null, "the left controller anchor exists");
             Check(_shell.Palette.Canvas.transform.IsChildOf(left), "the palette is parented to the left controller");
             Check(!_shell.Palette.Canvas.transform.IsChildOf(_head), "the palette is not a head-locked panel");
-            Check(ReferenceEquals(Catalog.Active, _inspect), "Ispeziona is the default workspace of the catalog: the palette is never empty");
-            CheckPalette("Ispeziona", _inspect,
-                new[] { InspectWorkspace.TabMeasure, InspectWorkspace.TabSection, InspectWorkspace.TabView,
-                    InspectWorkspace.TabVisibility, InspectWorkspace.TabVerify }, normalizeFirstTab: true);
-            CheckSpacesTab();
-
-            RunAction(SpacesDesign);
-            CheckPalette("Progettazione", _design, new[] { DesignWorkspace.TabSketch, DesignWorkspace.TabConstraints,
-                DesignWorkspace.TabFeature, DesignWorkspace.TabOptions, DesignWorkspace.TabParameters, DesignWorkspace.TabView });
-            CheckApplyOnlyOnBar("Progettazione", _design);
-            Check(!ActionEnabled("design.extrude"), "on an assembly document Progettazione offers no CAD command");
-            Record("diag Progettazione on the assembly document: " + Catalog.Find("design.extrude").DisabledReason);
-
-            RunAction(SpacesLamiera);
-            CheckPalette("Lamiera", _lamiera, new[] { LamieraWorkspace.TabLamiera, LamieraWorkspace.TabSketch,
-                LamieraWorkspace.TabFlat, LamieraWorkspace.TabView });
-            CheckApplyOnlyOnBar("Lamiera", _lamiera);
-
-            RunAction(SpacesAssembly);
+            Check(!_design.Active && !_lamiera.Active && ReferenceEquals(Catalog.Active, _assembly),
+                "on an assembly document Assieme serves the palette by itself: it is never empty and no workspace is chosen by hand");
             CheckPalette("Assieme", _assembly,
-                new[] { AssemblyWorkspace.TabComponents, AssemblyWorkspace.TabConstraints, AssemblyWorkspace.TabView });
+                new[] { AssemblyWorkspace.TabComponents, AssemblyWorkspace.TabConstraints, InspectWorkspace.TabInspect, ViewActions.TabView },
+                normalizeFirstTab: true);
             CheckApplyOnlyOnBar("Assieme", _assembly);
-
-            RunAction(SpacesInspect);
-            Check(ReferenceEquals(Catalog.Active, _inspect) && !_design.Active && !_lamiera.Active && !_assembly.Active,
-                "the Spazi tab brought the palette back to Ispeziona and closed the other workspaces");
-            Pass("M6-01", "palette tabs and the Spazi tab switched across Ispeziona, Progettazione, Lamiera and Assieme by action id; "
-                + "palette is a child of the left controller and no workspace has a floating panel (SYNTHETIC stick flicks and taps)");
+            CheckDocumentTab();
+            foreach (var id in ContextTabs.InspectGroup(DocContext.Assembly))
+                Check(Catalog.Palette(id).Count > 0, "the Ispeziona group tab '" + id + "' holds actions (Misura, Sezione, Visibilita, Verifica)");
+            Pass("M6-01", "Assieme opened by the active document, palette tabs of the context and the Documento tab (no Spazi tab) rotated by the left stick; "
+                + "Ispeziona tools reached through the Ispeziona group; palette is a child of the left controller and no workspace has a floating panel (SYNTHETIC stick flicks and taps); "
+                + "the Progettazione and Lamiera palettes are checked when those contexts are entered");
             await Task.Yield();
         }
 
@@ -391,7 +396,7 @@ namespace InventorXrSo.Xr
             Check(ReferenceEquals(Catalog.Active, workspace), name + ": the catalog serves the workspace that was opened");
             var tabs = Catalog.Tabs.Select(t => t.Id).ToList();
             foreach (var tab in expectedTabs) Check(tabs.Contains(tab), name + ": palette tab '" + tab + "' is present");
-            Check(tabs.Contains(ActionCatalog.DocumentTab), name + ": the Spazi tab is on every workspace");
+            Check(tabs.Contains(ActionCatalog.DocumentTab), name + ": the Documento tab is on every workspace");
             Check(!tabs.Contains(ActionCatalog.CommitTab), name + ": the commit tab is hidden from the palette");
             var counts = new List<string>();
             foreach (var id in tabs)
@@ -416,15 +421,16 @@ namespace InventorXrSo.Xr
             Record("diag " + name + " palette tabs: " + string.Join(", ", counts));
         }
 
-        private void CheckSpacesTab()
+        /// <summary>M9: the Documento tab replaced the Spazi tab: path, Torna, Salva, open documents, Ricentra, calibration, connection.</summary>
+        private void CheckDocumentTab()
         {
-            var spaces = Catalog.Palette(ActionCatalog.DocumentTab).ToDictionary(a => a.Id);
-            foreach (var id in new[] { SpacesInspect, SpacesDesign, SpacesLamiera, SpacesAssembly })
-            {
-                Check(spaces.ContainsKey(id), "the Spazi tab offers " + id);
-                Check(spaces[id].Enabled, "the Spazi action " + id + " is enabled in a session: " + spaces[id].DisabledReason);
-            }
-            Check(spaces.ContainsKey("spaces.connection"), "the Spazi tab also offers the connection action");
+            var document = Catalog.Palette(ActionCatalog.DocumentTab).ToDictionary(a => a.Id);
+            foreach (var id in new[] { DocumentActions.IdPath, DocumentActions.IdBack, DocumentActions.IdSave, DocumentActions.IdDocuments,
+                DocumentActions.IdRecenter, DocumentActions.IdCalibrate, DocumentActions.IdConnection })
+                Check(document.ContainsKey(id), "the Documento tab offers " + id);
+            Check(document[DocumentActions.IdRecenter].Enabled && document[DocumentActions.IdDocuments].Enabled, "Ricentra and Documenti aperti are enabled in a session");
+            Check(Catalog.Tabs.SelectMany(t => Catalog.Palette(t.Id)).All(a => !a.Id.StartsWith("spaces.", StringComparison.Ordinal)),
+                "no palette tab offers the removed Spazi actions");
         }
 
         private static readonly HashSet<string> KnownCanvases = new HashSet<string>
@@ -472,7 +478,6 @@ namespace InventorXrSo.Xr
 
         private async Task CheckAssemblyAsync(CancellationToken ct)
         {
-            RunAction(SpacesAssembly);
             await WaitActionAsync(AssemblyWorkspace.IdComponents, () => _assembly.Active, ct);
             var context = Read<AssemblyContext>(_assembly, "_context");
             Check(context != null && context.Occurrences.Count >= 2, "the assembly context lists at least two components");
@@ -497,7 +502,7 @@ namespace InventorXrSo.Xr
             Check(Vector3.Distance(root.position, new Vector3((float)pose.Position.X, (float)pose.Position.Y, (float)pose.Position.Z)) < 1e-3f
                 && Near(root.localScale.x, pose.Scale, 1e-3 * Math.Max(1, pose.Scale)), "the scene root sits at the raised pose and scale");
             Pass("M6-06", "Assieme raised: " + F(WorkbenchLayout.AssemblyDistance * 100) + " cm in front, " + F(WorkbenchLayout.AssemblyDrop * 100)
-                + " cm below the head, scale " + F(pose.Scale) + " (workbench pose applied; SYNTHETIC open from the Spazi action)");
+                + " cm below the head, scale " + F(pose.Scale) + " (workbench pose applied when the router opened Assieme)");
 
             // ---- select the block through the Componenti list (palette path)
             await SelectOccurrenceAsync(block, ct);
@@ -544,20 +549,37 @@ namespace InventorXrSo.Xr
             // ---- M6-07: one hand, two hands, Fit, Recenter: view only
             await CheckViewManipulationAsync(block, state0, signatureBefore, ct);
 
-            // ---- M6-06: open the isolated part in Progettazione (its document is activated, the workspace changes)
+            // ---- M6-06 (M9 navigation): the isolated component still offers both "Apri in ..." actions; the block is entered with a SYNTHETIC
+            // double Trigger on its model (the router pushes the level and opens Progettazione), the sheet later with "Apri in Lamiera".
             await SelectOccurrenceAsync(block, ct);
             RunAction(AssemblyWorkspace.IdIsolate);
             Check(ActionEnabled(AssemblyWorkspace.IdOpenDesign) && ActionEnabled(AssemblyWorkspace.IdOpenLamiera),
                 "from the isolated component both 'Apri in Progettazione' and 'Apri in Lamiera' are offered");
-            RunAction(AssemblyWorkspace.IdOpenDesign);
-            Check(await TryWaitUntil(() => _design.Active && !_assembly.Active, 20, ct), "Progettazione opened from the isolated component");
+            RunAction(AssemblyWorkspace.IdRelease);
+            _assembly.Isolation.Snap();
+            await DoubleTriggerEnterAsync(block, ct);
+            Check(await TryWaitUntil(() => _design.Active && !_assembly.Active, 30, ct), "Progettazione opened by the double Trigger on the block");
             Check(await TryWaitUntil(() => Session.Scene?.Graph?.Kind == "part" && Session.Scene.Graph.DocumentId != _assemblyDocId, 30, ct),
-                "Inventor activated the part document of the isolated component");
+                "Inventor activated the part document of the component");
+            Check(App.Navigation.Levels.Count == 2 && App.Context == DocContext.Part, "the router pushed one level and the context is Parte");
             await WaitUntil(() => !ReadBoolean(_design, "_busy") && Read<DesignContext>(_design, "_context") != null
                 && Read<DesignHistory>(_design, "_history") != null && ActionEnabled("design.extrude"), ct);
             RequireFixture();
-            Pass("M6-06", "'Apri in Progettazione' from the isolated component activated " + Session.Scene.Graph.Root.Name
-                + " and opened Progettazione on it (SYNTHETIC action tap)");
+            Pass("M6-06", "double Trigger on the block (two SYNTHETIC presses on its model) activated " + Session.Scene.Graph.Root.Name
+                + " and opened Progettazione on it");
+        }
+
+        /// <summary>The real double Trigger path: press 1 selects the body under the ray, press 2 arrives 0.2 s later on the detector clock.</summary>
+        private async Task DoubleTriggerEnterAsync(AssemblyOccurrence occurrence, CancellationToken ct)
+        {
+            SnapPoses();
+            var center = OccurrenceCenter(occurrence.Id);
+            AimAt(center, AwayFromHead(center));
+            _clock += 5;
+            PressTrigger();
+            await WaitUntil(() => Read<AssemblyOccurrence>(_assembly, "_occurrence")?.Id == occurrence.Id && !ReadBoolean(_assembly, "_busy"), ct);
+            _clock += 0.2;
+            PressTrigger();
         }
 
         private async Task SelectOccurrenceAsync(AssemblyOccurrence occurrence, CancellationToken ct)
@@ -727,7 +749,9 @@ namespace InventorXrSo.Xr
         private async Task CheckDesignAsync(CancellationToken ct)
         {
             Check(ReferenceEquals(Catalog.Active, _design), "the palette serves Progettazione");
-            CheckPalette("Progettazione (part)", _design, new[] { DesignWorkspace.TabSketch, DesignWorkspace.TabFeature, DesignWorkspace.TabView });
+            CheckPalette("Progettazione (part)", _design, new[] { DesignWorkspace.TabSketch, DesignWorkspace.TabFeature, DesignWorkspace.TabParameters,
+                InspectWorkspace.TabInspect, DesignWorkspace.TabView });
+            CheckApplyOnlyOnBar("Progettazione (part)", _design);
             var context = DesignCtx;
             Check(context.Sketches.Any(s => s.Name == SketchName), "the block part lists the unconsumed sketch " + SketchName);
             Check(context.Planes.Count > 0 && context.Faces.Count > 0 && context.Edges.Count > 0, "Design context exposes planes, faces and edges");
@@ -1039,14 +1063,14 @@ namespace InventorXrSo.Xr
             Check(bar.RecoveryLabel == "Ho controllato il CAD", "Uncertain: the only way forward is 'Ho controllato il CAD' (" + bar.RecoveryLabel + ")");
             Check(!ActionEnabled(CommitIds.Apply) && !ActionEnabled(CommitIds.Preview), "Uncertain: Applica and Anteprima are disabled");
             Check(ActionEnabled(CommitIds.Recover), "Uncertain: the review action is enabled");
-            Check(!ActionEnabled(SpacesAssembly) && !ActionEnabled(SpacesLamiera) && Catalog.Find(SpacesAssembly).DisabledReason.Length > 0,
-                "Uncertain: the Spazi tab blocks the other CAD workspaces (" + Catalog.Find(SpacesAssembly).DisabledReason + ")");
+            Check(!ActionEnabled(DocumentActions.IdBack) && !ActionEnabled(DocumentActions.IdDocuments) && Catalog.Find(DocumentActions.IdBack).DisabledReason.Length > 0,
+                "Uncertain: the Documento tab blocks Torna and the open documents (" + Catalog.Find(DocumentActions.IdBack).DisabledReason + ")");
             RunAction(CommitIds.Recover);
             await WaitUntil(() => bar.Phase == CommitBarPhase.Empty && !ReadBoolean(_design, "_busy") && DesignCtx != null
                 && Read<DesignHistory>(_design, "_history") != null && ActionEnabled("design.extrude"), ct);
-            Check(ActionEnabled(SpacesAssembly), "after the review the Spazi tab offers the other workspaces again");
+            Check(ActionEnabled(DocumentActions.IdBack), "after the review the Documento tab offers Torna again");
             await AssertUnchanged(baseline, "uncertain outcome review", ct);
-            Pass("M6-05", "Uncertain: the bar showed the unknown outcome with only 'Ho controllato il CAD', Applica/Anteprima and the other workspaces blocked; the review restored Empty (SYNTHETIC: the guard was set, no commit was made)");
+            Pass("M6-05", "Uncertain: the bar showed the unknown outcome with only 'Ho controllato il CAD', Applica/Anteprima, Torna and the open documents blocked; the review restored Empty (SYNTHETIC: the guard was set, no commit was made)");
         }
 
         /// <summary>M6-05 Applied: one real Apply from the bar (extrusion of the fixture sketch) and its XR Undo.</summary>
@@ -1115,11 +1139,12 @@ namespace InventorXrSo.Xr
 
         private async Task ReturnToAssemblyDocumentAsync(CancellationToken ct)
         {
-            Record("diag ReturnToAssemblyDocumentAsync: switching to the Inspect space");
-            RunAction(SpacesInspect);
-            await WaitUntil(() => ReferenceEquals(Catalog.Active, _inspect), ct);
-            Record("diag ReturnToAssemblyDocumentAsync: Inspect space active, activating the assembly document");
-            await ActivateAssemblyDocumentAsync(ct);
+            // M9: Torna from the Documento tab; the router pops the level and reopens Assieme on the parent document.
+            Record("diag ReturnToAssemblyDocumentAsync: Torna from the Documento tab");
+            RunAction(DocumentActions.IdBack);
+            Check(await TryWaitUntil(() => Session.Scene?.Graph?.Kind == "assembly" && Session.Scene.Graph.DocumentId == _assemblyDocId
+                && Session.Status == SessionStatus.Online && _assembly.Active && App.Navigation.Levels.Count == 1, 40, ct),
+                "Torna brought the assembly back (levels " + App.Navigation.Levels.Count + ", context " + App.Context + ")");
             RequireFixture();
             await Task.Delay(500, ct);
             Record("diag ReturnToAssemblyDocumentAsync: assembly document active");
@@ -1129,10 +1154,8 @@ namespace InventorXrSo.Xr
         {
             Record("diag OpenLamieraAsync: returning to the assembly document");
             await ReturnToAssemblyDocumentAsync(ct);
-            Record("diag OpenLamieraAsync: switching to the Assembly space");
-            RunAction(SpacesAssembly);
             await WaitActionAsync(AssemblyWorkspace.IdComponents, () => _assembly.Active, ct);
-            Record("diag OpenLamieraAsync: Assembly space ready, selecting the sheet-metal occurrence");
+            Record("diag OpenLamieraAsync: Assieme ready (reopened by the router), selecting the sheet-metal occurrence");
             var context = Read<AssemblyContext>(_assembly, "_context");
             var sheetMetal = context.Occurrences.FirstOrDefault(o => o.Name.IndexOf("Sheet", StringComparison.OrdinalIgnoreCase) >= 0);
             Check(sheetMetal != null, "the sheet-metal component is listed");
@@ -1162,7 +1185,8 @@ namespace InventorXrSo.Xr
 
         private async Task CheckLamieraAsync(CancellationToken ct)
         {
-            CheckPalette("Lamiera (sheet metal part)", _lamiera, new[] { LamieraWorkspace.TabLamiera, LamieraWorkspace.TabFlat, LamieraWorkspace.TabView });
+            CheckPalette("Lamiera (sheet metal part)", _lamiera, new[] { LamieraWorkspace.TabLamiera, LamieraWorkspace.TabFlat,
+                InspectWorkspace.TabInspect, LamieraWorkspace.TabView });
             CheckApplyOnlyOnBar("Lamiera (sheet metal part)", _lamiera);
             var design0 = Read<DesignContext>(_lamiera, "_designContext");
             var state0 = await BaselineAsync(ct);

@@ -25,6 +25,7 @@ namespace InventorXrSo.Tests
             "M6QuestAcceptance",
             "M7QuestAcceptance",
             "M8QuestAcceptance",
+            "M9QuestAcceptance",
         };
 
         private const BindingFlags PerLevel =
@@ -66,6 +67,7 @@ namespace InventorXrSo.Tests
         [TestCase("M6QuestAcceptance")]
         [TestCase("M7QuestAcceptance")]
         [TestCase("M8QuestAcceptance")]
+        [TestCase("M9QuestAcceptance")]
         public void ReflectedMembersExist(string runner)
         {
             var missing = new List<string>();
@@ -103,6 +105,7 @@ namespace InventorXrSo.Tests
         [TestCase("M6QuestAcceptance")]
         [TestCase("M7QuestAcceptance")]
         [TestCase("M8QuestAcceptance")]
+        [TestCase("M9QuestAcceptance")]
         public void ReflectedMembersListIsComplete(string runner)
         {
             var declared = new HashSet<string>();
@@ -120,6 +123,164 @@ namespace InventorXrSo.Tests
             var undeclared = used.Where(n => !declared.Contains(n)).ToList();
             Assert.IsEmpty(undeclared,
                 runner + ": nomi usati per reflection ma assenti da ReflectedMembers: " + string.Join(", ", undeclared));
+        }
+
+
+        // ---- M9: contratto del runner di navigazione per contesto (testo sorgente: il runner non compila in EditMode)
+
+        private static readonly Regex GateIdsBlock =
+            new Regex(@"GateIds\s*=\s*\{(?<body>.*?)\}\s*;", RegexOptions.Singleline);
+
+        private static string RepoRootFile(string relative)
+        {
+            // Application.dataPath = <repo>/Inventor XR SO/Assets
+            var root = Path.GetFullPath(Path.Combine(Application.dataPath, "..", ".."));
+            var path = Path.Combine(root, relative);
+            Assert.IsTrue(File.Exists(path), "File non trovato: " + path);
+            return File.ReadAllText(path);
+        }
+
+        private static string StripComments(string source)
+            => string.Join("\n", source.Split('\n').Where(l => !l.TrimStart().StartsWith("//", StringComparison.Ordinal)));
+
+        [Test]
+        public void M9RunnerNamesEveryGateInItsLog()
+        {
+            var source = ReadSource("M9QuestAcceptance");
+            var block = GateIdsBlock.Match(source);
+            Assert.IsTrue(block.Success, "M9QuestAcceptance: blocco 'GateIds = { ... };' non trovato");
+            var declared = StringLiteral.Matches(block.Groups["body"].Value).Cast<Match>().Select(m => m.Groups["s"].Value).ToList();
+            var expected = Enumerable.Range(1, 12).Select(i => "M9-" + i.ToString("00")).ToList();
+            CollectionAssert.AreEqual(expected, declared, "GateIds deve elencare M9-01..M9-12 nell'ordine");
+
+            var logged = new Regex("(?:Pass|NotCovered)\\(\\s*\"(?<g>M9-\\d\\d)", RegexOptions.Compiled);
+            var inLog = logged.Matches(source).Cast<Match>().Select(m => m.Groups["g"].Value).Distinct().ToList();
+            var missing = expected.Where(g => !inLog.Contains(g)).ToList();
+            Assert.IsEmpty(missing, "gate M9 senza una riga Pass(...) o NotCovered(...) nel runner: " + string.Join(", ", missing));
+        }
+
+        [Test]
+        public void M9RunnerUsesTheDedicatedM6FixtureWithAnExplicitGuard()
+        {
+            var source = ReadSource("M9QuestAcceptance");
+            StringAssert.Contains("protected override string Milestone => \"m9\"", source);
+            StringAssert.Contains("protected override string FixtureMilestone => \"m6\"", source);
+            StringAssert.Contains("StartIfRequested<M9QuestAcceptance>(\"xr_m9_acceptance\")", source);
+            var wait = source.IndexOf("await WaitForFixture(ct)", StringComparison.Ordinal);
+            var guard = source.IndexOf("RequireFixture();", StringComparison.Ordinal);
+            var enter = source.IndexOf("\"EnterSession\"", StringComparison.Ordinal);
+            var synthetic = source.IndexOf("BeginSynthetic();", StringComparison.Ordinal);
+            Assert.That(wait, Is.GreaterThan(0), "Run deve attendere la fixture");
+            Assert.That(guard, Is.GreaterThan(wait), "RequireFixture() deve seguire WaitForFixture");
+            Assert.That(enter, Is.GreaterThan(guard), "nessuna azione prima della guardia di fixture");
+            Assert.That(synthetic, Is.GreaterThan(guard), "nessun input sintetico prima della guardia di fixture");
+
+            var runner = ReadSource("QuestAcceptanceRunner");
+            StringAssert.Contains("protected virtual string FixtureMilestone => Milestone;", runner);
+            StringAssert.Contains("\"XR_\" + FixtureMilestone.ToUpperInvariant() + \"_Quest_Acceptance\"", runner);
+            StringAssert.Contains("protected void RequireFixture()", runner);
+            // Il runner M8 resta sulla stessa fixture: M8 e M9 non hanno una fixture propria.
+            StringAssert.Contains("protected override string FixtureMilestone => \"m6\"", ReadSource("M8QuestAcceptance"));
+        }
+
+        [Test]
+        public void M9VerdictIsPassCompleteOnlyWithoutNotCoveredRunnerCases()
+        {
+            var runner = ReadSource("QuestAcceptanceRunner");
+            StringAssert.Contains("protected virtual string Completion()", runner);
+            StringAssert.Contains("Record(Completion());", runner);
+            StringAssert.Contains("NotCoveredGates.Add(gate);", runner);
+
+            var source = ReadSource("M9QuestAcceptance");
+            StringAssert.Contains("protected override string Completion()", source);
+            var start = source.IndexOf("protected override string Completion()", StringComparison.Ordinal);
+            var end = source.IndexOf("private static bool IsOutsideRunner", StringComparison.Ordinal);
+            Assert.That(end, Is.GreaterThan(start));
+            var verdict = source.Substring(start, end - start);
+            StringAssert.Contains("NotCoveredGates", verdict);
+            StringAssert.Contains("\"PASS COMPLETE; \"", verdict);
+            StringAssert.Contains("\"PARTIAL; NOT COVERED: \"", verdict);
+            StringAssert.Contains("open.Count == 0", verdict);
+
+            // Nessun altro punto del runner scrive PASS COMPLETE (i commenti non contano).
+            var code = StripComments(source);
+            var occurrences = Regex.Matches(code, "PASS COMPLETE").Count;
+            var inVerdict = Regex.Matches(StripComments(verdict), "PASS COMPLETE").Count;
+            Assert.AreEqual(inVerdict, occurrences, "PASS COMPLETE puo essere scritto solo da Completion()");
+
+            // Solo i NOT COVERED con un suffisso di prova esterna non rendono il verdetto PARZIALE.
+            var suffixBlock = new Regex(@"OutsideRunnerSuffixes\s*=\s*\{(?<body>.*?)\}\s*;", RegexOptions.Singleline).Match(source);
+            Assert.IsTrue(suffixBlock.Success);
+            var allowed = StringLiteral.Matches(suffixBlock.Groups["body"].Value).Cast<Match>().Select(m => m.Groups["s"].Value).ToList();
+            CollectionAssert.AreEquivalent(new[] { "-physical", "-probe", "-suite" }, allowed);
+
+            // I gate fisici, di sonda e di suite sono dichiarati, mai passati dal runner.
+            foreach (var gate in new[] { "M9-08-probe", "M9-11-suite", "M9-12-physical" })
+                StringAssert.Contains("NotCovered(\"" + gate + "\"", source);
+            Assert.IsFalse(Regex.IsMatch(code, "Pass\\(\\s*\"M9-(08|11|12)\""), "M9-08, M9-11 e M9-12 non si passano dal runner");
+        }
+
+        [Test]
+        public void M9RunnerLogsSyntheticInputAndRestoresWhatItReplaces()
+        {
+            var source = ReadSource("M9QuestAcceptance");
+            StringAssert.Contains("SYNTHETIC", source);
+            StringAssert.Contains("_input.Source = _source;", source);
+            StringAssert.Contains("_input.Source = _originalSource;", source);
+            StringAssert.Contains("dispatcher.StateProbe = originalProbe;", source);
+            StringAssert.Contains("_input.RestingProbe = originalResting;", source);
+            StringAssert.Contains("DoubleTriggerClock = null", source);
+            StringAssert.Contains("CleanupAsync", source);
+        }
+
+        [Test]
+        public void RunScriptKnowsM9AndThePartialOutcome()
+        {
+            var script = RepoRootFile("scripts/run-quest-acceptance.ps1");
+            StringAssert.Contains("'m9'", script);
+            StringAssert.Contains("PARTIAL", script);
+            var m9 = RepoRootFile("scripts/run-m9-acceptance.ps1");
+            StringAssert.Contains("--prepare-quest m6", m9);
+            StringAssert.Contains("-Milestone m9", m9);
+            StringAssert.Contains("--restore-quest m6", m9);
+        }
+
+        [TestCase("M1QuestAcceptance")]
+        [TestCase("M2QuestAcceptance")]
+        [TestCase("M3QuestAcceptance")]
+        [TestCase("M5QuestAcceptance")]
+        [TestCase("M6QuestAcceptance")]
+        [TestCase("M7QuestAcceptance")]
+        [TestCase("M8QuestAcceptance")]
+        [TestCase("M9QuestAcceptance")]
+        public void MigratedRunnersNoLongerOpenWorkspacesByTheRemovedSpacesActions(string runner)
+        {
+            var code = StripComments(ReadSource(runner));
+            Assert.IsFalse(Regex.IsMatch(code, "RunAction\\(\\s*\"spaces\\."), runner + ": RunAction(\"spaces.*\") non esiste piu (M9)");
+            Assert.IsFalse(Regex.IsMatch(code, "=\\s*\"spaces\\.[a-z]+\""), runner + ": costante \"spaces.*\" residua");
+        }
+
+        [Test]
+        public void M4RunnerNoLongerUsesTheRemovedSpacesActions()
+        {
+            var path = Path.Combine(Application.dataPath, "XrSo/Xr/M4QuestAcceptance.cs");
+            Assert.IsTrue(File.Exists(path), "File runner non trovato: " + path);
+            var code = StripComments(File.ReadAllText(path));
+            Assert.IsFalse(code.Contains("\"spaces."), "M4QuestAcceptance: azioni spaces.* rimosse da M9");
+            StringAssert.Contains("DoubleTriggerClock", code);
+        }
+
+        [TestCase("M4QuestAcceptance")]
+        [TestCase("M5QuestAcceptance")]
+        [TestCase("M6QuestAcceptance")]
+        public void SyntheticPressesNeverFormADoubleTriggerByAccident(string runner)
+        {
+            var path = runner == "M4QuestAcceptance"
+                ? Path.Combine(Application.dataPath, "XrSo/Xr/M4QuestAcceptance.cs")
+                : Path.Combine(Application.dataPath, "XrSo/Xr/Acceptance/" + runner + ".cs");
+            var code = StripComments(File.ReadAllText(path));
+            StringAssert.Contains("DoubleTriggerClock = () =>", code, runner + ": i tocchi sintetici sullo stesso corpo vanno su finestre separate");
+            Assert.IsTrue(code.Contains("_doubleClock += 5") || code.Contains("_clock += 5"), runner + ": ogni pressione avanza l'orologio del rilevatore");
         }
 
         private static string ReadSource(string runner)

@@ -46,7 +46,7 @@ namespace InventorXrSo.Xr
         private const string Extrude = "design.extrude", HoleAction = "design.hole",
             FilletAction = "design.fillet", UndoAction = "design.history.undo", RedoAction = "design.history.redo",
             Dimension = "design.dimension", Diameter = "design.diameter", Through = "design.through",
-            Position = "design.position", ParametersAction = "design.parameters", InspectSpace = "spaces.inspect", DesignSpace = "spaces.design";
+            Position = "design.position", ParametersAction = "design.parameters";
 
         protected override string Milestone => "m3";
         protected override int TimeoutSeconds => 360;
@@ -64,12 +64,12 @@ namespace InventorXrSo.Xr
             var fixture = await WaitForFixture(ct);
             Record("Dedicated fixture loaded: " + fixture.Graph.Root.Name);
 
-            // ---- enter Design exactly like the palette: the "Progettazione" action of the Spazi tab, by id
+            // ---- M9: the active document is the part, so the context router opens Progettazione by itself (no Spazi action any more)
             Call(App, "EnterSession", EnvironmentMode.StudioVr);
             _inspect = Read<InspectWorkspace>(App, "_inspect");
             _design = Read<DesignWorkspace>(App, "_design");
             Check(_inspect != null && _design != null, "app exposes the Inspect and Design workspaces");
-            await OpenDesignFromSpacesAsync(ct);
+            await OpenDesignAsync(ct);
             _backend = Read<IDesignWorkspaceBackend>(_design, "_backend");
             var inspection = _backend as IInspectionBackend;
             var historyBackend = _backend as IDesignHistoryBackend;
@@ -77,7 +77,7 @@ namespace InventorXrSo.Xr
             var context = DesignCtx;
             Check(context.Sketches.Any(s => s.Name == "Base_M3"), "Design context lists the unconsumed sketch Base_M3");
             Check(context.Edges.Count > 0 && context.Faces.Count > 0, "Design context exposes edges and planar faces");
-            Pass("M3-C1", "Design opened from the Spazi action; context loaded with Base_M3, "
+            Pass("M3-C1", "Design opened by the context router; context loaded with Base_M3, "
                 + context.Edges.Count + " edges, " + context.Faces.Count + " planar faces");
 
             var state0 = await _backend.GetDocumentStateAsync(ct);
@@ -252,7 +252,10 @@ namespace InventorXrSo.Xr
             TypeValues(1);
             await PreviewAndVerifyAsync(state3, ct);
             var contextBeforeClose = DesignCtx;
-            RunAction(InspectSpace);
+            // M9: no navigation path leaves Progettazione while its document is active (the context follows the document). The leave-Design
+            // cleanup (ghost, handle, ray hand-back) is exercised by calling Close(), the call the router makes when the context changes.
+            // UNVERIFIED without a device since M9.
+            _design.Close();
             Check(!_design.Active && _inspect.Active && ReferenceEquals(Catalog.Active, _inspect), "Design closed and Inspect is active again (palette back on Ispeziona)");
             Check(!PreviewView.IsShowing && Read<IList>(PreviewView, "_originals").Count == 0
                 && DesignSess.Preview == null && DesignSess.Status == DesignStatus.Empty, "no ghost after leaving Design");
@@ -271,12 +274,12 @@ namespace InventorXrSo.Xr
             _inspect.ClearSelection();
             Pass("M3-C15", "Torna a Inspect: ghost, handle and draft cleared; Inspect face selection works");
 
-            await OpenDesignFromSpacesAsync(ct, contextBeforeClose);
+            await OpenDesignAsync(ct, contextBeforeClose);
             Check(DesignCtx != null && !ReferenceEquals(DesignCtx, contextBeforeClose) && DesignCtx.Edges.Count > 0,
                 "reopened Design reloaded its context");
             Pass("M3-C15", "Design reopened: context reloaded (" + DesignCtx.Edges.Count + " edges)");
 
-            RunAction(InspectSpace);
+            _design.Close();
             var finalState = await _backend.GetDocumentStateAsync(ct);
             Check(!_design.Active, "Design closed at the end of the run");
             Record("Fixture left with the join extrusion of Base_M3 COMMITTED (Undo then Redo): revision " + finalState.Revision
@@ -285,11 +288,19 @@ namespace InventorXrSo.Xr
             NotCovered("M6-Design-Input", "actions invoked by id through the catalog and numbers typed on the keypad entry are SYNTHETIC; palette ergonomics, ring, chip and commit bar legibility need a person with the controllers");
         }
 
-        private async Task OpenDesignFromSpacesAsync(CancellationToken ct, DesignContext previousContext = null)
+        private async Task OpenDesignAsync(CancellationToken ct, DesignContext previousContext = null)
         {
-            Record("Design opened by invoking the Spazi action '" + DesignSpace + "' (synthetic input, not a hand)");
-            RunAction(DesignSpace);
-            Check(_design.Active, "Design workspace opened from the Spazi action");
+            if (previousContext == null)
+            {
+                Record("Design opened by the context router: the active document is a part (M9 navigation, no Spazi action)");
+                await WaitUntil(() => _design.Active, ct, 60);
+            }
+            else
+            {
+                Record("Design reopened with Open(), the call the context router makes when the document is routed again (UNVERIFIED path without a device)");
+                _design.Open();
+            }
+            Check(_design.Active, "Design workspace is open");
             await WaitUntil(() => !ReadBoolean(_design, "_busy") && DesignCtx != null
                 && !ReferenceEquals(DesignCtx, previousContext) && Read<DesignHistory>(_design, "_history") != null, ct);
         }

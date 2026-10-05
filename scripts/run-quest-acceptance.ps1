@@ -1,13 +1,13 @@
 #requires -Version 7.0
 <#
 Runs a Quest acceptance APK (built with XR_SO_ACCEPTANCE) through adb and collects the evidence.
-Exit codes: 0 PASS, 1 FAIL, 2 TIMEOUT, 3 setup error.
+Exit codes: 0 PASS, 1 FAIL, 2 TIMEOUT, 3 setup error, 4 PARTIAL (runner finished, some sub-case NOT COVERED; only the M9 runner ends this way).
 The run proves programmatic execution only, not physical controller/hand input.
 This script never touches Quest test properties (proximity, guardian).
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8')][string]$Milestone,
+    [Parameter(Mandatory)][ValidateSet('m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9')][string]$Milestone,
     [Parameter(Mandatory)][string]$Apk,
     [string]$Serial,
     [int]$TimeoutSeconds = 240,
@@ -22,6 +22,8 @@ Set-StrictMode -Version Latest
 # The M6 runner crosses four workspaces and two documents: it needs more than the default of the single-workspace runners.
 if ($Milestone -eq 'm6' -and -not $PSBoundParameters.ContainsKey('TimeoutSeconds')) { $TimeoutSeconds = 780 }
 if ($Milestone -eq 'm8' -and -not $PSBoundParameters.ContainsKey('TimeoutSeconds')) { $TimeoutSeconds = 900 }
+# The M9 runner enters and leaves the fixture documents several times (double Trigger, Torna, desktop change, voice) and applies one feature edit.
+if ($Milestone -eq 'm9' -and -not $PSBoundParameters.ContainsKey('TimeoutSeconds')) { $TimeoutSeconds = 960 }
 # The M7 runner waits for three Inventor computations on the fixture.
 if ($Milestone -eq 'm7' -and -not $PSBoundParameters.ContainsKey('TimeoutSeconds')) { $TimeoutSeconds = 480 }
 
@@ -111,6 +113,8 @@ while ([DateTime]::UtcNow -lt $deadline) {
     for ($i = $seen; $i -lt $lines.Count; $i++) { Write-Host $lines[$i] }
     $seen = $lines.Count
     if ($lines | Where-Object { $_ -match '\] PASS COMPLETE;' }) { $outcome = 'PASS'; break }
+    # M9: the runner finished but left sub-cases NOT COVERED (never counted as a pass).
+    if ($lines | Where-Object { $_ -match '\] PARTIAL;' }) { $outcome = 'PARTIAL'; break }
     if ($lines | Where-Object { $_ -match '\] FAIL;| FAIL;' }) { $outcome = 'FAIL'; break }
 }
 $endUtc = [DateTime]::UtcNow
@@ -166,4 +170,4 @@ $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $manifestPath -En
 Write-Host "Outcome: $outcome$(if ($timeoutPhase) { " ($timeoutPhase)" }); manifest: $manifestPath"
 Write-Warning 'Programmatic execution only: physical controller/hand input, audio and tracking remain open gates.'
 
-switch ($outcome) { 'PASS' { exit 0 } 'FAIL' { exit 1 } default { exit 2 } }
+switch ($outcome) { 'PASS' { exit 0 } 'FAIL' { exit 1 } 'PARTIAL' { exit 4 } default { exit 2 } }
