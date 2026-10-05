@@ -23,6 +23,19 @@ namespace InventorXrSo.Unity.Ui
         public static readonly Color Error = Hex("#f0637c");
         public static readonly Color Preview = Hex("#70b8ff");
         public static readonly Color Ghost = new Color(0.25f, 0.55f, 1f, 0.35f);
+        // 3D selection (M9 feedback): magenta is the one hue no other overlay uses (blue = preview/ghost, red = interference,
+        // yellow/cyan/green = references and DOF, orange = review, teal = sketch), so a selected body is never mistaken for them.
+        // Selection fills the selected body or face; SelectionOutline is the rim and the face boundary (>= 3:1 on dark and light
+        // backgrounds, non-text WCAG); SelectionHover is the lighter, thinner rim under the ray before anything is selected.
+        public static readonly Color Selection = Hex("#d946ef");
+        public static readonly Color SelectionOutline = Hex("#c72fdf");
+        public static readonly Color SelectionHover = Hex("#f0abfc");
+        /// <summary>Alpha of the selected face fill over the body; the outline and the rims are opaque.</summary>
+        public const float SelectionFaceAlpha = 0.72f;
+        /// <summary>Rim widths as angular size (m of offset per m of distance): selected is about twice the hover rim.</summary>
+        public const float SelectionRimWidth = 0.006f, SelectionHoverRimWidth = 0.0025f;
+        /// <summary>Width (m) of the selected face boundary and edge lines.</summary>
+        public const float SelectionLineWidth = 0.004f;
         public const float MicroSeconds = 0.18f;
         public const float SmallRadiusMm = 2f, MediumRadiusMm = 4f, LargeRadiusMm = 6f;
 

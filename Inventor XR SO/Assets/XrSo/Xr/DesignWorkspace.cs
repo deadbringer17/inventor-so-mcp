@@ -44,6 +44,8 @@ namespace InventorXrSo.Xr
         private string _ringEdge, _lastErrorShown;
         private DesignPreviewView _previewView;
         private DesignGeometryView _geometry;
+        /// <summary>Selected edge lines (for the selection label).</summary>
+        public DesignGeometryView Geometry => _geometry;
         private IDesignWorkspaceBackend _backend;
         private DesignSession _session;
         private bool _reviewAfterRebind;

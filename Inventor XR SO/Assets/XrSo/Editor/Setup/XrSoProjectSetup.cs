@@ -124,11 +124,15 @@ namespace InventorXrSo.Editor
             Create("CadBody", lit, m => m.SetColor("_BaseColor", new Color(0.72f, 0.74f, 0.77f)));
             Create("OccurrenceHighlight", lit, m =>
             {
-                m.SetColor("_BaseColor", new Color(0.25f, 0.55f, 1f));
+                m.SetColor("_BaseColor", InventorXrSo.Unity.Ui.UiTheme.Selection);   // semantic selection colour; SelectionVisuals.Configure re-applies it
                 m.EnableKeyword("_EMISSION");
                 m.SetColor("_EmissionColor", new Color(0.05f, 0.15f, 0.35f));
             });
-            Create("FaceHighlight", Shader.Find("XrSo/HighlightOverlay"), m => m.SetColor("_Color", new Color(1f, 0.6f, 0.1f, 0.6f)));
+            Create("FaceHighlight", Shader.Find("XrSo/HighlightOverlay"), m =>
+            {
+                var c = InventorXrSo.Unity.Ui.UiTheme.Selection;
+                m.SetColor("_Color", new Color(c.r, c.g, c.b, InventorXrSo.Unity.Ui.UiTheme.SelectionFaceAlpha));
+            });
             Create("Ray", Shader.Find("Universal Render Pipeline/Unlit"), m => m.SetColor("_BaseColor", new Color(0.8f, 0.9f, 1f)));
             UpgradeInspectionMaterials();
         }

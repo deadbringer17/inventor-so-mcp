@@ -18,6 +18,9 @@ namespace InventorXrSo.Xr
         public event Action<CadBody, int> Picked;
         public event Action PickedNothing;
         public event Action<Vector3> PointPicked;
+        /// <summary>The CAD body under the ray changed (null: none, ray over the UI, or controller lost). Works in every workspace; the app gates it by session. Raised on change only.</summary>
+        public event Action<CadBody> Hovered;
+        private CadBody _hovered;
         public Transform Origin => origin;
         public Material LineMaterial => line != null ? line.sharedMaterial : null;
         public bool CanPick { get; set; } = true;
@@ -32,7 +35,14 @@ namespace InventorXrSo.Xr
             line = rayLine;
         }
 
-        private void OnDisable() { if (line != null) line.enabled = false; }
+        private void SetHovered(CadBody body)
+        {
+            if (body == _hovered) return;
+            _hovered = body;
+            Hovered?.Invoke(body);
+        }
+
+        private void OnDisable() { if (line != null) line.enabled = false; SetHovered(null); }
         private void OnEnable() { if (line != null) line.enabled = true; }
 
         private void Update()
@@ -52,7 +62,7 @@ namespace InventorXrSo.Xr
             if (origin == null || line == null) return;
             bool tracked = OVRInput.IsControllerConnected(controller) && OVRInput.GetControllerOrientationTracked(controller);
             line.enabled = tracked;
-            if (!tracked) return;
+            if (!tracked) { SetHovered(null); return; }
             var ray = new Ray(origin.position, origin.forward);
             bool hit = CadRaycaster.TryPick(ray, maxDistance, out var body, out var triangle, out var point);
             if (EventSystem.current != null &&
@@ -61,6 +71,9 @@ namespace InventorXrSo.Xr
                 hit = true;
                 point = input.CurrentHit.worldPosition;
             }
+            bool overUi = EventSystem.current != null &&
+                EventSystem.current.currentInputModule is ControllerUiInputModule ui && ui.CurrentHit.isValid;
+            SetHovered(!overUi ? body : null);
             line.positionCount = 2;
             line.SetPosition(0, ray.origin);
             line.SetPosition(1, hit ? point : ray.origin + ray.direction * maxDistance);

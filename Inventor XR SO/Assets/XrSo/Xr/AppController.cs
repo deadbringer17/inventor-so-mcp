@@ -61,6 +61,12 @@ namespace InventorXrSo.Xr
         private DocumentActions _document;
         private ViewActions _view;
         private ControllerLegend _legend;
+        private SelectionLabel _selectionLabel;
+        private SelectionLabelDriver _labelDriver;
+        private string _assemblyHighlightId;
+        // Cache of the face ordinal shown by the label (the lookup walks the bodies' face maps).
+        private InventorXrSo.Core.Selection.Selection _labelFaceSelection;
+        private int _labelFaceOrdinal;
         private InventorBackend _backend;
         private IReadOnlyList<OpenDocument> _openDocuments = new OpenDocument[0];
 
@@ -167,6 +173,11 @@ namespace InventorXrSo.Xr
             _legend.TriggerProgress = () => _assembly.Active ? _assembly.DoubleTriggerProgress : 0f;
             _legend.BackProgress = () => _input.BackHoldProgress;
             _view.LegendChanged += on => _legend.Enabled = on;
+            // Selection feedback: the label names what is selected (name, kind, level) above the highlight; hover rims follow the ray.
+            _selectionLabel = SelectionLabel.Create(head);
+            _labelDriver = new SelectionLabelDriver(_selectionLabel, Navigation, ResolveSelectionTarget);
+            sceneView.Rebuilt += () => _assemblyHighlightId = null;
+            ray.Hovered += OnHovered;
             _inspect.HudMessage += text => _badge.Flash(text, 6f);
             _catalog.SetActive(_inspect);
             _design.HudMessage += text => _badge.Flash(text, 6f);
@@ -220,6 +231,89 @@ namespace InventorXrSo.Xr
         {
             if (_inSession && OVRInput.GetDown(OVRInput.Button.Start)) LeaveSession();
             if (_legend != null) _legend.SetState(_input.Dispatcher.State);
+            SyncAssemblyHighlight();
+            _labelDriver?.Tick();
+        }
+
+        private void OnHovered(CadBody body)
+        {
+            if (!_inSession) body = null;
+            selectionVisuals.Hover(body);
+        }
+
+        /// <summary>
+        /// Assieme selects occurrences through its own context, not through SelectionService, so nothing drew the selected component:
+        /// follow the workspace's selection here. Display only; the selection logic is unchanged.
+        /// </summary>
+        private void SyncAssemblyHighlight()
+        {
+            string id = _inSession && _assembly != null && _assembly.Active ? _assembly.SelectedOccurrenceId : null;
+            if (id == null)
+            {
+                if (_assemblyHighlightId != null) { selectionVisuals.Clear(); _assemblyHighlightId = null; }
+                return;
+            }
+            if (id == _assemblyHighlightId) return;
+            _assemblyHighlightId = id;
+            selectionVisuals.ShowOccurrences(sceneView.Instances.Where(i => _assembly.IsPartOfSelection(i.OccurrenceId)).Select(i => i.OccurrenceId).ToList());
+        }
+
+        private SelectionTarget ResolveSelectionTarget()
+        {
+            var target = new SelectionTarget();
+            if (!_inSession) return target;
+            if (_assembly != null && _assembly.Active)
+            {
+                if (_assembly.SelectedOccurrenceId == null) return target;
+                target.Kind = _assembly.SelectedOccurrenceKind == "assembly" ? SelectionLabelKind.Subassembly : SelectionLabelKind.Part;
+                target.Name = _assembly.SelectedOccurrenceName;
+                target.HasBounds = selectionVisuals.TryGetBounds(out target.Bounds);
+                return target;
+            }
+            var geometry = _design != null && _design.Active ? _design.Geometry : _lamiera != null && _lamiera.Active ? _lamiera.Geometry : null;
+            if (geometry != null && geometry.TryGetSingleEdgeBounds(out var edgeBounds))
+            {
+                target.Kind = SelectionLabelKind.Edge;
+                target.Name = Navigation.Top?.Name ?? _session?.Scene?.Graph.Root.Name;
+                target.HasBounds = true; target.Bounds = edgeBounds;
+                return target;
+            }
+            var current = selectionVisuals.Current;
+            if (current != null && current.Kind == InventorXrSo.Core.Selection.SelectionKind.Face)
+            {
+                if (!ReferenceEquals(current, _labelFaceSelection))
+                {
+                    _labelFaceSelection = current; _labelFaceOrdinal = 0;
+                    var instance = sceneView.Find(current.OccurrenceId);
+                    if (instance != null)
+                        foreach (var body in instance.Bodies)
+                        {
+                            var range = body.Primitive.FaceMap.Find(current.FaceId);
+                            if (range != null) { _labelFaceOrdinal = range.Ordinal; break; }
+                        }
+                }
+                target.Kind = SelectionLabelKind.Face;
+                target.FaceOrdinal = _labelFaceOrdinal;
+                target.Name = sceneView.Find(current.OccurrenceId)?.name ?? Navigation.Top?.Name;
+                target.HasBounds = selectionVisuals.TryGetBounds(out target.Bounds);
+                return target;
+            }
+            if (!selectionVisuals.HasHighlight) return target;
+            // Ispeziona: the browser node that was picked (a sub-assembly highlights all its parts).
+            string nodeName = _inspect?.SelectedNodeName;
+            if (nodeName != null)
+            {
+                target.Kind = _inspect.SelectedNodeKind == "assembly" ? SelectionLabelKind.Subassembly : SelectionLabelKind.Part;
+                target.Name = nodeName;
+            }
+            else if (current != null && current.Kind == InventorXrSo.Core.Selection.SelectionKind.Occurrence)
+            {
+                target.Kind = SelectionLabelKind.Part;
+                target.Name = sceneView.Find(current.OccurrenceId)?.name;
+            }
+            else return target;
+            target.HasBounds = selectionVisuals.TryGetBounds(out target.Bounds);
+            return target;
         }
 
         private void OnDestroy()
@@ -231,6 +325,8 @@ namespace InventorXrSo.Xr
             if (_home != null) Destroy(_home.gameObject);
             if (_shell != null) Destroy(_shell.gameObject);
             if (_legend != null) Destroy(_legend.gameObject);
+            if (_selectionLabel != null) Destroy(_selectionLabel.gameObject);
+            if (ray != null) ray.Hovered -= OnHovered;
             _lifetime.Dispose();
         }
 
@@ -456,6 +552,8 @@ namespace InventorXrSo.Xr
         private void ShowHome()
         {
             _inSession = false;
+            selectionVisuals.ClearHover();
+            _selectionLabel?.Hide();
             if (_legend != null) _legend.Shown = false;
             _catalog?.NotifyChanged();
             if (_voiceTarget != null) _voiceTarget.InSession = false;

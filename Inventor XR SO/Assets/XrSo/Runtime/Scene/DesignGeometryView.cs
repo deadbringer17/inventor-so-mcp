@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using InventorXrSo.Core.Backend;
+using InventorXrSo.Unity.Ui;
 using UnityEngine;
 
 namespace InventorXrSo.Unity.Scene
@@ -97,11 +98,51 @@ namespace InventorXrSo.Unity.Scene
                 }
             }
         }
+        /// <summary>
+        /// The one edge on screen when exactly one real edge is shown (a picked edge, not a sketch profile or a multi-selection): its
+        /// world bounds, for the selection label. False otherwise.
+        /// </summary>
+        public bool TryGetSingleEdgeBounds(out Bounds worldBounds)
+        {
+            worldBounds = default;
+            if (_content == null || !_content.activeSelf || _singleEdge == null || _singleEdge.PointsMm.Count == 0) return false;
+            bool first = true;
+            foreach (var point in _singleEdge.PointsMm)
+            {
+                var world = transform.TransformPoint(ToLocalPoint(point));
+                if (first) { worldBounds = new Bounds(world, Vector3.zero); first = false; } else worldBounds.Encapsulate(world);
+            }
+            return true;
+        }
+        private static Vector3 ToLocalPoint(CadPoint p) => CadCoordinates.ToLocal(p);
         public void ShowEdges(IEnumerable<DesignEdge> edges)
         {
             ClearContent();
             _content = new GameObject("Selected edges"); _content.transform.SetParent(transform, false);
-            foreach (var edge in edges) CadCoordinates.Line(_content.transform, edge.Id, edge.PointsMm, _material, 0.002f);
+            int count = 0; DesignEdge only = null;
+            if (!_selectedEdgeMaterialReady) _selectedEdgeMaterial = SelectedEdgeMaterial();
+            foreach (var edge in edges)
+            {
+                // A sketch profile preview ("profile:n") is not a selection: it keeps the neutral line.
+                bool selected = _selectedEdgeMaterial != null && !edge.Id.StartsWith("profile:");
+                CadCoordinates.Line(_content.transform, edge.Id, edge.PointsMm, selected ? _selectedEdgeMaterial : _material,
+                    selected ? UiTheme.SelectionLineWidth : 0.002f);
+                count++; only = edge;
+            }
+            _singleEdge = count == 1 && !only.Id.StartsWith("profile:") ? only : null;
+        }
+        private Material _selectedEdgeMaterial;
+        private bool _selectedEdgeMaterialReady;
+        private DesignEdge _singleEdge;
+        private Material SelectedEdgeMaterial()
+        {
+            _selectedEdgeMaterialReady = true;
+            var shader = Shader.Find("XrSo/HighlightOverlay");
+            if (shader == null) return null;
+            var material = new Material(shader) { name = "Selected edge" };
+            material.SetColor("_Color", UiTheme.SelectionOutline);
+            material.SetFloat("_Cull", (float)UnityEngine.Rendering.CullMode.Off);
+            return material;
         }
         public void ShowErrorContext(IEnumerable<IEnumerable<CadPoint>> paths)
         {
@@ -150,6 +191,7 @@ namespace InventorXrSo.Unity.Scene
         public void Clear() { ClearContent(); ClearErrorContext(); if (_cursor != null) _cursor.positionCount = 0; }
         private void ClearContent()
         {
+            _singleEdge = null;
             if (_content == null) return; _content.SetActive(false);
             if (Application.isPlaying) Destroy(_content); else DestroyImmediate(_content);
             _content = null;
@@ -157,8 +199,11 @@ namespace InventorXrSo.Unity.Scene
         private void OnDisable() => Clear();
         private void OnDestroy()
         {
-            if (_errorMaterial == null) return;
-            if (Application.isPlaying) Destroy(_errorMaterial); else DestroyImmediate(_errorMaterial);
+            foreach (var material in new[] { _errorMaterial, _selectedEdgeMaterial })
+            {
+                if (material == null) continue;
+                if (Application.isPlaying) Destroy(material); else DestroyImmediate(material);
+            }
         }
     }
 }

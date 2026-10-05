@@ -107,6 +107,11 @@ namespace InventorXrSo.Xr
         public TabState TabState => new TabState { FeatureInProgress = IsMove && InDraft };
         /// <summary>Occurrence id selected on the model (null when none); Ispeziona acts on it in Assieme.</summary>
         public string SelectedOccurrenceId => _occurrence?.Id;
+        /// <summary>Name and kind («part» / «assembly») of the selected component, for the selection label; null when none.</summary>
+        public string SelectedOccurrenceName => _occurrence?.Name;
+        public string SelectedOccurrenceKind => _occurrence?.Kind;
+        /// <summary>True when the drawn instance (a leaf part) belongs to the selected component: the component itself or a part of the selected sub-assembly.</summary>
+        public bool IsPartOfSelection(string leafOccurrenceId) => _occurrence != null && !string.IsNullOrEmpty(leafOccurrenceId) && TopLevelId(leafOccurrenceId) == _occurrence.Id;
         public Func<bool> CanEnter { get; set; }
         public event Action<bool> ActiveChanged;
         /// <summary>Raised only when an open workspace closes: the shell restores the Inspect placement of the model.</summary>

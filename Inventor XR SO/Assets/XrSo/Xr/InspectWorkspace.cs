@@ -47,6 +47,9 @@ namespace InventorXrSo.Xr
         private LoadedScene _scene;
         private DocumentState _documentState;
         private SceneNode _selected;
+        /// <summary>Name and definition kind («part» / «assembly») of the selected node, for the selection label; null when none.</summary>
+        public string SelectedNodeName => _selected?.Name;
+        public string SelectedNodeKind => _selected?.DefinitionKind;
         private NumericEntry _ask;
         private bool _online, _visible, _busy, _showInfo;
         private int _generation;

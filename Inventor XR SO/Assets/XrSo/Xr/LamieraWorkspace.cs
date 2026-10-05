@@ -61,6 +61,8 @@ namespace InventorXrSo.Xr
         private bool _statusAnnounced;
         private DesignPreviewView _previewView;
         private DesignGeometryView _geometry;
+        /// <summary>Selected edge lines (for the selection label).</summary>
+        public DesignGeometryView Geometry => _geometry;
         private FlangeManipulator _manip;
         private FlatPatternDisplay _flatDisplay;
         private IDesignWorkspaceBackend _backend;

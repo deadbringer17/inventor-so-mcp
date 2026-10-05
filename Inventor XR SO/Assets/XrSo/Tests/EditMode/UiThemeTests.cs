@@ -31,6 +31,48 @@ namespace InventorXrSo.Tests
         }
 
         [Test]
+        public void SelectionColoursReadOnDarkAndLightBackgrounds()
+        {
+            // Non-text contrast (3:1) of the rim and outline over an opaque dark MR room, the studio grey and a bright wall.
+            var backgrounds = new[] { Color.black, UiTheme.Navy, new Color(0.16f, 0.17f, 0.19f), UiTheme.Paper, Color.white };
+            foreach (var background in backgrounds)
+            {
+                Assert.GreaterOrEqual(UiTheme.Contrast(UiTheme.SelectionOutline, background), 3f, "outline on " + background);
+                Assert.GreaterOrEqual(UiTheme.Contrast(UiTheme.Selection, background), 3f, "fill on " + background);
+            }
+            // Hover is the lighter, thinner cue: visible on dark rooms, lighter than the selection, never wider.
+            Assert.GreaterOrEqual(UiTheme.Contrast(UiTheme.SelectionHover, Color.black), 3f);
+            Assert.GreaterOrEqual(UiTheme.Contrast(UiTheme.SelectionHover, UiTheme.Navy), 3f);
+            Assert.Greater(UiTheme.Contrast(UiTheme.SelectionHover, Color.black), UiTheme.Contrast(UiTheme.SelectionOutline, Color.black));
+            Assert.Less(UiTheme.SelectionHoverRimWidth, UiTheme.SelectionRimWidth);
+            Assert.Greater(UiTheme.SelectionRimWidth, 0f);
+            Assert.Less(UiTheme.SelectionFaceAlpha, 1f);
+            Assert.Greater(UiTheme.SelectionFaceAlpha, 0.5f);
+        }
+
+        [Test]
+        public void SelectionHueIsNotUsedByAnyOtherOverlay()
+        {
+            // Preview blue, interference red, reference/DOF cyan-yellow-green, review orange and sketch teal must not be mistaken for it.
+            var others = new[]
+            {
+                UiTheme.Preview, UiTheme.Error, UiTheme.Success, UiTheme.Signal, new Color(0.25f, 0.55f, 1f), Color.cyan, Color.yellow, Color.green,
+                new Color(0.95f, 0.2f, 0.15f), new Color(1f, 0.42f, 0.08f), new Color(0.15f, 0.95f, 0.75f), new Color(0.2f, 0.76f, 0.9f),
+            };
+            Color.RGBToHSV(UiTheme.Selection, out float h, out float sat, out _);
+            Assert.Greater(sat, 0.5f);
+            foreach (var other in others)
+            {
+                Color.RGBToHSV(other, out float oh, out float os, out _);
+                if (os < 0.2f) continue;
+                float delta = Mathf.Abs(h - oh); delta = Mathf.Min(delta, 1f - delta);
+                Assert.Greater(delta, 0.06f, "hue too close to " + other);
+            }
+            Color.RGBToHSV(UiTheme.SelectionOutline, out float outlineHue, out _, out _);
+            Assert.AreEqual(h, outlineHue, 0.05f, "outline keeps the selection hue");
+        }
+
+        [Test]
         public void OfficialFacesLoadOfflineWithAllRequiredGlyphsAndMeasuredCapHeight()
         {
             var assets = UiThemeAssets.Current;
