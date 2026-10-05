@@ -48,6 +48,27 @@ sintetico, **F** = prova fisica.
 | M9-11 regressioni M1–M8 | PASS (suite) | **non eseguito** | — | Runner M1–M7 migrati ma mai rieseguiti sul Quest. |
 | M9-12 prova fisica da seduto | — | — | **aperto** | |
 
+## Runner annidato M9N — 5 ottobre 2026 (input sintetico, fixture `m9n`, Inventor 2027 reale)
+
+Scenario: Assieme3 contiene Assieme1 e Assieme2. Esito: **`PASS COMPLETE`**
+(`artifacts/m9n-verification/device/quest-acceptance-run-20261005-142207.json`).
+Verificato: selezione di un corpo di Assieme1 → occorrenza diretta del sottoassieme
+(nessun errore); doppio Trigger → Assieme3 › Assieme1; doppio Trigger sulla parte →
+Assieme3 › Assieme1 › PartA in Progettazione; modifica 10→12 mm riletta da Inventor e
+annullata; Torna (X tenuto) e Torna (scheda Documento) fino ad Assieme3, che elenca di
+nuovo i due sottoassiemi; Assieme3 › Assieme2 e ritorno con revisione visuale invariata;
+fantasma sempre e solo del padre diretto. Chiude il vecchio NOT COVERED
+`M9-02-subassembly`. Resta aperto: sottoassieme la cui finestra di definizione non è
+aperta in Inventor (`Document.Activate()` non verificato) e la prova fisica.
+
+Difetti trovati con questo percorso e corretti: (1) selezione/doppio Trigger su un
+sottoassieme: il raggio dava l'id della parte foglia annidata invece dell'occorrenza
+diretta (backend: «Select a direct occurrence…»), ora risolto con
+`SceneGraph.TopLevelOccurrenceId`; il fantasma non ridisegna più le parti del livello
+appena entrato. (2) Il marcatore «●» usava `Revision`, che sale anche all'attivazione
+di un documento: navigare lo accendeva senza modifiche. Ora usa `VisualRevision`
+(geometria/struttura) e si spegne con XR Undo.
+
 ## Sonda live `face_feature` — 5 ottobre 2026
 
 `dotnet run --project bridge/tests/M3LiveProbe -- --face-feature` contro Inventor
