@@ -60,7 +60,7 @@ internal static class FaceFeatureProbe
             var points = app.TransientObjects.CreateObjectCollection();
             points.Add(center);
             var placement = def.Features.HoleFeatures.CreateSketchPlacementDefinition(points);
-            var hole = def.Features.HoleFeatures.AddDrilledByDistanceExtent(placement, "5 mm", "10 mm", PartFeatureExtentDirectionEnum.kNegativeExtentDirection);
+            var hole = def.Features.HoleFeatures.AddDrilledByDistanceExtent(placement, "5 mm", "10 mm", PartFeatureExtentDirectionEnum.kPositiveExtentDirection);
             doc.Update();
 
             string[] expected = { extrude.Name, fillet.Name, chamfer.Name, hole.Name };
@@ -96,6 +96,18 @@ internal static class FaceFeatureProbe
                     PartFeature? owner = null;
                     try { owner = ((dynamic)candidate).CreatedByFeature as PartFeature; } catch { }
                     if (owner?.Name == featureName) { face = candidate; break; }
+                }
+                if (face == null)
+                {
+                    // Inventor does not report CreatedByFeature for hole walls: take the cylinder of the 5 mm hole (r = 0.25 cm)
+                    // from the body and let the handler's fallback find the owner.
+                    foreach (Face candidate in def.SurfaceBodies[1].Faces)
+                    {
+                        if (candidate.SurfaceType != SurfaceTypeEnum.kCylinderSurface) continue;
+                        double radius = ((Cylinder)candidate.Geometry).Radius;
+                        if (Math.Abs(radius - 0.25) < 1e-6) { face = candidate; break; }
+                    }
+                    Console.WriteLine("NOTE " + featureName + ": CreatedByFeature is null on its wall; using the 5 mm cylinder (" + (face == null ? "not found" : "found") + ")");
                 }
                 if (face == null) throw new InvalidOperationException("No face owned by " + featureName + " in the fixture.");
                 string faceId = (string)((JObject)describe.Invoke(null, new object[] { doc, face })!)["id"]!;

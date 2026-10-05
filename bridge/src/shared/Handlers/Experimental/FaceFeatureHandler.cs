@@ -36,6 +36,9 @@ public sealed class FaceFeatureHandler : ExperimentalHandler
         PartFeature? feature = null;
         try { feature = ((dynamic)face).CreatedByFeature as PartFeature; }
         catch { /* base body, derived or imported geometry: no owning feature */ }
+        // Live-verified (M3LiveProbe --face-feature): hole walls report no CreatedByFeature. Fall back to the feature
+        // whose own face collections (Faces, SideFaces, EndFaces, StartFaces) contain this face; latest feature first.
+        feature ??= FeatureOwningFace(part.ComponentDefinition, face);
         if (feature == null) throw FaceFeatureModel.NoOwningFeature();
 
         string objectType = feature.Type.ToString();
@@ -52,6 +55,27 @@ public sealed class FaceFeatureHandler : ExperimentalHandler
 
         var parameters = FeatureParameterReader.Read(feature, type);
         return FaceFeatureModel.Result(name, type, suppressed, healthy, parameters, previous);
+    }
+
+    private static PartFeature? FeatureOwningFace(PartComponentDefinition definition, object face)
+    {
+        for (int i = definition.Features.Count; i >= 1; i--)
+        {
+            PartFeature candidate;
+            try { candidate = definition.Features[i]; } catch { continue; }
+            dynamic f = candidate;
+            foreach (var faces in new Func<object?>[] { () => f.Faces, () => f.SideFaces, () => f.EndFaces, () => f.StartFaces })
+            {
+                try
+                {
+                    if (faces() is System.Collections.IEnumerable sequence)
+                        foreach (var item in sequence)
+                            if (ReferenceEquals(item, face) || Equals(item, face)) return candidate;
+                }
+                catch { /* this feature type has no such collection */ }
+            }
+        }
+        return null;
     }
 
     private static bool ReadBool(Func<bool> read, bool fallback)
@@ -88,17 +112,20 @@ internal static class FeatureParameterReader
                 if (Probe(() => f.Extent) is AngleExtent angleExtent) Add(found, FaceFeatureModel.Angle, Probe(() => angleExtent.Angle));
                 break;
             case "fillet":
-                foreach (var edgeSet in Items(Probe(() => f.Definition.EdgeSets) ?? Probe(() => f.Definition.ConstantRadiusEdgeSets)))
-                    Add(found, FaceFeatureModel.Radius, Probe(() => ((dynamic)edgeSet).Radius));
+                // FilletFeature.FilletDefinition.EdgeSetItem(i) (1-based); only constant-radius sets carry a Radius parameter.
+                int edgeSets = Convert.ToInt32(Probe(() => f.FilletDefinition.EdgeSetCount) ?? 0);
+                for (int i = 1; i <= edgeSets; i++)
+                {
+                    int index = i;
+                    var set = Probe(() => f.FilletDefinition.EdgeSetItem(index));
+                    if (set is FilletConstantRadiusEdgeSet constant) Add(found, FaceFeatureModel.Radius, Probe(() => constant.Radius));
+                }
                 break;
             case "chamfer":
-                foreach (var edgeSet in Items(Probe(() => f.Definition.ChamferEdgeSets) ?? Probe(() => f.Definition.EdgeSets)))
-                {
-                    dynamic set = edgeSet;
-                    Add(found, FaceFeatureModel.Distance, Probe(() => set.Distance));
-                    Add(found, FaceFeatureModel.Distance, Probe(() => set.DistanceOne));
-                    Add(found, FaceFeatureModel.Distance, Probe(() => set.DistanceTwo));
-                }
+                // ChamferFeature.Definition exposes the active parameters; unused ones throw and are skipped.
+                Add(found, FaceFeatureModel.Distance, Probe(() => f.Definition.Distance));
+                Add(found, FaceFeatureModel.Distance, Probe(() => f.Definition.DistanceOne));
+                Add(found, FaceFeatureModel.Distance, Probe(() => f.Definition.DistanceTwo));
                 break;
             case "hole":
                 Add(found, FaceFeatureModel.Diameter, Probe(() => f.HoleDiameter));
@@ -114,7 +141,7 @@ internal static class FeatureParameterReader
                 break;
             case "flange":
                 AddDistanceExtent(found, Probe(() => f.Definition.HeightExtent), FaceFeatureModel.Distance);
-                Add(found, FaceFeatureModel.Angle, Probe(() => f.Definition.Angle));
+                Add(found, FaceFeatureModel.Angle, Probe(() => f.Definition.FlangeAngle));
                 break;
         }
         return found;
