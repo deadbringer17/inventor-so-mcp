@@ -1,6 +1,7 @@
 using InventorXrSo.Core.Backend;
 using InventorXrSo.Core.Ui;
 using InventorXrSo.Unity.Scene;
+using InventorXrSo.Xr.Input;
 using UnityEngine;
 
 namespace InventorXrSo.Xr
@@ -53,6 +54,21 @@ namespace InventorXrSo.Xr
         public void Fit() { if (Frame != null && _root != null) Apply(); }
 
         public void Snap() => _tween.Snap();
+
+        /// <summary>
+        /// Stick destro a riposo (M9 §3): ruota la vista di un scatto da <see cref="InputDispatcher.RotateStepDegrees"/> attorno all'asse
+        /// verticale passante per il centro del modello; solo vista, nulla arriva a Inventor. Un tick aptico per scatto.
+        /// <paramref name="direction"/> &gt; 0 = in senso orario visto dall'alto. Fit/Ricentra ripristinano l'orientamento.
+        /// </summary>
+        public bool RotateView(Transform root, int direction)
+        {
+            if (root == null || direction == 0) return false;
+            if (ReferenceEquals(root, _root) && _tween.Active) _tween.Snap();
+            var pivot = root.TransformPoint(ScenePlacement.LocalBounds(root).center);
+            root.RotateAround(pivot, Vector3.up, direction > 0 ? InputDispatcher.RotateStepDegrees : -InputDispatcher.RotateStepDegrees);
+            Haptics.Play(HapticPulse.Tick);
+            return true;
+        }
 
         /// <summary>Lascia la radice della scena: nessun'altra transizione la sposta (uscita dal workspace).</summary>
         public void Release()

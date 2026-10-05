@@ -708,6 +708,7 @@ namespace InventorXrSo.Tests
         {
             _xr=Child("XrInput").AddComponent<XrInput>(); _xr.Source=new SyntheticInputSource();
             Assert.True(_xr.Synthetic,"the runner log must call this input synthetic");
+            _xr.Dispatcher.StateProbe=()=>InventorXrSo.Core.Input.InputMap.Resolve(_workspace.KeypadOpen,_workspace.InputArmed,_workspace.SketchOpen,false);
             _workspace.Attach(shell,bench,sheet,_xr);
             _frame=new XrInputFrame{PenTracked=true,PaletteTracked=true};
             Poll();

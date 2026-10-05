@@ -1,3 +1,4 @@
+using InventorXrSo.Core.Input;
 using TMPro;
 using System;
 using System.Collections.Generic;
@@ -97,6 +98,12 @@ namespace InventorXrSo.Xr
         public Func<bool> PickSuppressed { get; set; }
         /// <summary>M9: a handle is captured; Ispeziona tools suspend until it is released.</summary>
         public bool HandleCaptured => _dimensionDrag;
+        /// <summary>M9 input state: the numeric keypad is open (A = OK, X = Annulla).</summary>
+        public bool KeypadOpen => Active && (_ask != null || (_shell != null && _shell.Palette.KeypadVisible));
+        /// <summary>M9 input state: the dimension chip of a feature is armed or a handle captured (stick right = step, A = keypad).</summary>
+        public bool InputArmed => Active && (_dimensionDrag || (_screen == "feature" && DimensionApplies));
+        /// <summary>M9 input state: a sketch is open on its plane (A = Snap si/no).</summary>
+        public bool SketchOpen => Active && _screen == "sketch" && _sketch?.Frame != null;
         /// <summary>M9: what is true now (sketch open, feature/move in progress): decides the tabs that appear by themselves.</summary>
         public TabState TabState => new TabState { SketchOpen = _screen == "sketch" && _sketch != null, FeatureInProgress = _screen == "feature" };
         public Func<bool> CanEnter { get; set; }
@@ -167,12 +174,8 @@ namespace InventorXrSo.Xr
             _input.PenGrabStarted += OnGrabStarted;
             _input.PenGrabEnded += OnGrabEnded;
             _input.TwoHandChanged += OnTwoHandChanged;
-            _input.SnapToggled += OnSnapToggled;
             _input.Back += Back;
-            _input.Fit += FitView;
-            _input.Recenter += RecenterView;
-            _input.StepDelta += OnStepDelta;
-            _input.StepSizeDelta += OnStepSizeDelta;
+            _input.Dispatcher.Invoked += OnInvoked;
             _input.Zoom += OnZoom;
         }
 
@@ -185,12 +188,8 @@ namespace InventorXrSo.Xr
             _input.PenGrabStarted -= OnGrabStarted;
             _input.PenGrabEnded -= OnGrabEnded;
             _input.TwoHandChanged -= OnTwoHandChanged;
-            _input.SnapToggled -= OnSnapToggled;
             _input.Back -= Back;
-            _input.Fit -= FitView;
-            _input.Recenter -= RecenterView;
-            _input.StepDelta -= OnStepDelta;
-            _input.StepSizeDelta -= OnStepSizeDelta;
+            _input.Dispatcher.Invoked -= OnInvoked;
             _input.Zoom -= OnZoom;
             _input = null;
         }
@@ -1008,6 +1007,25 @@ namespace InventorXrSo.Xr
                 pivot = root.TransformPoint(CadCoordinates.ToLocal(_sketch.Frame.OriginMm));
             root.localScale = Vector3.one*target;
             root.position = pivot+(root.position-pivot)*(target/current);
+        }
+
+        /// <summary>Semantic keys routed by <see cref="InputDispatcher"/> (already gated by <see cref="InputMap"/>): Y, A and the right stick.</summary>
+        private void OnInvoked(InputAction action, int arg)
+        {
+            if (!Active) return;
+            switch (action)
+            {
+                case InputAction.Fit: FitView(); break;
+                case InputAction.SnapToggle: OnSnapToggled(); break;
+                case InputAction.StepChange: OnStepDelta(arg); break;
+                case InputAction.StepSize: OnStepSizeDelta(arg); break;
+                case InputAction.OpenKeypad:
+                    if (_screen == "feature" && DimensionApplies && _ask == null) OpenDimensionKeypad();
+                    break;
+                case InputAction.KeypadOk:
+                    if (_ask != null && _ask.Editing) _ask.Commit(out _);
+                    break;
+            }
         }
 
         private void OnSnapToggled()

@@ -1,3 +1,4 @@
+using InventorXrSo.Core.Input;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -96,6 +97,12 @@ namespace InventorXrSo.Xr
         public Func<bool> PickSuppressed { get; set; }
         /// <summary>M9: a handle is captured; Ispeziona tools suspend until it is released.</summary>
         public bool HandleCaptured => _dragging;
+        /// <summary>M9 input state: the numeric keypad is open (A = OK, X = Annulla).</summary>
+        public bool KeypadOpen => Active && (_ask != null || (_shell != null && _shell.Palette.KeypadVisible));
+        /// <summary>M9 input state: a chip is armed or a handle captured (stick right = step, A = keypad).</summary>
+        public bool InputArmed => Active && (_armedField != null || _dragging);
+        /// <summary>M9 input state: a component is selected (A = Isola / Rilascia).</summary>
+        public bool ComponentSelected => Active && _occurrence != null;
         /// <summary>M9: what is true now (sketch open, feature/move in progress): decides the tabs that appear by themselves.</summary>
         public TabState TabState => new TabState { FeatureInProgress = IsMove && InDraft };
         /// <summary>Occurrence id selected on the model (null when none); Ispeziona acts on it in Assieme.</summary>
@@ -197,10 +204,7 @@ namespace InventorXrSo.Xr
             _input.PenGrabEnded += OnGrabEnded;
             _input.TwoHandChanged += OnTwoHandChanged;
             _input.Back += Back;
-            _input.Fit += FitView;
-            _input.Recenter += RecenterView;
-            _input.StepDelta += OnStepDelta;
-            _input.StepSizeDelta += OnStepSizeDelta;
+            _input.Dispatcher.Invoked += OnInvoked;
             _input.Zoom += OnZoom;
         }
 
@@ -214,10 +218,7 @@ namespace InventorXrSo.Xr
             _input.PenGrabEnded -= OnGrabEnded;
             _input.TwoHandChanged -= OnTwoHandChanged;
             _input.Back -= Back;
-            _input.Fit -= FitView;
-            _input.Recenter -= RecenterView;
-            _input.StepDelta -= OnStepDelta;
-            _input.StepSizeDelta -= OnStepSizeDelta;
+            _input.Dispatcher.Invoked -= OnInvoked;
             _input.Zoom -= OnZoom;
             _input = null;
         }
@@ -1076,6 +1077,8 @@ namespace InventorXrSo.Xr
             double now = DoubleTriggerClock != null ? DoubleTriggerClock() : Time.unscaledTimeAsDouble;
             if (_doubleTrigger.Press(now, target, dir.x, dir.y, dir.z))
             {
+                // M9: the double Trigger is the Trigger's secondary action; the dispatcher says whether the current state binds it.
+                if (_input != null && !_input.Dispatcher.InvokeSecondary(Key.Trigger)) return;
                 // The first press selected the component as today; the second enters it (or says why it cannot).
                 if (_occurrence?.Id != target && _occurrence != null && !_busy) SetNotice("Selezione in corso: ripeti il doppio Trigger.");
                 else if (_occurrence?.Id != target && _busy) SetNotice("Lettura Inventor in corso: ripeti il doppio Trigger.");
@@ -1242,6 +1245,35 @@ namespace InventorXrSo.Xr
             var pivot = root.TransformPoint(ScenePlacement.LocalBounds(root).center);
             root.localScale = Vector3.one * target;
             root.position = pivot + (root.position - pivot) * (target / current);
+        }
+
+        /// <summary>Semantic keys routed by <see cref="InputDispatcher"/> (already gated by <see cref="InputMap"/>): Y, A and the right stick.</summary>
+        private void OnInvoked(InputAction action, int arg)
+        {
+            if (!Active) return;
+            switch (action)
+            {
+                case InputAction.Fit: FitView(); break;
+                case InputAction.StepChange: OnStepDelta(arg); break;
+                case InputAction.StepSize: OnStepSizeDelta(arg); break;
+                case InputAction.Isolate: ToggleIsolation(); break;
+                case InputAction.OpenKeypad:
+                    {
+                        string field = _armedField ?? (_dragging ? MoveField : null);
+                        if (field != null && _ask == null) AskNumber(field);
+                        break;
+                    }
+                case InputAction.KeypadOk:
+                    if (_ask != null && _ask.Editing && !_ask.Commit(out var reason)) { SetNotice(reason); Refresh(); }
+                    break;
+            }
+        }
+
+        /// <summary>A on a selected component: isolates it, or releases the isolation when already isolated.</summary>
+        public void ToggleIsolation()
+        {
+            if (_isolation != null && _isolation.Active) { ReleaseIsolation(); Refresh(); return; }
+            Isolate();
         }
 
         /// <summary>Right stick left/right: one step on the armed chip. Silent when nothing can change now.</summary>

@@ -1,4 +1,5 @@
 using System;
+using InventorXrSo.Core.Input;
 using UnityEngine;
 
 namespace InventorXrSo.Xr.Input
@@ -9,15 +10,13 @@ namespace InventorXrSo.Xr.Input
     /// </summary>
     public sealed class XrInput : MonoBehaviour
     {
-        public const float FlickOn = 0.6f, FlickOff = 0.3f, ZoomDeadZone = 0.2f, RecenterHoldSeconds = 1f,
-            BackHoldSeconds = 1f;
+        public const float FlickOn = 0.6f, FlickOff = 0.3f, ZoomDeadZone = 0.2f, BackHoldSeconds = 1f;
 
         private XrInputFrame _last;
         private bool _penStickX, _penStickY, _paletteStickX;
-        private float _yDownAt = -1;
-        private bool _recentered;
         private float _xDownAt = -1;
         private bool _xRest, _xHeld;
+        private Action<int> _flickH, _flickV;
 
         public IXrInputSource Source { get; set; } = new OvrInputSource();
         public bool Synthetic => Source != null && Source.Synthetic;
@@ -40,8 +39,17 @@ namespace InventorXrSo.Xr.Input
         public float BackHoldProgress { get; private set; }
 
         public event Action BackTapped, BackHeld;
-        public event Action PenPressed, PenReleased, PenGrabStarted, PenGrabEnded, Back, Fit, Recenter, SnapToggled;
-        public event Action<int> StepDelta, StepSizeDelta, TabDelta;
+        public event Action PenPressed, PenReleased, PenGrabStarted, PenGrabEnded, Back;
+        public event Action<int> TabDelta;
+        /// <summary>Raw press edge of A and Y (M9): what they DO depends on the state, so <see cref="InputDispatcher"/> routes them.</summary>
+        public event Action<Key> KeyPressed;
+        /// <summary>Right-stick flick (<see cref="Key.StickRightH"/> / <see cref="Key.StickRightV"/>), direction +1 / -1; routed by <see cref="InputDispatcher"/>.</summary>
+        public event Action<Key, int> AxisFlick;
+        /// <summary>Left trigger (precision) changed.</summary>
+        public event Action<bool> PrecisionChanged;
+        private InputDispatcher _dispatcher;
+        /// <summary>The single place that gates keys by <see cref="InputMap"/>; owned here so every workspace shares it. AppController sets its StateProbe.</summary>
+        public InputDispatcher Dispatcher => _dispatcher ?? (_dispatcher = new InputDispatcher(this));
         public event Action<float> Zoom;
         public event Action<bool> TwoHandChanged;
         /// <summary>
@@ -68,7 +76,8 @@ namespace InventorXrSo.Xr.Input
 
             bool two = grip && f.PaletteGrip && f.PaletteTracked;
             if (two != TwoHand) { TwoHand = two; TwoHandChanged?.Invoke(two); }
-            Precision = f.PaletteTrigger && f.PaletteTracked;
+            bool precision = f.PaletteTrigger && f.PaletteTracked;
+            if (precision != Precision) { Precision = precision; PrecisionChanged?.Invoke(precision); }
 
             if (f.X && !_last.X)
             {
@@ -86,14 +95,11 @@ namespace InventorXrSo.Xr.Input
                 if (!_xHeld) BackTapped?.Invoke();
                 _xHeld = false;
             }
-            if (f.A && !_last.A) SnapToggled?.Invoke();
+            if (f.A && !_last.A) KeyPressed?.Invoke(Key.A);
+            if (f.Y && !_last.Y) KeyPressed?.Invoke(Key.Y);
 
-            if (f.Y && !_last.Y) { _yDownAt = time; _recentered = false; }
-            if (f.Y && !_recentered && _yDownAt >= 0 && time - _yDownAt >= RecenterHoldSeconds) { _recentered = true; Recenter?.Invoke(); }
-            if (!f.Y && _last.Y) { if (!_recentered) Fit?.Invoke(); _yDownAt = -1; }
-
-            Flick(f.PenStick.x, ref _penStickX, StepDelta);
-            Flick(f.PenStick.y, ref _penStickY, StepSizeDelta);
+            Flick(f.PenStick.x, ref _penStickX, _flickH ?? (_flickH = d => AxisFlick?.Invoke(Key.StickRightH, d)));
+            Flick(f.PenStick.y, ref _penStickY, _flickV ?? (_flickV = d => AxisFlick?.Invoke(Key.StickRightV, d)));
             Flick(f.PaletteStick.x, ref _paletteStickX, TabDelta);
             if (Mathf.Abs(f.PaletteStick.y) > ZoomDeadZone) Zoom?.Invoke(f.PaletteStick.y);
 

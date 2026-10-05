@@ -109,7 +109,7 @@ namespace InventorXrSo.Xr
         private XrInput _input;
         private SyntheticInputSource _source;
         private IXrInputSource _originalSource;
-        private int _fitEvents, _recenterEvents;
+        private int _fitEvents;
         private bool _syntheticKeypadNoted;
 
         private ActionCatalog Catalog => Read<ActionCatalog>(App, "_catalog");
@@ -274,8 +274,7 @@ namespace InventorXrSo.Xr
             _source = new SyntheticInputSource { Next = Rest() };
             _input.Source = _source;
             Check(_input.Synthetic, "the input source of the run is flagged synthetic");
-            _input.Fit += OnFit;
-            _input.Recenter += OnRecenter;
+            _input.Dispatcher.Invoked += OnInvoked;
             _assembly.UiHitOverride = () => false;   // deterministic UI hit: the real controller's ray must not decide the gesture
             _lamiera.UiHitOverride = () => false;
             _design.UiHitOverride = () => false;
@@ -287,8 +286,7 @@ namespace InventorXrSo.Xr
         {
             if (_input == null) return;
             if (_source != null) Send(Rest());
-            _input.Fit -= OnFit;
-            _input.Recenter -= OnRecenter;
+            _input.Dispatcher.Invoked -= OnInvoked;
             if (_originalSource != null) _input.Source = _originalSource;
             if (_assembly != null) _assembly.UiHitOverride = null;
             if (_lamiera != null) _lamiera.UiHitOverride = null;
@@ -296,8 +294,7 @@ namespace InventorXrSo.Xr
             _source = null;
         }
 
-        private void OnFit() { _fitEvents++; }
-        private void OnRecenter() { _recenterEvents++; }
+        private void OnInvoked(InventorXrSo.Core.Input.InputAction action, int arg) { if (action == InventorXrSo.Core.Input.InputAction.Fit) _fitEvents++; }
 
         private static XrInputFrame Rest() => new XrInputFrame { PenTracked = true, PaletteTracked = true };
 
@@ -699,15 +696,16 @@ namespace InventorXrSo.Xr
             Check(Vector3.Distance(root.position, new Vector3((float)pose.Position.X, (float)pose.Position.Y, (float)pose.Position.Z)) < 1e-3f
                 && Near(root.localScale.x, pose.Scale, 1e-3 * Math.Max(1, pose.Scale)), "Adatta (Y) put the model back at the raised pose and scale");
 
-            // Recenter (Y held 1 s): a new bench frame from the head, no Fit on release
+            // M9: Y held no longer recenters (Ricentra lives in the Documento tab): holding Y keeps the bench frame; Ricentra is invoked as the tab does
             var frameBefore = _bench.Frame;
-            int recenters = _recenterEvents; fits = _fitEvents;
+            fits = _fitEvents;
             Send(yDown);
-            bool held = await TryWaitUntil(() => _recenterEvents > recenters, 4, ct);
+            await TryWaitUntil(() => false, 1.3, ct);
             SendRest();
-            Check(held, "holding Y for one second raised the Recenter event");
-            Check(_fitEvents == fits, "releasing Y after a Recenter does not also Fit");
-            Check(!ReferenceEquals(_bench.Frame, frameBefore), "Ricentra computed a new bench frame from the head");
+            Check(ReferenceEquals(_bench.Frame, frameBefore), "holding Y for one second does NOT recenter (M9)");
+            Check(_fitEvents == fits + 1, "holding Y raised exactly one Fit (on the press)");
+            _assembly.RecenterView();
+            Check(!ReferenceEquals(_bench.Frame, frameBefore), "Ricentra (Documento tab path) computed a new bench frame from the head");
             _bench.Snap();
             pose = _bench.PartPose;
             Check(Vector3.Distance(root.position, new Vector3((float)pose.Position.X, (float)pose.Position.Y, (float)pose.Position.Z)) < 1e-3f,
@@ -715,7 +713,7 @@ namespace InventorXrSo.Xr
             await AssertUnchanged(state0, "Fit and Recenter", ct);
             Pass("M6-07", "view only: " + (oneHand ? "one hand grab moved the root; " : "one hand grab NOT exercised; ")
                 + (twoHand ? "two hand grips scaled it; " : "two hand grips NOT exercised; ")
-                + "Y short = Fit and Y held 1 s = Recenter (new bench frame); revision " + state0.Revision + " and the Inventor occurrences unchanged (SYNTHETIC)");
+                + "Y = Fit only and Ricentra from the Documento tab path (new bench frame); revision " + state0.Revision + " and the Inventor occurrences unchanged (SYNTHETIC)");
         }
 
         // ------------------------------------------------------------------------------ Progettazione (M6-01..05)

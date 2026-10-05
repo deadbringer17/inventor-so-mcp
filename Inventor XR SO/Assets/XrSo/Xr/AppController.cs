@@ -137,6 +137,9 @@ namespace InventorXrSo.Xr
             _design.Attach(_shell, _workbench, _sheet, _input);
             // M9: X at rest is tap (hint) / hold 1 s (Torna); away from rest it stays the Back chain.
             _input.RestingProbe = AtRest;
+            // M9: every key is gated by InputMap in the current state; stick right at rest rotates the view by 15 degrees.
+            _input.Dispatcher.StateProbe = CurrentInputState;
+            _input.Dispatcher.Invoked += OnInputInvoked;
             _input.BackTapped += _backNav.Tapped;
             _input.BackHeld += GoBack;
             _lamiera.Attach(_shell, _workbench, _sheet, _input);
@@ -583,6 +586,23 @@ namespace InventorXrSo.Xr
         /// la scena del padre arriva. Non salva. Bloccato con revisione CAD in sospeso.
         /// </summary>
         public void GoBack() { _ = _backNav.GoBackAsync(); }
+
+        /// <summary>Stato dei controller (spec M9 §3): tastierino > chip/maniglia armati > schizzo > componente selezionato > riposo.</summary>
+        private InventorXrSo.Core.Input.InputState CurrentInputState()
+        {
+            bool keypad = false, armed = false, sketch = false, component = false;
+            if (_design.Active) { keypad = _design.KeypadOpen; armed = _design.InputArmed; sketch = _design.SketchOpen; }
+            else if (_assembly.Active) { keypad = _assembly.KeypadOpen; armed = _assembly.InputArmed; component = _assembly.ComponentSelected; }
+            else if (_lamiera.Active) { keypad = _lamiera.KeypadOpen; armed = _lamiera.InputArmed; }
+            else if (_inspect.Active) keypad = _inspect.KeypadOpen;
+            return InventorXrSo.Core.Input.InputMap.Resolve(keypad, armed, sketch, component);
+        }
+
+        private void OnInputInvoked(InventorXrSo.Core.Input.InputAction action, int arg)
+        {
+            if (action == InventorXrSo.Core.Input.InputAction.RotateView && _inSession && sceneView != null && sceneView.gameObject.activeInHierarchy)
+                _workbench.RotateView(sceneView.transform, arg);
+        }
 
         /// <summary>X a riposo: nessun anello, tastierino, gruppo schede, bozza/comando o isolamento nel workspace attivo.</summary>
         private bool AtRest()

@@ -21,11 +21,9 @@ namespace InventorXrSo.Tests
             _input.Back += () => _log.Add("back");
             _input.BackTapped += () => _log.Add("backTap");
             _input.BackHeld += () => _log.Add("backHeld");
-            _input.Fit += () => _log.Add("fit");
-            _input.Recenter += () => _log.Add("recenter");
-            _input.SnapToggled += () => _log.Add("snap");
-            _input.StepDelta += d => _log.Add("step" + d);
-            _input.StepSizeDelta += d => _log.Add("size" + d);
+            _input.KeyPressed += k => _log.Add("key" + k);
+            _input.AxisFlick += (k, d) => _log.Add(k + ":" + d);
+            _input.PrecisionChanged += on => _log.Add("prec" + on);
             _input.TabDelta += d => _log.Add("tab" + d);
             _input.TwoHandChanged += on => _log.Add("two" + on);
         }
@@ -71,7 +69,7 @@ namespace InventorXrSo.Tests
             var half = F(); half.PenStick = new Vector2(0.5f, 0);
             _input.Poll(right, 0); _input.Poll(half, 0.1f); _input.Poll(right, 0.2f);
             _input.Poll(F(), 0.3f); _input.Poll(right, 0.4f);
-            CollectionAssert.AreEqual(new[] { "step1", "step1" }, _log);
+            CollectionAssert.AreEqual(new[] { "StickRightH:1", "StickRightH:1" }, _log);
         }
 
         [Test]
@@ -80,25 +78,25 @@ namespace InventorXrSo.Tests
             var up = F(); up.PenStick = new Vector2(0, 0.9f);
             var left = F(); left.PaletteStick = new Vector2(-0.9f, 0);
             _input.Poll(up, 0); _input.Poll(F(), 0.1f); _input.Poll(left, 0.2f);
-            CollectionAssert.AreEqual(new[] { "size1", "tab-1" }, _log);
+            CollectionAssert.AreEqual(new[] { "StickRightV:1", "tab-1" }, _log);
         }
 
         [Test]
-        public void YTapFitsAndYHoldRecentersOnce()
+        public void YIsOnlyARawPressEdgeAndHoldingItNeverRecenters()
         {
             var y = F(); y.Y = true;
             _input.Poll(y, 0); _input.Poll(F(), 0.3f);
             _input.Poll(y, 1); _input.Poll(y, 1.5f); _input.Poll(y, 2.1f); _input.Poll(y, 2.5f); _input.Poll(F(), 2.6f);
-            CollectionAssert.AreEqual(new[] { "fit", "recenter" }, _log);
+            CollectionAssert.AreEqual(new[] { "keyY", "keyY" }, _log);
         }
 
         [Test]
-        public void XIsBackAndAIsSnap()
+        public void XIsBackAndAIsARawPressEdgeNotAnUnconditionalSnap()
         {
             var x = F(); x.X = true;
             var a = F(); a.A = true;
             _input.Poll(x, 0); _input.Poll(F(), 0.1f); _input.Poll(a, 0.2f);
-            CollectionAssert.AreEqual(new[] { "back", "snap" }, _log);
+            CollectionAssert.AreEqual(new[] { "back", "keyA" }, _log);
         }
 
         // --- M9: X at rest = tap (hint) / hold 1 s (Torna); not at rest = the Back chain, never Torna ---
@@ -161,7 +159,7 @@ namespace InventorXrSo.Tests
             Assert.IsTrue(_input.TwoHand);
             Assert.IsTrue(_input.Precision);
             _input.Poll(F(), 0.1f);
-            CollectionAssert.AreEqual(new[] { "twoTrue", "twoFalse" }, _log);
+            CollectionAssert.AreEqual(new[] { "twoTrue", "precTrue", "twoFalse", "precFalse" }, _log);
         }
 
         [Test]

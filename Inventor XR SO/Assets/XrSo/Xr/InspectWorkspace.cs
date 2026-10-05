@@ -1,3 +1,4 @@
+using InventorXrSo.Core.Input;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -60,6 +61,21 @@ namespace InventorXrSo.Xr
         private bool _twoHandActive;
         private string _lastOccurrence;
         private IReadOnlyList<OpenDocument> _documents = new OpenDocument[0];
+
+        /// <summary>M9 input state: the numeric keypad is open (A = OK, X = Annulla).</summary>
+        public bool KeypadOpen => Active && (_ask != null || (_shell != null && _shell.Palette.KeypadVisible));
+
+        /// <summary>Semantic keys routed by <see cref="InputDispatcher"/> (already gated by <see cref="InputMap"/>): Y and A.</summary>
+        private void OnInvoked(InputAction action, int arg)
+        {
+            switch (action)
+            {
+                case InputAction.Fit: FitView(); break;
+                case InputAction.KeypadOk:
+                    if (_ask != null && _ask.Editing) _ask.Commit(out _);
+                    break;
+            }
+        }
 
         public bool Measuring => _measure != null && _measure.Measuring;
         /// <summary>
@@ -132,8 +148,7 @@ namespace InventorXrSo.Xr
             _input.TwoHandChanged += OnTwoHandChanged;
             _input.TrackingLost += OnTrackingLost;
             _input.Back += Back;
-            _input.Fit += FitView;
-            _input.Recenter += Recenter;
+            _input.Dispatcher.Invoked += OnInvoked;
         }
 
         private void DetachInput()
@@ -144,8 +159,7 @@ namespace InventorXrSo.Xr
             _input.TwoHandChanged -= OnTwoHandChanged;
             _input.TrackingLost -= OnTrackingLost;
             _input.Back -= Back;
-            _input.Fit -= FitView;
-            _input.Recenter -= Recenter;
+            _input.Dispatcher.Invoked -= OnInvoked;
             _input = null;
         }
 
@@ -489,7 +503,7 @@ namespace InventorXrSo.Xr
             InspectionGeometry.ApplyScale(_view.transform, ScenePlacement.LocalBounds(_view.transform), _scaleMode, _roomExtent);
         }
 
-        /// <summary>Brings the model in front of the user (also Y long press).</summary>
+        /// <summary>Brings the model in front of the user (Documento tab).</summary>
         public void Recenter()
         {
             if (!Active || _view == null || _head == null || ViewOwnedElsewhere) return;

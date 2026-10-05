@@ -1,3 +1,4 @@
+using InventorXrSo.Core.Input;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -102,6 +103,10 @@ namespace InventorXrSo.Xr
         public Func<bool> PickSuppressed { get; set; }
         /// <summary>M9: a handle is captured; Ispeziona tools suspend until it is released.</summary>
         public bool HandleCaptured => _manip != null && _manip.Dragging;
+        /// <summary>M9 input state: the numeric keypad is open (A = OK, X = Annulla).</summary>
+        public bool KeypadOpen => Active && (_ask != null || (_shell != null && _shell.Palette.KeypadVisible));
+        /// <summary>M9 input state: a chip is armed or a handle captured (stick right = step, A = keypad).</summary>
+        public bool InputArmed => Active && (_armedField != null || HandleCaptured);
         public Func<bool> CanEnter { get; set; }
         public event Action<bool> ActiveChanged;
         /// <summary>Raised only when an open workspace closes: the shell restores the Inspect placement of the model.</summary>
@@ -192,10 +197,7 @@ namespace InventorXrSo.Xr
             _input.PenGrabEnded += OnGrabEnded;
             _input.TwoHandChanged += OnTwoHandChanged;
             _input.Back += Back;
-            _input.Fit += FitView;
-            _input.Recenter += RecenterView;
-            _input.StepDelta += OnStepDelta;
-            _input.StepSizeDelta += OnStepSizeDelta;
+            _input.Dispatcher.Invoked += OnInvoked;
             _input.Zoom += OnZoom;
         }
 
@@ -209,10 +211,7 @@ namespace InventorXrSo.Xr
             _input.PenGrabEnded -= OnGrabEnded;
             _input.TwoHandChanged -= OnTwoHandChanged;
             _input.Back -= Back;
-            _input.Fit -= FitView;
-            _input.Recenter -= RecenterView;
-            _input.StepDelta -= OnStepDelta;
-            _input.StepSizeDelta -= OnStepSizeDelta;
+            _input.Dispatcher.Invoked -= OnInvoked;
             _input.Zoom -= OnZoom;
             _input = null;
         }
@@ -1425,6 +1424,24 @@ namespace InventorXrSo.Xr
             var pivot = root.TransformPoint(ScenePlacement.LocalBounds(root).center);
             root.localScale = Vector3.one * target;
             root.position = pivot + (root.position - pivot) * (target / current);
+        }
+
+        /// <summary>Semantic keys routed by <see cref="InputDispatcher"/> (already gated by <see cref="InputMap"/>): Y, A and the right stick.</summary>
+        private void OnInvoked(InputAction action, int arg)
+        {
+            if (!Active) return;
+            switch (action)
+            {
+                case InputAction.Fit: FitView(); break;
+                case InputAction.StepChange: OnStepDelta(arg); break;
+                case InputAction.StepSize: OnStepSizeDelta(arg); break;
+                case InputAction.OpenKeypad:
+                    if (_armedField != null && _ask == null) AskNumber(_armedField);
+                    break;
+                case InputAction.KeypadOk:
+                    if (_ask != null && _ask.Editing) _ask.Commit(out _);
+                    break;
+            }
         }
 
         /// <summary>Right stick left/right: one step on the armed chip (height, angle or thickness). Silent when nothing can change now.</summary>
