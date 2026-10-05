@@ -147,6 +147,51 @@ namespace InventorXrSo.Tests
         }
 
         [Test]
+        public void AnActivationOnlyRevisionChangeIsNotDirty()
+        {
+            var dirty = new DirtyTracker();
+            dirty.Observe(new DocumentState("part", "r1", "v1"));
+            dirty.Observe(new DocumentState("part", "r2", "v1"));   // activation bumps Revision, VisualRevision unchanged
+            Assert.IsFalse(dirty.IsDirty("part"));
+            Assert.IsFalse(dirty.Apply(_stack));
+            Assert.AreEqual("Telaio.iam › Staffa.ipt", _stack.Breadcrumb);
+        }
+
+        [Test]
+        public void AVisualRevisionChangeIsDirtyAndMarkSavedResets()
+        {
+            var dirty = new DirtyTracker();
+            dirty.Observe(new DocumentState("part", "r1", "v1"));
+            dirty.Observe(new DocumentState("part", "r2", "v2"));
+            Assert.IsTrue(dirty.IsDirty("part"));
+            dirty.MarkSaved("part");
+            Assert.IsFalse(dirty.IsDirty("part"));
+            dirty.Observe(new DocumentState("part", "r3", "v3"));
+            Assert.IsTrue(dirty.IsDirty("part"));
+        }
+
+        [Test]
+        public void AnXrUndoRestoringTheVisualRevisionIsNotDirty()
+        {
+            var dirty = new DirtyTracker();
+            dirty.Observe(new DocumentState("part", "r1", "v1"));
+            dirty.Observe(new DocumentState("part", "r2", "v2"));
+            Assert.IsTrue(dirty.IsDirty("part"));
+            dirty.Observe(new DocumentState("part", "r3", "v1"));   // TryRestoreRevision: visual back to the baseline
+            Assert.IsFalse(dirty.IsDirty("part"));
+        }
+
+        [Test]
+        public void ANullVisualRevisionFallsBackToTheRevision()
+        {
+            var dirty = new DirtyTracker();
+            dirty.Observe(new DocumentState("part", "r1", null));
+            Assert.IsFalse(dirty.IsDirty("part"));
+            dirty.Observe(new DocumentState("part", "r2", null));
+            Assert.IsTrue(dirty.IsDirty("part"));
+        }
+
+        [Test]
         public void DirtyFollowsTheDocumentWhenTheStackIsRebuilt()
         {
             var dirty = new DirtyTracker();

@@ -71,20 +71,23 @@ namespace InventorXrSo.Xr
     }
 
     /// <summary>
-    /// «●» del percorso: un documento e modificato se la sua revisione differisce da quella di riferimento (la prima osservata
-    /// o l'ultima salvata dal visore). Il backend client non espone un segnale di "modificato" ne un salvataggio, quindi si
-    /// deduce dal cambio di revisione (modifiche dal visore e dal PC).
+    /// «●» del percorso: un documento e modificato se la sua revisione VISIVA differisce da quella di riferimento (la prima
+    /// osservata o l'ultima salvata dal visore). La revisione generale del bridge avanza anche all'attivazione del documento
+    /// (navigazione) senza alcuna modifica; la revisione visiva avanza solo se geometria/struttura possono essere cambiate e
+    /// torna al valore precedente dopo un Annulla XR. Se manca (null) si ripiega sulla revisione generale.
     /// </summary>
     public sealed class DirtyTracker
     {
         private readonly System.Collections.Generic.Dictionary<string, string> _baseline = new System.Collections.Generic.Dictionary<string, string>();
         private readonly System.Collections.Generic.Dictionary<string, string> _latest = new System.Collections.Generic.Dictionary<string, string>();
 
+        private static string Key(DocumentState state) => state.VisualRevision ?? state.Revision;
+
         public void Observe(DocumentState state)
         {
             if (state == null || string.IsNullOrEmpty(state.DocumentId)) return;
-            if (!_baseline.ContainsKey(state.DocumentId)) _baseline[state.DocumentId] = state.Revision;
-            _latest[state.DocumentId] = state.Revision;
+            if (!_baseline.ContainsKey(state.DocumentId)) _baseline[state.DocumentId] = Key(state);
+            _latest[state.DocumentId] = Key(state);
         }
 
         public bool IsDirty(string documentId) =>

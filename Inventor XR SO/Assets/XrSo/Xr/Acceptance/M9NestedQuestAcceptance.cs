@@ -205,6 +205,7 @@ namespace InventorXrSo.Xr
             await EnterByDoubleTriggerAsync(partA, c => c == DocContext.Part, "Progettazione", ct);
             await WaitDesignReadyAsync(ct);
             RequireFixture();
+            var partEntry = await BaselineAsync(ct);
             Check(Nav.Levels.Count == 3 && Nav.Levels[2].FromOccurrenceId == partA.Id && Nav.Levels[1].FromOccurrenceId == a1.Id && Nav.Levels[2].Name.Contains("PartA"),
                 "the stack reads Assieme3 > Assieme1 > PartA with the occurrences they came from (" + Nav.Breadcrumb + ")");
             Check(Nav.Levels[0].Context == DocContext.Assembly && Nav.Levels[1].Context == DocContext.Assembly && Nav.Levels[2].Context == DocContext.Part, "level contexts are Assembly, Assembly, Part");
@@ -219,7 +220,13 @@ namespace InventorXrSo.Xr
             // ---- M9-09 / M9-04: modify PartA (existing feature-edit path, XR Undo cleanup), unsaved marker
             await CheckFeatureEditAsync(ct);
             var partState = await BaselineAsync(ct);
-            Check(Nav.Top.Dirty && Nav.Breadcrumb.Contains("●") && Nav.Levels.Count == 3, "PartA carries the unsaved marker after the edit (" + Nav.Breadcrumb + ")");
+            // The marker follows the VISUAL revision (DirtyTracker): after the edit and its XR Undo the visual revision is back at the entry value
+            // when the bridge restored it (CadEventJournal.TryRestoreRevision), so the marker must equal (visual revision differs from the entry).
+            bool partExpected = partState.VisualRevision != partEntry.VisualRevision;
+            await WaitDiag(() => Nav.Levels.Count == 3 && Nav.Top.Dirty == partExpected,
+                "the unsaved marker of PartA to follow its visual revision (" + partEntry.VisualRevision + " -> " + partState.VisualRevision + ") " + StateDump(), ct, 20);
+            Record("PartA visual revision " + partEntry.VisualRevision + " -> " + partState.VisualRevision + " after edit + XR Undo (revision " + partEntry.Revision + " -> "
+                + partState.Revision + "); marker " + (Nav.Top.Dirty ? "on" : "off") + ", expected " + (partExpected ? "on" : "off") + " from DirtyTracker semantics");
 
             // ---- M9-04: Torna 1 (X held at rest): back to Assieme1
             await EnsureRestAsync(ct);
@@ -230,11 +237,11 @@ namespace InventorXrSo.Xr
             Check(Session.Scene.Graph.PlacedParts().Count() == 2 && AssemblyContextNow.Occurrences.Any(o => o.Name.Contains("PartA")), "the scene of Assieme1 lists PartA and PartC again");
             Check(_ghost.IsShowing && _ghost.ParentDocumentId == _assemblyDocId, "back in the sub-assembly the ghost is the direct parent Assieme3 again " + StateDump());
             var sub1After = await BaselineAsync(ct);
-            await WaitDiag(() => Nav.Top.Dirty == (sub1After.Revision != sub1State.Revision),
-                "the unsaved marker of Assieme1 to follow its revision (" + sub1State.Revision + " -> " + sub1After.Revision + ") " + StateDump(), ct, 20);
-            Record("Assieme1 revision " + sub1State.Revision + " -> " + sub1After.Revision + "; marker " + (Nav.Top.Dirty ? "on" : "off") + "; PartA revision at the end of the edit " + partState.Revision);
+            await WaitDiag(() => Nav.Top.Dirty == (sub1After.VisualRevision != sub1State.VisualRevision),
+                "the unsaved marker of Assieme1 to follow its visual revision (" + sub1State.VisualRevision + " -> " + sub1After.VisualRevision + ") " + StateDump(), ct, 20);
+            Record("Assieme1 visual revision " + sub1State.VisualRevision + " -> " + sub1After.VisualRevision + " (revision " + sub1State.Revision + " -> " + sub1After.Revision + "); marker " + (Nav.Top.Dirty ? "on" : "off") + "; PartA revision at the end of the edit " + partState.Revision);
             Pass("M9-04", "Torna (X held 1 s, SYNTHETIC timestamps) from PartA returned to Assieme1 (" + Nav.Breadcrumb + "); the only backend call is the activation of the parent, nothing saved; "
-                + "the unsaved marker of Assieme1 follows its revision (" + (Nav.Top.Dirty ? "on" : "off") + ")");
+                + "the unsaved marker of Assieme1 follows its visual revision (" + (Nav.Top.Dirty ? "on" : "off") + ")");
 
             // ---- M9-04: Torna 2 (Documento tab): back to Assieme3, which lists both sub-assemblies again
             RunAction(DocumentActions.IdBack);
@@ -246,10 +253,11 @@ namespace InventorXrSo.Xr
                 "the Assieme context of Assieme3 lists Assieme1 and Assieme2 again");
             var rootAfter = await BaselineAsync(ct);
             Check(rootAfter.DocumentId == _assemblyDocId, "Inventor's active document is Assieme3 again");
-            await WaitDiag(() => Nav.Top.Dirty == (rootAfter.Revision != rootState.Revision),
-                "the unsaved marker of Assieme3 to follow its revision (" + rootState.Revision + " -> " + rootAfter.Revision + ") " + StateDump(), ct, 20);
-            Record("Assieme3 revision " + rootState.Revision + " -> " + rootAfter.Revision + "; marker " + (Nav.Top.Dirty ? "on" : "off"));
-            Pass("M9-04", "second Torna (Documento tab) returned to Assieme3 (" + Nav.Breadcrumb + "): both sub-assemblies listed again, no ghost, nothing saved; marker follows the revision ("
+            // No net geometry change is expected: the marker may be off; it must equal (visual revision differs), never follow the activation-bumped revision.
+            await WaitDiag(() => Nav.Top.Dirty == (rootAfter.VisualRevision != rootState.VisualRevision),
+                "the unsaved marker of Assieme3 to follow its visual revision (" + rootState.VisualRevision + " -> " + rootAfter.VisualRevision + ") " + StateDump(), ct, 20);
+            Record("Assieme3 visual revision " + rootState.VisualRevision + " -> " + rootAfter.VisualRevision + " (revision " + rootState.Revision + " -> " + rootAfter.Revision + "); marker " + (Nav.Top.Dirty ? "on" : "off"));
+            Pass("M9-04", "second Torna (Documento tab) returned to Assieme3 (" + Nav.Breadcrumb + "): both sub-assemblies listed again, no ghost, nothing saved; marker follows the visual revision ("
                 + (Nav.Top.Dirty ? "on" : "off") + ")");
 
             // ---- Assieme2: enter and leave, no edit: the document and its revision are untouched
@@ -264,8 +272,8 @@ namespace InventorXrSo.Xr
             RunAction(DocumentActions.IdBack);
             await WaitAssemblyAtAsync(1, _assemblyDocId, "the Torna from Assieme2", ct);
             Check(!_ghost.IsShowing && Session.Scene.Graph.PlacedParts().Count() == 3, "back at Assieme3: no ghost, three parts");
-            await AssertUnchanged(state3, "entering and leaving Assieme2", ct);
-            Pass("M9-02", "Assieme3 > Assieme2 and back with Torna: levels, context Assembly, ghost of the direct parent, scene of Assieme3 complete again, revision " + state3.Revision + " unchanged (SYNTHETIC)");
+            await AssertUnchanged(state3, "entering and leaving Assieme2", ct, activates: true);
+            Pass("M9-02", "Assieme3 > Assieme2 and back with Torna: levels, context Assembly, ghost of the direct parent, scene of Assieme3 complete again, visual revision " + state3.VisualRevision + " unchanged (SYNTHETIC)");
         }
     }
 }

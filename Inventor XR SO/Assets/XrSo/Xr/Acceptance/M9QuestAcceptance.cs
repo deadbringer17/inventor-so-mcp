@@ -272,11 +272,19 @@ namespace InventorXrSo.Xr
 
         protected async Task<DocumentState> BaselineAsync(CancellationToken ct) => await _backend.GetDocumentStateAsync(ct);
 
-        protected async Task AssertUnchanged(DocumentState baseline, string what, CancellationToken ct)
+        /// <summary>
+        /// Navigation/read steps must leave the document untouched: the VisualRevision (geometry/structure) never changes. The general
+        /// Revision is compared too unless <paramref name="activates"/> (entering/leaving a document legitimately advances it).
+        /// </summary>
+        protected async Task AssertUnchanged(DocumentState baseline, string what, CancellationToken ct, bool activates = false)
         {
             var now = await _backend.GetDocumentStateAsync(ct);
-            Check(now.DocumentId == baseline.DocumentId && now.Revision == baseline.Revision,
-                what + " leaves Inventor's revision unchanged (" + baseline.Revision + " vs " + now.Revision + ")");
+            Check(now.DocumentId == baseline.DocumentId && now.VisualRevision == baseline.VisualRevision,
+                what + " leaves Inventor's visual revision unchanged (" + baseline.VisualRevision + " vs " + now.VisualRevision + ")");
+            if (!activates)
+                Check(now.Revision == baseline.Revision, what + " leaves Inventor's revision unchanged (" + baseline.Revision + " vs " + now.Revision + ")");
+            else if (now.Revision != baseline.Revision)
+                Record(what + ": revision " + baseline.Revision + " -> " + now.Revision + " (activation only; visual revision " + now.VisualRevision + " unchanged)");
         }
 
         protected void PickItem(IActionProvider workspace, string prefix, string label, bool suffix = false)
