@@ -166,6 +166,89 @@ namespace InventorXrSo.Tests
             StringAssert.DoesNotContain("direct occurrence", AllHud());
         }
 
+        // ---- flexible sub-assembly (user's model: AsmFlex is ComponentOccurrence.Flexible): entering never depends on the occurrence being editable
+
+        [Test] public async Task FlexibleSubassembly_SummaryIsExplicitAndActionableInItalian()
+        {
+            _backend.KindOfB = "assembly"; _backend.FlexibleB = true;
+            _hud.Clear(); await Select("ent_b");
+            var hud = AllHud();
+            StringAssert.Contains("Sottoassieme flessibile: Sposta e Vincola non sono disponibili.", hud);
+            StringAssert.Contains("Doppio Trigger (o Apri) per entrare e modificarne i componenti; le modifiche riguardano tutte le istanze.", hud);
+            StringAssert.DoesNotContain("non modificabile: flexible", hud); StringAssert.DoesNotContain("flexible", hud);
+            StringAssert.DoesNotContain("Attivare la definizione", hud);
+        }
+
+        [Test] public async Task NormalSubassembly_SummaryTellsHowToEnter()
+        {
+            _backend.KindOfB = "assembly";
+            _hud.Clear(); await Select("ent_b");
+            var hud = AllHud();
+            StringAssert.Contains("Doppio Trigger (o Apri) per entrare e modificarne i componenti; le modifiche riguardano tutte le istanze.", hud);
+            StringAssert.DoesNotContain("flessibile", hud); StringAssert.DoesNotContain("Sposta e Vincola non sono disponibili", hud);
+        }
+
+        [Test] public async Task FlexibleSubassembly_DoubleTriggerEntersExactlyLikeANormalOne()
+        {
+            _backend.KindOfB = "assembly"; _backend.FlexibleB = true;
+            var entries = WatchEntries();
+            await Select("ent_b");
+            Assert.True(_workspace.TryEnterSelected(out var reason), reason);
+            Assert.IsNull(reason);
+            Assert.AreEqual(1, entries.Count); Assert.AreEqual("ent_b", entries[0].occ); Assert.AreEqual("doc_bolt", entries[0].doc); Assert.False(entries[0].sheet);
+            Assert.AreEqual(1, _backend.Activations); Assert.AreEqual("doc_bolt", _backend.LastActivated);
+            Assert.AreEqual(0, _backend.Commits); Assert.AreEqual(0, _backend.Previews);
+            StringAssert.Contains("tutte le sue istanze", AllHud());
+        }
+
+        [Test] public async Task FlexibleSubassembly_MoveConstrainJointAndIsolateAreDisabledWithAReasonButOpenStaysEnabled()
+        {
+            _backend.KindOfB = "assembly"; _backend.FlexibleB = true;
+            await Select("ent_b");
+            foreach (var id in new[] { AssemblyWorkspace.IdMove, AssemblyWorkspace.IdConstrain, AssemblyWorkspace.IdJoint, AssemblyWorkspace.IdIsolate })
+            { Assert.False(Enabled(id), id); Assert.IsNotEmpty(Act(id).DisabledReason, id); }
+            StringAssert.Contains("flessibile", Act(AssemblyWorkspace.IdMove).DisabledReason);
+            StringAssert.Contains("Sposta", Act(AssemblyWorkspace.IdMove).DisabledReason);
+            StringAssert.Contains("Vincola", Act(AssemblyWorkspace.IdConstrain).DisabledReason);
+            StringAssert.Contains("Apri", Act(AssemblyWorkspace.IdIsolate).DisabledReason);
+            StringAssert.DoesNotContain("flexible", Act(AssemblyWorkspace.IdMove).DisabledReason);
+            Assert.True(Enabled(AssemblyWorkspace.IdOpen)); Assert.True(Enabled(AssemblyWorkspace.IdActivate));
+        }
+
+        [Test] public async Task FlexibleSubassembly_ApriEntersAndPushesALevelLikeTheDoubleTrigger()
+        {
+            _backend.KindOfB = "assembly"; _backend.FlexibleB = true;
+            var entries = WatchEntries();
+            await Select("ent_b");
+            Do(AssemblyWorkspace.IdOpen);
+            Assert.AreEqual(1, entries.Count, "Apri on a sub-assembly requests the entry (a new level), not a silent activation"); Assert.AreEqual("ent_b", entries[0].occ);
+            Assert.AreEqual(1, _backend.Activations);
+        }
+
+        [Test] public async Task NormalSubassembly_ApriEntersAndPushesALevel()
+        {
+            _backend.KindOfB = "assembly";
+            var entries = WatchEntries();
+            await Select("ent_b");
+            Assert.True(Enabled(AssemblyWorkspace.IdConstrain), "a normal sub-assembly does not block Vincola");
+            Do(AssemblyWorkspace.IdOpen);
+            Assert.AreEqual(1, entries.Count); Assert.AreEqual(1, _backend.Activations);
+        }
+
+        [Test] public async Task SelectingAnotherComponentAfterAFlexibleSubassemblyEnablesVincolaAgain()
+        {
+            _backend.KindOfB = "assembly"; _backend.FlexibleB = true;
+            await Select("ent_b"); Assert.False(Enabled(AssemblyWorkspace.IdConstrain));
+            await Select("ent_a"); Assert.True(Enabled(AssemblyWorkspace.IdConstrain)); Assert.True(Enabled(AssemblyWorkspace.IdMove));
+        }
+
+        [Test] public void ReasonLabelsAreShortItalian()
+        {
+            Assert.AreEqual("flessibile", AssemblyWorkspace.ReasonLabel("flexible")); Assert.AreEqual("adattivo", AssemblyWorkspace.ReasonLabel("adaptive"));
+            Assert.AreEqual("soppresso", AssemblyWorkspace.ReasonLabel("suppressed")); Assert.AreEqual("virtuale", AssemblyWorkspace.ReasonLabel("virtual"));
+            Assert.AreEqual("altro", AssemblyWorkspace.ReasonLabel("altro"));
+        }
+
         [Test] public async Task DoubleTriggerEntry_RingApriStaysAvailable()
         {
             await Select();

@@ -371,15 +371,39 @@ namespace InventorXrSo.Xr
             var sb = new StringBuilder();
             sb.Append(_occurrence.Name).Append(" • Gradi di libertà: ").Append(_occurrence.TotalDof?.ToString() ?? "?");
             if (_occurrence.Grounded) sb.Append(" • Fissato");
-            if (!string.IsNullOrEmpty(_occurrence.UnavailableReason)) sb.Append("\nComponente non modificabile: ").Append(_occurrence.UnavailableReason);
-            if (!_occurrence.DofComplete) sb.Append("\nLibertà non disponibili: Sposta è disabilitato.");
-            if (_occurrence.Kind == "assembly") sb.Append("\nAttivare la definizione per modificarne i figli; gli effetti riguardano tutte le istanze.");
+            bool hasReason = !string.IsNullOrEmpty(_occurrence.UnavailableReason);
+            if (_occurrence.Kind == "assembly")
+            {
+                // Entering a sub-assembly activates its definition: it never depends on the occurrence being movable or flexible.
+                if (_occurrence.Flexible) sb.Append("\nSottoassieme flessibile: Sposta e Vincola non sono disponibili.");
+                else if (hasReason) sb.Append("\nSottoassieme ").Append(ReasonLabel(_occurrence.UnavailableReason)).Append(": Sposta e Vincola non sono disponibili.");
+                else if (!_occurrence.DofComplete) sb.Append("\nLibertà non disponibili: Sposta è disabilitato.");
+                sb.Append("\nDoppio Trigger (o Apri) per entrare e modificarne i componenti; le modifiche riguardano tutte le istanze.");
+            }
+            else
+            {
+                if (hasReason) sb.Append("\nNon modificabile: ").Append(ReasonLabel(_occurrence.UnavailableReason));
+                if (!_occurrence.DofComplete) sb.Append("\nLibertà non disponibili: Sposta è disabilitato.");
+            }
             if (_a != null) sb.Append("\nA: ").Append(_a.Name);
             if (_b != null) sb.Append("   B: ").Append(_b.Name);
             return sb.ToString();
         }
 
         private void AnnounceSelection() => SetNotice(OccurrenceSummary());
+
+        /// <summary>The bridge's English <c>unavailable_reason</c> in short Italian for the HUD and the disabled reasons.</summary>
+        public static string ReasonLabel(string reason)
+        {
+            switch (reason)
+            {
+                case "flexible": return "flessibile";
+                case "adaptive": return "adattivo";
+                case "suppressed": return "soppresso";
+                case "virtual": return "virtuale";
+                default: return reason;
+            }
+        }
 
         // ---- numeric entries (chips, keypad, dictation and thumbstick share them)
 
@@ -988,7 +1012,7 @@ namespace InventorXrSo.Xr
             if (_session?.Status == DesignStatus.Previewing || _session?.Status == DesignStatus.PreviewReady) return "Anteprima in corso: applica o annulla prima di aprire il componente.";
             if (_command != null || _ask != null) return "Comando in corso: applica o annulla prima di aprire il componente.";
             if (_occurrence == null) return "Seleziona prima un componente: tocca il pezzo.";
-            if (!Editable) return CommandReason();
+            if (!Editable) return CommandReason();   // workspace-level (reading, offline, stale scene), never the flexible/adaptive state of the occurrence
             if (!(_backend is IInspectionBackend)) return "Apertura documenti non disponibile.";
             if (string.IsNullOrEmpty(_occurrence.DefinitionId)) return "Il componente non ha un documento di definizione.";
             return null;

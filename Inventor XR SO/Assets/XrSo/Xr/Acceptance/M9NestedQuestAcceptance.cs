@@ -25,7 +25,7 @@ namespace InventorXrSo.Xr
     /// Same rules as <see cref="M9QuestAcceptance"/> (this class reuses its helpers): input is SYNTHETIC, Inventor answers are real,
     /// PASS COMPLETE only without NOT COVERED sub-cases. Written without a device: compiled and contract-tested, never run.
     /// </summary>
-    internal sealed class M9NestedQuestAcceptance : M9QuestAcceptance
+    internal class M9NestedQuestAcceptance : M9QuestAcceptance
     {
         internal new static readonly string[] ReflectedMembers =
         {
@@ -47,8 +47,8 @@ namespace InventorXrSo.Xr
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AfterSceneLoad() => StartIfRequested<M9NestedQuestAcceptance>("xr_m9n_acceptance");
 
-        private AssemblyContext AssemblyContextNow => Read<AssemblyContext>(_assembly, "_context");
-        private AssemblyOccurrence SelectedOccurrence => Read<AssemblyOccurrence>(_assembly, "_occurrence");
+        protected AssemblyContext AssemblyContextNow => Read<AssemblyContext>(_assembly, "_context");
+        protected AssemblyOccurrence SelectedOccurrence => Read<AssemblyOccurrence>(_assembly, "_occurrence");
 
         // ------------------------------------------------------------------------------------------------------------------ run
 
@@ -77,7 +77,7 @@ namespace InventorXrSo.Xr
 
         // ---------------------------------------------------------------------------------------------------------- diagnostics
 
-        private string StateDump()
+        protected string StateDump()
         {
             var ghost = _ghost == null ? "n/a" : _ghost.IsShowing ? _ghost.ParentDocumentId + "/" + _ghost.RendererCount + " renderers" : "off";
             return "[levels=" + string.Join(" > ", Nav.Levels.Select(l => l.Name + "/" + l.Context + (l.Dirty ? "*" : ""))) + ", context=" + App.Context
@@ -86,7 +86,7 @@ namespace InventorXrSo.Xr
                 + ", assembly.notice='" + _assembly.Notice + "', ghost=" + ghost + ", hud='" + HudText().Replace('\n', '|') + "']";
         }
 
-        private static IEnumerable<SceneNode> Leaves(SceneNode node)
+        protected static IEnumerable<SceneNode> Leaves(SceneNode node)
         {
             if (node.Children.Count == 0 || node.DefinitionKind == "part") { yield return node; yield break; }
             foreach (var child in node.Children)
@@ -94,10 +94,10 @@ namespace InventorXrSo.Xr
                     yield return leaf;
         }
 
-        private SceneNode DirectNode(string occurrenceId) => Session.Scene.Graph.Root.Children.FirstOrDefault(n => n.OccurrenceId == occurrenceId);
+        protected SceneNode DirectNode(string occurrenceId) => Session.Scene.Graph.Root.Children.FirstOrDefault(n => n.OccurrenceId == occurrenceId);
 
         /// <summary>Center of the first drawn leaf of a direct occurrence: the scene has instances for leaf parts only, never for a sub-assembly.</summary>
-        private Vector3 LeafCenter(AssemblyOccurrence occurrence)
+        protected Vector3 LeafCenter(AssemblyOccurrence occurrence)
         {
             var node = DirectNode(occurrence.Id);
             Check(node != null, occurrence.Name + " is a direct occurrence of the scene graph " + StateDump());
@@ -106,21 +106,21 @@ namespace InventorXrSo.Xr
             return OccurrenceCenter(leaf.OccurrenceId);
         }
 
-        private string[] GhostNames() => _ghost.IsShowing
+        protected string[] GhostNames() => _ghost.IsShowing
             ? _ghost.GetComponentsInChildren<Transform>(true).Where(t => t.parent != null && t.parent.name == "GhostContext").Select(t => t.name).ToArray()
             : new string[0];
 
         // ----------------------------------------------------------------------------------------------------------- navigation
 
         /// <summary>The Assieme workspace shows the assembly <paramref name="documentId"/> at <paramref name="levels"/> levels, with context and scene loaded.</summary>
-        private Task WaitAssemblyAtAsync(int levels, string documentId, string what, CancellationToken ct) => WaitDiag(() => Nav.Levels.Count == levels
+        protected Task WaitAssemblyAtAsync(int levels, string documentId, string what, CancellationToken ct) => WaitDiag(() => Nav.Levels.Count == levels
             && Nav.Top.DocumentId == documentId && App.Context == DocContext.Assembly && _assembly.Active && !ReadBoolean(_assembly, "_busy")
             && AssemblyContextNow != null && AssemblyContextNow.Occurrences.Count > 0
             && Session.Scene?.Graph?.DocumentId == documentId && Session.Scene.Graph.Kind == "assembly",
             what + " at level " + levels + " " + StateDump(), ct, 60);
 
         /// <summary>First Trigger press selects <paramref name="occurrence"/> (by a ray on one of its drawn leaves), second press 0.2 s later enters it.</summary>
-        private async Task EnterAsync(AssemblyOccurrence occurrence, Func<Vector3> center, Func<DocContext?, bool> contextOk, string contextName, CancellationToken ct)
+        protected async Task EnterAsync(AssemblyOccurrence occurrence, Func<Vector3> center, Func<DocContext?, bool> contextOk, string contextName, CancellationToken ct)
         {
             int levels = Nav.Levels.Count;
             SnapPoses();

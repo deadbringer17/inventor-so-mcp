@@ -27,6 +27,7 @@ namespace InventorXrSo.Tests
             "M8QuestAcceptance",
             "M9QuestAcceptance",
             "M9NestedQuestAcceptance",
+            "M9FlexQuestAcceptance",
         };
 
         private const BindingFlags PerLevel =
@@ -70,6 +71,7 @@ namespace InventorXrSo.Tests
         [TestCase("M8QuestAcceptance")]
         [TestCase("M9QuestAcceptance")]
         [TestCase("M9NestedQuestAcceptance")]
+        [TestCase("M9FlexQuestAcceptance")]
         public void ReflectedMembersExist(string runner)
         {
             var missing = new List<string>();
@@ -109,6 +111,7 @@ namespace InventorXrSo.Tests
         [TestCase("M8QuestAcceptance")]
         [TestCase("M9QuestAcceptance")]
         [TestCase("M9NestedQuestAcceptance")]
+        [TestCase("M9FlexQuestAcceptance")]
         public void ReflectedMembersListIsComplete(string runner)
         {
             var declared = new HashSet<string>();
@@ -257,6 +260,7 @@ namespace InventorXrSo.Tests
         [TestCase("M8QuestAcceptance")]
         [TestCase("M9QuestAcceptance")]
         [TestCase("M9NestedQuestAcceptance")]
+        [TestCase("M9FlexQuestAcceptance")]
         public void MigratedRunnersNoLongerOpenWorkspacesByTheRemovedSpacesActions(string runner)
         {
             var code = StripComments(ReadSource(runner));
@@ -334,6 +338,54 @@ namespace InventorXrSo.Tests
             StringAssert.Contains("-Milestone m9n", script);
             StringAssert.Contains("--restore-quest m9n", script);
             StringAssert.Contains("--inspect-quest m9n", script);
+        }
+
+        // ---- M9 flex: runner dei sottoassiemi flessibili su scena grande (fixture m9f)
+
+        [Test]
+        public void M9FlexRunnerHasItsOwnFixtureAndGuardAndCoversTheFlexibleScenario()
+        {
+            var source = ReadSource("M9FlexQuestAcceptance");
+            StringAssert.Contains("protected override string Milestone => \"m9f\"", source);
+            StringAssert.Contains("protected override string FixtureMilestone => \"m9f\"", source);
+            StringAssert.Contains("StartIfRequested<M9FlexQuestAcceptance>(\"xr_m9f_acceptance\")", source);
+            StringAssert.Contains("class M9FlexQuestAcceptance : M9NestedQuestAcceptance", source);
+            StringAssert.Contains("RestoreHint => \"--restore-quest m9f\"", source);
+            var wait = source.IndexOf("await WaitForFixture(ct)", StringComparison.Ordinal);
+            var guard = source.IndexOf("RequireFixture();", StringComparison.Ordinal);
+            var synthetic = source.IndexOf("BeginSynthetic();", StringComparison.Ordinal);
+            Assert.That(guard, Is.GreaterThan(wait), "RequireFixture() deve seguire WaitForFixture");
+            Assert.That(synthetic, Is.GreaterThan(guard), "nessun input sintetico prima della guardia di fixture");
+            // Le guardie degli altri runner non si allentano.
+            StringAssert.Contains("protected override string FixtureMilestone => \"m6\"", ReadSource("M9QuestAcceptance"));
+            StringAssert.Contains("protected override string FixtureMilestone => \"m9n\"", ReadSource("M9NestedQuestAcceptance"));
+            foreach (var needle in new[] { "EnterWithRayAsync(flex", "EnterWithRayAsync(flexInner", "EnterByDoubleTriggerAsync(partX", "CheckFeatureEditAsync", "HoldXForBack()",
+                "DocumentActions.IdBack", "GhostNames()", "Nav.Levels", "Dirty", "AssertUnchanged", "AimAtDirect", "OccurrenceSummary()", "CheckFlexibleSummary", "CheckFlexibleActions",
+                "AssemblyWorkspace.IdOpen", "Sottoassieme flessibile: Sposta e Vincola non sono disponibili.", "flexible", "AsmFixed", "AsmInner" })
+                StringAssert.Contains(needle, source, "scenario: " + needle);
+            foreach (var gate in new[] { "M9-02", "M9-03", "M9-04", "M9F-text", "M9F-large-scene" })
+                Assert.IsTrue(Regex.IsMatch(source, "Pass\\(\\s*\"" + gate + "\""), "il log del runner flessibile passa il gate " + gate);
+            StringAssert.Contains("NotCovered(\"M9-12-physical\"", source);
+            Assert.IsFalse(Regex.IsMatch(StripComments(source), "Pass\\(\\s*\"M9-(08|11|12)\""), "M9-08, M9-11 e M9-12 non si passano dal runner");
+            Assert.IsFalse(StripComments(source).Contains("PASS COMPLETE"), "PASS COMPLETE puo essere scritto solo dal Completion() di M9");
+        }
+
+        [Test]
+        public void M9FlexFixtureAndScriptsExist()
+        {
+            var fixtures = RepoRootFile("bridge/tests/QuestAcceptanceFixtures/Fixtures.cs");
+            StringAssert.Contains("\"m9f\" => PrepareM9Flex", fixtures);
+            StringAssert.Contains("XR_M9F_Quest_Acceptance_", fixtures);
+            foreach (var name in new[] { "Robot", "AsmFixed", "AsmInner", "AsmFlex", "AsmFlexInner", "PartL1", "PartX", "PartY", "PartG", ".Flexible = true", "did not stick", "-500" })
+                StringAssert.Contains(name, fixtures);
+            StringAssert.Contains("\"m9f\"", RepoRootFile("bridge/tests/QuestAcceptanceFixtures/Program.cs"));
+            var generic = RepoRootFile("scripts/run-quest-acceptance.ps1");
+            StringAssert.Contains("'m9f'", generic);
+            var script = RepoRootFile("scripts/run-m9-flex-acceptance.ps1");
+            StringAssert.Contains("--prepare-quest m9f", script);
+            StringAssert.Contains("-Milestone m9f", script);
+            StringAssert.Contains("--restore-quest m9f", script);
+            StringAssert.Contains("--inspect-quest m9f", script);
         }
 
         private static string ReadSource(string runner)

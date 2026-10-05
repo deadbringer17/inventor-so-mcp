@@ -185,6 +185,17 @@ namespace InventorXrSo.Xr
             return "Non disponibile ora.";
         }
 
+        /// <summary>The selected occurrence cannot be edited as a unit (flexible, adaptive, suppressed, virtual): no draft starts on it. Entering it is unaffected.</summary>
+        private bool SelectionBlocksEdit => _command == null && _occurrence != null && !_occurrence.Editable;
+
+        private string EditBlockedReason(string command)
+        {
+            if (_occurrence == null) return CommandReason();
+            string what = _occurrence.Kind == "assembly" ? "Sottoassieme " : "Componente ";
+            string tail = _occurrence.Kind == "assembly" ? " Doppio Trigger o Apri per entrare e modificarne i componenti." : "";
+            return what + ReasonLabel(_occurrence.UnavailableReason ?? "non modificabile") + ": " + command + " non è disponibile." + tail;
+        }
+
         private string NeedOccurrence() => Idle && _occurrence == null ? "Seleziona prima un componente: tocca il pezzo o usa Componenti." : CommandReason();
         private string NeedMove() => !Idle ? CommandReason() : !IsMove ? "Scegli prima Sposta." : "Il componente non ha assi liberi in questo modo.";
         private string NeedRelation() => !Idle ? CommandReason() : (_command == null || IsMove) ? "Scegli prima Vincola o Giunto." : "Scegli prima il tipo di vincolo.";
@@ -202,12 +213,13 @@ namespace InventorXrSo.Xr
                 // Componenti
                 new XrAction(IdComponents, "Componenti", TabComponents, () => Idle && !RequiresCadReview, OpenComponentsPicker, CommandReason),
                 new XrAction(IdIsolate, "Isola", TabComponents,
-                    () => Active && _occurrence != null && _isolation != null && !(_isolation.Active && _isolation.OccurrenceId == _occurrence.Id), () => Isolate(),
-                    () => _isolation?.Active == true && _occurrence != null ? "Il componente è già isolato." : NeedOccurrence(), new[] { "isola componente" }),
+                    () => Active && _occurrence != null && _occurrence.Kind != "assembly" && _isolation != null && !(_isolation.Active && _isolation.OccurrenceId == _occurrence.Id), () => Isolate(),
+                    () => _occurrence?.Kind == "assembly" ? "Isola vale per un singolo pezzo: per un sottoassieme usa Apri."
+                        : _isolation?.Active == true && _occurrence != null ? "Il componente è già isolato." : NeedOccurrence(), new[] { "isola componente" }),
                 new XrAction(IdRelease, "Rilascia", TabComponents, () => Active && _isolation != null && _isolation.Active,
                     () => { ReleaseIsolation(); Refresh(); }, () => "Nessun componente isolato.", new[] { "rilascia componente" }),
                 new XrAction(IdMove, "Sposta", TabComponents, () => Idle && !RequiresCadReview && _occurrence?.CanMove == true, BeginMove,
-                    () => Idle && _occurrence != null ? (!string.IsNullOrEmpty(_occurrence.UnavailableReason) ? "Componente non modificabile: " + _occurrence.UnavailableReason
+                    () => Idle && _occurrence != null ? (!string.IsNullOrEmpty(_occurrence.UnavailableReason) ? EditBlockedReason("Sposta")
                         : _occurrence.Grounded ? "Il componente è fissato." : "Libertà non disponibili per questo componente.") : NeedOccurrence(),
                     new[] { "sposta componente" }),
                 new XrAction(IdOpen, "Apri", TabComponents, () => Active && _occurrence != null && (_occurrence.Kind != "assembly" || CanOpenDefinition),
@@ -223,8 +235,10 @@ namespace InventorXrSo.Xr
                     () => _occurrence != null && _occurrence.Kind != "assembly" ? "Il componente non è un sottoassieme." : NeedInspection()),
 
                 // Vincoli
-                new XrAction(IdConstrain, "Vincola", TabConstraints, () => Idle && !RequiresCadReview, OpenConstraintPicker, CommandReason, new[] { "vincolo" }),
-                new XrAction(IdJoint, "Giunto", TabConstraints, () => Idle && !RequiresCadReview, OpenJointPicker, CommandReason),
+                new XrAction(IdConstrain, "Vincola", TabConstraints, () => Idle && !RequiresCadReview && !SelectionBlocksEdit, OpenConstraintPicker,
+                    () => SelectionBlocksEdit ? EditBlockedReason("Vincola") : CommandReason(), new[] { "vincolo" }),
+                new XrAction(IdJoint, "Giunto", TabConstraints, () => Idle && !RequiresCadReview && !SelectionBlocksEdit, OpenJointPicker,
+                    () => SelectionBlocksEdit ? EditBlockedReason("Giunto") : CommandReason()),
                 new XrAction(IdReferences, "Facce / spigoli", TabConstraints, () => Idle && !RequiresCadReview && _occurrence != null, OpenReferencesPicker, NeedOccurrence),
                 new XrAction(IdRayMode, "Raggio su spigoli", TabConstraints, () => Idle && !RequiresCadReview, () => { _pickEdges = !_pickEdges; Refresh(); },
                     CommandReason, kind: XrActionKind.Toggle, isOn: () => _pickEdges),
@@ -285,7 +299,8 @@ namespace InventorXrSo.Xr
         {
             if (_occurrence == null) return;
             HideRing();
-            if (_occurrence.Kind == "assembly") { ActivateSubassembly(); return; }
+            // Apri on a sub-assembly enters it exactly like the double Trigger (a new Assieme level); flexible or not.
+            if (_occurrence.Kind == "assembly") { ActivateSubassemblyCore(true); return; }
             if (!Isolate()) return;
             SetNotice("Isolato: scegli Apri in Progettazione o Apri in Lamiera nella scheda Componenti.");
             _shell?.Palette.ShowTab(TabComponents);

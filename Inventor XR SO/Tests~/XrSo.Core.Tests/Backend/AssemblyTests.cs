@@ -48,6 +48,16 @@ public sealed class AssemblyTests
         Assert.False(AssemblyContext.Parse(json, State).Occurrences[0].CanMove);
     }
     [Fact]
+    public void FlexibleSubassemblyIsNotEditableButKeepsItsDefinitionForTheEntry()
+    {
+        var json = Context(); var item = (JObject)json["occurrences"]![1]!;
+        item["definition_kind"] = "assembly"; item["flexible"] = true; item["editable"] = false; item["unavailable_reason"] = "flexible";
+        var occurrence = AssemblyContext.Parse(json, State).Occurrences[1];
+        Assert.True(occurrence.Flexible); Assert.False(occurrence.Editable); Assert.False(occurrence.CanMove);
+        Assert.Equal("assembly", occurrence.Kind); Assert.Equal("flexible", occurrence.UnavailableReason);
+        Assert.False(AssemblyContext.Parse(Context(), State).Occurrences[1].Flexible);
+    }
+    [Fact]
     public void UnknownCountsNeverBecomeFreeOrGrounded()
     {
         var json = Context(); json["occurrences"]![0]!["dof_translation"] = null;

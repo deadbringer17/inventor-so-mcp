@@ -61,6 +61,20 @@ livelli, Progettazione, fantasma = Assieme1); modifica feature (chip 10 -> 12 mm
 tenuto, secondo dalla scheda Documento; Assieme3 elenca di nuovo i due sottoassiemi; Assieme2 entrata e uscita con revisione invariata; marcatore «●»
 confrontato con la revisione. Chiude `M9-02-subassembly` (nel runner M6 il gate si chiama `M9-02-subassembly-nested` e non rende parziale il verdetto).
 
+### Runner M9 flessibile (sottoassiemi flessibili su scena grande, fixture `m9f`)
+
+`Inventor XR SO/Assets/XrSo/Xr/Acceptance/M9FlexQuestAcceptance.cs` (extra Android `xr_m9f_acceptance`, log `m9f-acceptance.txt`, timeout 960 s),
+orchestrato da `scripts/run-m9-flex-acceptance.ps1` (prepara/ispeziona/ripristina la fixture `m9f`, mai un documento dell'utente). Guardia propria
+`XR_M9F_Quest_Acceptance`. Fixture: Robot contiene PartL1, AsmFixed (a terra, non flessibile; AsmInner normale e PartF) e AsmFlex (libero,
+`ComponentOccurrence.Flexible = True`, a z = -5000 mm: AsmFlexInner flessibile con PartX e PartY, e PartG); nessun vincolo di assieme su AsmFlex (non
+verificabile senza Inventor: `NOT COVERED M9F-constraint-probe`). Scenario con input **sintetico** e Inventor reale: raggio su un corpo di AsmFlex a 5 m
+dall'origine (il runner verifica prima di premere che il raggio raggiunga il corpo, prova distanze 0.3/0.15/0.6/1.0 m e registra scala e distanze);
+registra nel log il testo che l'utente legge (riepilogo, notice, HUD) e verifica la dicitura italiana (Sottoassieme flessibile…, Doppio Trigger o Apri per
+entrare, tutte le istanze, nessun «flexible» grezzo); Sposta, Vincola, Giunto e Isola disabilitati con motivo e Apri abilitato; doppio Trigger ->
+Robot > AsmFlex > AsmFlexInner > PartX (Progettazione, stessa modifica feature e Undo XR del runner annidato); tre Torna (X tenuto, scheda Documento, X tenuto)
+con pila, fantasma del solo padre diretto, nulla salvato e marcatore coerente con la revisione visuale; poi Robot > AsmFixed > AsmInner (con l'Apri dell'anello) e ritorno con
+revisione visuale invariata. Se l'HUD non mostra la nuova dicitura il gate `M9F-hud-text` e NOT COVERED (verdetto PARTIAL).
+
 ### Runner M9 (navigazione per contesto)
 
 M9 (spec `docs/superpowers/specs/2026-10-04-m9-navigazione-contesto-design.md`, piano Task 19):

@@ -104,13 +104,36 @@ Segnalazione dell'utente: il doppio Trigger su un sottoassieme di un assieme com
   `OnPenPressed` (bersaglio del doppio Trigger) e `HitMoveTarget`. Una parte diretta resta invariata.
 - **Causa 2 (fantasma)**: `GhostContext.Show` saltava l'occorrenza appena aperta confrontando l'id della foglia; per un sottoassieme non
   coincideva mai e il fantasma ridisegnava le sue parti sopra quelle reali. Correzione: `SceneGraph.OccurrenceAndDescendantIds`.
-- **Non corretto, da sapere**: «Isola» su un sottoassieme dice «Il componente non è nella scena» (`ComponentIsolation` lavora su un'istanza
+- **Non corretto, da sapere**: «Isola» su un sottoassieme (ora disabilitato con motivo, vedi sotto) diceva «Il componente non è nella scena» (`ComponentIsolation` lavora su un'istanza
   foglia); `Sposta` su un sottoassieme non ha istanza da evidenziare. `activate_open_document_xr` richiede che la definizione del
   sottoassieme sia nell'elenco dei documenti aperti: se Inventor la tiene solo come riferimento invisibile, `Document.Activate()` potrebbe non
   portarla in primo piano: **non verificato**, serve Inventor (la fixture `m9n` tiene le definizioni visibili come la M6).
 - Test: `SceneGraph` (core, `DtoTests`), `AssemblyWorkspaceTests` (doppio Trigger e selezione su un corpo di sottoassieme con un backend che
   rifiuta gli id annidati come il bridge), `GhostContextTests`. Il runner annidato (`M9NestedQuestAcceptance`) riproduce lo scenario e fallisce se la
   selezione non risolve all'occorrenza diretta. Esito sul Quest: **non eseguito**.
+
+## Sottoassiemi flessibili (5 ottobre 2026) — corretto il testo, ingresso invariato, da verificare sul Quest
+
+Segnalazione dell'utente: sul suo assieme reale (APE-A-0001, sottoassieme APE-A-0112 flessibile, non a terra) il doppio Trigger mostra un testo sui
+sottoassiemi FLESSIBILI e «attivare i figli», e non sembra entrare come in un sottoassieme normale.
+
+Lettura del codice (nessun Inventor): **nessun blocco dell'ingresso dovuto alla flessibilita**. `EntryBlockedReason` e `ActivateDefinitionAsync` usano `Editable`
+del *workspace* (lettura del contesto, online, scena aggiornata), mai `AssemblyOccurrence.Editable` dell'occorrenza; `activate_open_document_xr` attiva il
+documento di definizione e non guarda `Flexible`; il ring «Apri» e `CanOpenDefinition` non dipendono dall'occorrenza. Il bridge marca `editable=false`
+e `unavailable_reason=flexible` solo per Sposta/Vincola (`AssemblyBatchHandler` li rifiuta). Quello che l'utente vedeva era il testo: «Componente non
+modificabile: flexible» (inglese grezzo) seguito da «Attivare la definizione per modificarne i figli», che suggeriva un blocco. Inoltre il ring «Apri»
+su un sottoassieme chiamava `ActivateSubassemblyCore(false)` (attiva il documento ma **non** annuncia l'ingresso al router, quindi nessun nuovo livello
+nella pila), a differenza del doppio Trigger.
+
+Correzioni: testi italiani espliciti (`OccurrenceSummary`: «Sottoassieme flessibile: Sposta e Vincola non sono disponibili.» e «Doppio Trigger (o Apri) per
+entrare e modificarne i componenti; le modifiche riguardano tutte le istanze.»; motivi tradotti flessibile/adattivo/soppresso/virtuale); «Apri» su un
+sottoassieme ora entra come il doppio Trigger (nuovo livello); Sposta, Vincola e Giunto sono disabilitati con motivo quando la selezione non e modificabile come
+unita (cambiando selezione tornano attivi); «Isola» su un sottoassieme e disabilitato con motivo («Isola vale per un singolo pezzo: per un sottoassieme usa
+Apri»), invece del vecchio «Il componente non e nella scena». `AssemblyOccurrence.Flexible` esposto dal core. Test: `AssemblyTests` (core),
+`DoubleTriggerEntryTests` (backend finto con occorrenza flessibile: editable=false, flexible=true, reason flexible), contratto `QuestAcceptanceContractTests`.
+
+Runner `M9FlexQuestAcceptance` (fixture `m9f`, `scripts/run-m9-flex-acceptance.ps1`): vedi `docs/xr-quest-acceptance.md`. Esito sul Quest: **non eseguito**.
+Resta aperto: un vincolo di assieme su un sottoassieme flessibile, una definizione non aperta in Inventor e la prova fisica.
 
 ## Limiti noti da chiudere
 

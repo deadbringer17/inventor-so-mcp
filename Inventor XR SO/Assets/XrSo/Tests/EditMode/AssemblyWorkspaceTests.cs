@@ -57,6 +57,8 @@ namespace InventorXrSo.Tests
             public bool Grounded, DofComplete = true;
             public Exception PreviewError;
             public string LastActivated, KindOfB = "part";
+            /// <summary>ent_b is a FLEXIBLE sub-assembly occurrence, as the bridge reports it: editable=false, flexible=true, unavailable_reason=flexible.</summary>
+            public bool FlexibleB;
             public TaskCompletionSource<DocumentState> Mutation;
             public TaskCompletionSource<DesignPreview> Preview;
             public AssemblyContext Context(DocumentState state, string selected)
@@ -64,10 +66,12 @@ namespace InventorXrSo.Tests
                 // The bridge refuses an occurrence that is not a direct child of the active assembly (nested proxy ids).
                 if (selected != null && selected.StartsWith("ent_nested", StringComparison.Ordinal))
                     throw new ArgumentException("Select a direct occurrence or activate its subassembly first.");
-                JObject Occ(string id) => new JObject { ["occurrence_id"] = id, ["name"] = id, ["editable"] = true, ["grounded"] = Grounded,
+                JObject Occ(string id) { var item = new JObject { ["occurrence_id"] = id, ["name"] = id, ["editable"] = true, ["grounded"] = Grounded,
                     ["suppressed"] = false, ["adaptive"] = false, ["dof_translation"] = 1, ["dof_rotation"] = 1, ["dof_complete"] = DofComplete,
                     ["definition_document_id"] = "doc_bolt", ["definition_kind"] = id == "ent_b" ? KindOfB : "part",
                     ["translation_axes"] = new JArray { new JArray(1, 0, 0) }, ["rotation_axes"] = new JArray { new JArray(0, 0, 1) }, ["rotation_center_mm"] = new JArray(10, 20, 30) };
+                    if (FlexibleB && id == "ent_b") { item["editable"] = false; item["flexible"] = true; item["unavailable_reason"] = "flexible"; }
+                    return item; }
                 var all = new JArray(Occ("ent_a"), Occ("ent_b"));
                 for (int i = 0; i < ExtraOccurrences; i++) all.Add(Occ("ent_x" + i));
                 var occurrences = selected == null ? all : new JArray(Occ(selected));

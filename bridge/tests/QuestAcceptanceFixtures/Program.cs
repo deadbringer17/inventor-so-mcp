@@ -21,9 +21,9 @@ internal static class Program
             var mode = args.FirstOrDefault(a => a is "--prepare-quest" or "--inspect-quest" or "--restore-quest");
             var index = Array.IndexOf(args, mode);
             var milestone = mode == null || index + 1 >= args.Length ? null : args[index + 1].ToLowerInvariant();
-            if (mode == null || milestone is not ("m1" or "m2" or "m3" or "m5" or "m6" or "m7" or "m9n"))
+            if (mode == null || milestone is not ("m1" or "m2" or "m3" or "m5" or "m6" or "m7" or "m9n" or "m9f"))
             {
-                Console.Error.WriteLine("Usage: QuestAcceptanceFixtures (--prepare-quest|--inspect-quest|--restore-quest) <m1|m2|m3|m5|m6|m7|m9n> | --probe-m7 | --probe-active");
+                Console.Error.WriteLine("Usage: QuestAcceptanceFixtures (--prepare-quest|--inspect-quest|--restore-quest) <m1|m2|m3|m5|m6|m7|m9n|m9f> | --probe-m7 | --probe-active");
                 return 64;
             }
             GetActiveObject(ref clsid, IntPtr.Zero, out var active);

@@ -46,6 +46,7 @@ internal static class Fixtures
                 "m6" => PrepareM6(app, directory, created),
                 "m7" => PrepareM7(app, directory, created),
                 "m9n" => PrepareM9Nested(app, directory, created),
+                "m9f" => PrepareM9Flex(app, directory, created),
                 _ => throw new ArgumentException("Unknown milestone " + m),
             };
             var active = app.ActiveDocument ?? throw new InvalidOperationException("No active document after preparing the fixture.");
@@ -314,6 +315,107 @@ internal static class Fixtures
     }
 
     /// <summary>
+    /// M9 flex: the structure of the user's robot at small scale. Top assembly Robot holds PartL1 (loose, ungrounded, -80 mm in X),
+    /// AsmFixed (grounded, NOT flexible, at the origin: a normal sub-assembly AsmInner with PartI, plus PartF at +60 mm) and AsmFlex
+    /// (UNGROUNDED, ComponentOccurrence.Flexible = True, 5 m away at z = -5000 mm: a FLEXIBLE sub-assembly AsmFlexInner, also Flexible and
+    /// ungrounded, with PartX (40 x 30 x 10 mm, as m9n PartA, so the feature edit can be repeated) and PartY, plus PartG at +60 mm).
+    /// Flexible is settable only on assembly occurrences: it is set after placing and READ BACK; the preparation fails when it did not
+    /// stick (the runner depends on it). No assembly constraint is added to AsmFlex: a flush or mate to a work plane proxy of a flexible
+    /// sub-assembly cannot be verified without a live Inventor and its sign/offset could move the 5 m placement, so AsmFlex is simply
+    /// ungrounded and unconstrained. Every document is saved and kept open (definitions can be activated); every name starts with
+    /// XR_M9F_Quest_Acceptance, the guard of the flex M9 runner.
+    /// </summary>
+    private static JObject PrepareM9Flex(global::Inventor.Application app, string directory, List<object> created)
+    {
+        const string prefix = "XR_M9F_Quest_Acceptance_";
+        string SavePart(string name, double w, double d, double h)
+        {
+            var part = (PartDocument)app.Documents.Add(DocumentTypeEnum.kPartDocumentObject);
+            created.Add(part);
+            CreateBlock(app, part, w, d, h, true, "Blocco");
+            var path = Path.Combine(directory, prefix + name + ".ipt");
+            part.SaveAs(path, false);
+            return path;
+        }
+        var partL1 = SavePart("PartL1", 30, 30, 10);
+        var partI = SavePart("PartI", 40, 30, 10);
+        var partF = SavePart("PartF", 30, 20, 10);
+        var partX = SavePart("PartX", 40, 30, 10);
+        var partY = SavePart("PartY", 30, 20, 10);
+        var partG = SavePart("PartG", 20, 20, 10);
+
+        var tg = app.TransientGeometry;
+        ComponentOccurrence Place(AssemblyDocument doc, string path, double xCm, double zCm, bool grounded)
+        {
+            var pose = tg.CreateMatrix();
+            pose.SetTranslation(tg.CreateVector(xCm, 0, zCm));
+            var occurrence = doc.ComponentDefinition.Occurrences.Add(path, pose);
+            occurrence.Grounded = grounded;
+            return occurrence;
+        }
+        AssemblyDocument NewAssembly(string name)
+        {
+            var doc = (AssemblyDocument)app.Documents.Add(DocumentTypeEnum.kAssemblyDocumentObject);
+            created.Add(doc);
+            doc.SaveAs(Path.Combine(directory, prefix + name + ".iam"), false);
+            return doc;
+        }
+        void MakeFlexible(ComponentOccurrence occurrence, string what)
+        {
+            occurrence.Flexible = true;
+            if (!occurrence.Flexible) throw new InvalidOperationException(what + ": ComponentOccurrence.Flexible did not stick after setting it to True.");
+        }
+
+        // Normal sub-assembly of the fixed branch.
+        var asmInner = NewAssembly("AsmInner");
+        Place(asmInner, partI, 0, 0, true);
+        asmInner.Save();
+        // Fixed branch: AsmInner (normal) and PartF.
+        var asmFixed = NewAssembly("AsmFixed");
+        var innerOccurrence = Place(asmFixed, asmInner.FullFileName, 0, 0, true);
+        Place(asmFixed, partF, 6, 0, true);
+        if (innerOccurrence.Flexible) throw new InvalidOperationException("AsmInner must stay a normal (non flexible) sub-assembly.");
+        asmFixed.Save();
+        // Flexible branch: AsmFlexInner (flexible, ungrounded) with PartX and PartY, ungrounded as well.
+        var asmFlexInner = NewAssembly("AsmFlexInner");
+        Place(asmFlexInner, partX, 0, 0, false);
+        Place(asmFlexInner, partY, 6, 0, false);
+        asmFlexInner.Save();
+        var asmFlex = NewAssembly("AsmFlex");
+        var flexInnerOccurrence = Place(asmFlex, asmFlexInner.FullFileName, 0, 0, false);
+        MakeFlexible(flexInnerOccurrence, "AsmFlexInner inside AsmFlex");
+        Place(asmFlex, partG, 6, 0, false);
+        asmFlex.Save();
+        // Top assembly.
+        var robot = NewAssembly("Robot");
+        Place(robot, partL1, -8, 0, false);
+        Place(robot, asmFixed.FullFileName, 0, 0, true);
+        var flexOccurrence = Place(robot, asmFlex.FullFileName, 0, -500, false);   // cm: 5 m from AsmFixed
+        MakeFlexible(flexOccurrence, "AsmFlex inside Robot");
+        robot.Save();
+        var robotPath = robot.FullFileName;
+        robot.Activate();
+        var documents = new JArray(robotPath, asmFixed.FullFileName, asmInner.FullFileName, asmFlex.FullFileName, asmFlexInner.FullFileName,
+            partL1, partI, partF, partX, partY, partG);
+        var expected = new JObject
+        {
+            ["occurrences"] = 3, ["root_occurrences"] = new JArray("PartL1", "AsmFixed", "AsmFlex"),
+            ["asm_fixed_grounded"] = true, ["asm_fixed_flexible"] = false, ["asm_flex_grounded"] = false, ["asm_flex_flexible"] = true,
+            ["asm_flex_z_mm"] = -5000, ["asm_flex_inner_flexible"] = true, ["asm_flex_inner_grounded"] = false,
+            ["asm_fixed_children"] = new JArray("AsmInner", "PartF"), ["asm_flex_children"] = new JArray("AsmFlexInner", "PartG"),
+            ["asm_flex_inner_children"] = new JArray("PartX", "PartY"), ["part_x_volume_mm3"] = 12000, ["extrude_mm"] = 10,
+            ["asm_flex_constraints"] = 0, ["fixture_documents"] = documents.Count,
+        };
+        return new JObject
+        {
+            ["assembly"] = robotPath, ["asm_fixed"] = asmFixed.FullFileName, ["asm_inner"] = asmInner.FullFileName,
+            ["asm_flex"] = asmFlex.FullFileName, ["asm_flex_inner"] = asmFlexInner.FullFileName,
+            ["part_l1"] = partL1, ["part_i"] = partI, ["part_f"] = partF, ["part_x"] = partX, ["part_y"] = partY, ["part_g"] = partG,
+            ["documents"] = documents, ["expected"] = expected,
+        };
+    }
+
+    /// <summary>
     /// M7: four 20 mm cubes of one part (blank part number). M7_A grounded at the origin; M7_B grounded and overlapping M7_A by
     /// 5 mm in X (2000 mm3); M7_C grounded 30 mm from M7_A along Y; M7_D free and unconstrained at X = 100 mm. M7_Sick is a flush
     /// constraint between the M7_Ref work planes of the two grounded cubes M7_B and M7_C with a 5 mm offset they cannot satisfy.
@@ -427,7 +529,8 @@ internal static class Fixtures
                 result["volume_mm3"] = VolumeMm3(partDef);
             result["fixture_documents"] = ManifestDocuments(manifest).Count(p => FindOpen(app, p) != null);
             if (m == "m7") ProbeM7.AddInspection(app, assembly, result);
-            if (m == "m9n") AddNestedInspection(app, manifest, result);
+            if (m == "m9n" || m == "m9f") AddNestedInspection(app, manifest, result);
+            if (m == "m9f") AddFlexInspection(assembly, result);
         }
         else if (active is PartDocument part)
         {
@@ -470,6 +573,38 @@ internal static class Fixtures
             documents.Add(item);
         }
         result["documents_state"] = documents;
+    }
+
+    /// <summary>
+    /// m9f: Grounded and Flexible read back from Inventor for the top assembly's direct occurrences and for the sub-assemblies' own
+    /// occurrences (read from the open definitions), the number of assembly constraints of each assembly and the z position in mm.
+    /// </summary>
+    private static void AddFlexInspection(AssemblyDocument robot, JObject result)
+    {
+        JObject Describe(ComponentOccurrence occurrence)
+        {
+            var item = new JObject
+            {
+                ["name"] = occurrence.Name, ["grounded"] = occurrence.Grounded, ["z_mm"] = occurrence.Transformation.Cell[3, 4] * 10,
+                ["is_assembly"] = occurrence.DefinitionDocumentType == DocumentTypeEnum.kAssemblyDocumentObject,
+            };
+            // Flexible exists on assembly occurrences only.
+            if (occurrence.DefinitionDocumentType == DocumentTypeEnum.kAssemblyDocumentObject)
+            {
+                try { item["flexible"] = occurrence.Flexible; } catch (Exception ex) { item["flexible_error"] = ex.Message; }
+                try
+                {
+                    var definition = (AssemblyComponentDefinition)occurrence.Definition;
+                    item["constraints"] = definition.Constraints.Count;
+                    item["children"] = new JArray(definition.Occurrences.Cast<ComponentOccurrence>().Select(Describe));
+                }
+                catch (Exception ex) { item["children_error"] = ex.Message; }
+            }
+            return item;
+        }
+        var top = robot.ComponentDefinition;
+        result["robot_constraints"] = top.Constraints.Count;
+        result["flex_tree"] = new JArray(top.Occurrences.Cast<ComponentOccurrence>().Select(Describe));
     }
 
     // ---------------------------------------------------------------- restore

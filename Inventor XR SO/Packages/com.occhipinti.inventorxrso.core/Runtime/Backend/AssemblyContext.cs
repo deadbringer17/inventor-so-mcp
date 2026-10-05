@@ -12,6 +12,8 @@ namespace InventorXrSo.Core.Backend
         public string DefinitionId { get; }
         public string Kind { get; }
         public bool Editable { get; }
+        /// <summary>A flexible sub-assembly occurrence: it cannot be moved or constrained as a unit, but its definition can still be entered.</summary>
+        public bool Flexible { get; }
         public bool Grounded { get; }
         public bool DofComplete { get; }
         public int? TranslationCount { get; }
@@ -27,6 +29,7 @@ namespace InventorXrSo.Core.Backend
             Id = AssemblyOperations.Entity((string)json["occurrence_id"]); Name = (string)json["name"] ?? Id;
             DefinitionId = (string)json["definition_document_id"]; Kind = (string)json["definition_kind"];
             Editable = (bool?)json["editable"] == true && (bool?)json["suppressed"] == false && (bool?)json["adaptive"] == false && (bool?)json["flexible"] != true;
+            Flexible = (bool?)json["flexible"] == true;
             Grounded = (bool?)json["grounded"] != false;
             UnavailableReason = (string)json["unavailable_reason"];
             TranslationCount = Count(json["dof_translation"]); RotationCount = Count(json["dof_rotation"]);
