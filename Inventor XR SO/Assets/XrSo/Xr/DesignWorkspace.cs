@@ -26,7 +26,7 @@ namespace InventorXrSo.Xr
     /// the palette (<see cref="IActionProvider"/>, see DesignActions.cs), the commit bar is the only place that applies.
     /// </summary>
     [DefaultExecutionOrder(115)]
-    public sealed partial class DesignWorkspace : MonoBehaviour, IActionProvider
+    public sealed partial class DesignWorkspace : MonoBehaviour, IActionProvider, ITabStateSource
     {
         private CadSceneView _view;
         private SelectionVisuals _selection;
@@ -93,6 +93,12 @@ namespace InventorXrSo.Xr
         private Canvas _cursorCanvas;
         public bool Active { get; private set; }
         public bool RequiresCadReview => _reviewAfterRebind || _pendingMutations > 0 || _session?.Status == DesignStatus.Committing || _session?.Status == DesignStatus.RefreshRequired;
+        /// <summary>M9: Misura (Ispeziona) is armed and owns the trigger: the workspace does not pick or capture.</summary>
+        public Func<bool> PickSuppressed { get; set; }
+        /// <summary>M9: a handle is captured; Ispeziona tools suspend until it is released.</summary>
+        public bool HandleCaptured => _dimensionDrag;
+        /// <summary>M9: what is true now (sketch open, feature/move in progress): decides the tabs that appear by themselves.</summary>
+        public TabState TabState => new TabState { SketchOpen = _screen == "sketch" && _sketch != null, FeatureInProgress = _screen == "feature" };
         public Func<bool> CanEnter { get; set; }
         public event Action<bool> ActiveChanged;
         /// <summary>Raised only when an open workspace closes: the shell restores the Inspect placement of the model.</summary>
@@ -487,6 +493,7 @@ namespace InventorXrSo.Xr
             if (_shell == null && _ask != null) { _ask.CancelEdit(); _ask = null; return; }
             if (_ring != null && _ring.Visible) { HideRing(); return; }
             if (_picker != null) { ClosePicker(); return; }
+            if (_shell != null && _shell.Palette.TryLeaveGroup(ContextTabs.Inspect)) return;
             DiscardLastDraftStep();
         }
 
@@ -1020,6 +1027,7 @@ namespace InventorXrSo.Xr
         private void OnPenPressed()
         {
             if (!TryPenRay(out var ray, out bool overUi)) return;
+            if (PickSuppressed?.Invoke() == true) return;
             if (_session?.CanEdit == true && !overUi && !GripDown && TryBeginHandleDrag(ray)) return;
             if (overUi || _ask != null || _session?.CanEdit != true || _gripHeld || _dimensionDrag) return;
             if (_screen == "sketch" && _sketch?.Frame != null) { SketchPress(ray); return; }

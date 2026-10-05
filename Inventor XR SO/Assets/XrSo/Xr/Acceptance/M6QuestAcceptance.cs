@@ -1372,9 +1372,9 @@ namespace InventorXrSo.Xr
                 Pass("M6-08", "a disabled action label and an out-of-vocabulary phrase were refused with no mutation (draft, preview and revision " + baseline.Revision + " unchanged)");
 
                 // positive control: an enabled label resolved on the catalog runs through the same Invoke (view only here)
-                Check(ActionEnabled(LamieraWorkspace.IdFit), "the Adatta action is enabled");
+                Check(ActionEnabled(ViewActions.IdFit), "the Adatta action is enabled");
                 var fit = Catalog.ResolveVoice("adatta");
-                Check(fit.Kind == VoiceMatchKind.Ok && fit.Action.Id == LamieraWorkspace.IdFit, "the catalog resolves 'adatta' to " + LamieraWorkspace.IdFit);
+                Check(fit.Kind == VoiceMatchKind.Ok && fit.Action.Id == ViewActions.IdFit, "the catalog resolves 'adatta' to " + ViewActions.IdFit);
                 await SpeakAsync("adatta", ct);
                 Check(_bridge.Outcome == VoiceOutcomeKind.Executed, "an enabled catalog label runs, outcome " + _bridge.Outcome);
                 Check(LamieraSess.Status == DesignStatus.PreviewReady && LamieraSess.Preview.PlanId == plan, "the view command left the preview untouched");

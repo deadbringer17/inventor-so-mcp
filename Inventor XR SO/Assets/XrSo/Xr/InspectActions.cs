@@ -16,7 +16,8 @@ namespace InventorXrSo.Xr
     /// </summary>
     public sealed partial class InspectWorkspace : IActionProvider
     {
-        public const string TabMeasure = "misura", TabSection = "sezione", TabView = "vista";
+        public const string TabMeasure = "misura", TabSection = "sezione", TabView = "vista", TabExplore = "esplora",
+            TabInspect = ContextTabs.Inspect, TabExit = ActionCatalog.InspectExitTab;
         public const string TabVisibility = "visibilita", TabVerify = "verifica";
         public const string PickTabPrefix = "_pick.";
 
@@ -29,7 +30,7 @@ namespace InventorXrSo.Xr
             IdEnter = "inspect.context.enter", IdBack = "inspect.context.back",
             IdScaleOne = "inspect.scale.one", IdScaleFit = "inspect.scale.fit", IdScaleTable = "inspect.scale.table",
             IdScaleRoom = "inspect.scale.room", IdScaleRecenter = "inspect.scale.recenter",
-            IdPickPrefix = "inspect.pick.";
+            IdPickPrefix = "inspect.pick.", IdGroupOpen = "inspect.group", IdGroupExit = "inspect.group.exit";
         public const string IdXRay = "inspect.visibility.xray", IdIsolate = "inspect.visibility.isolate", IdHide = "inspect.visibility.hide",
             IdShowAll = "inspect.visibility.showall",
             IdInterference = "inspect.verify.interference", IdScope = "inspect.verify.scope", IdDistance = "inspect.verify.distance",
@@ -37,8 +38,9 @@ namespace InventorXrSo.Xr
 
         private static readonly XrTab[] StaticTabs =
         {
-            new XrTab(TabMeasure, "Misura"), new XrTab(TabSection, "Sezione"), new XrTab(TabView, "Vista"),
-            new XrTab(TabVisibility, "Visibilità"), new XrTab(TabVerify, "Verifica"),
+            new XrTab(TabInspect, "Ispeziona ▸"), new XrTab(TabMeasure, "Misura"), new XrTab(TabSection, "Sezione"),
+            new XrTab(TabVisibility, "Visibilità"), new XrTab(TabVerify, "Verifica"), new XrTab(TabExplore, "Esplora"),
+            new XrTab(TabExit, "◂ Schede"),
         };
 
         private sealed class PickerItem
@@ -85,6 +87,18 @@ namespace InventorXrSo.Xr
             if (selection != SelectionKind.Component) return Array.Empty<XrAction>();
             var all = Actions.ToList();
             return new[] { IdProperties, IdEnter, IdMeasure }.Select(id => all.First(a => a.Id == id)).ToArray();
+        }
+
+        // ---------------------------------------------------------------- Ispeziona ▸ group
+
+        /// <summary>The group of the context: ContextTabs.InspectGroup plus the «◂» exit tab; stick left/right scrolls it, X leaves it.</summary>
+        private void OpenGroup()
+        {
+            var context = _catalog?.CurrentContext;
+            if (context == null || _shell == null) return;
+            var tabs = ContextTabs.InspectGroup(context.Value).ToList();
+            tabs.Add(TabExit);
+            _shell.Palette.ShowTabGroup(tabs, backable: true);
         }
 
         // ---------------------------------------------------------------- pickers
@@ -186,19 +200,25 @@ namespace InventorXrSo.Xr
                 new XrAction(IdSectionReset, "Ripristina piano", TabSection, () => Local && _view != null,
                     () => { _section.ResetPlane(ScenePlacement.LocalBounds(_view.transform)); _section.SetActive(true); Refresh(); }, LocalReason),
 
-                // Vista
-                new XrAction(IdBrowse, "Esplora", TabView, () => Backend && _context.Current != null, OpenBrowserPicker, BackendReason, new[] { "browser" }),
-                new XrAction(IdProperties, "Proprietà", TabView, () => Backend, () => { _showInfo = true; LoadInfo(); }, BackendReason),
-                new XrAction(IdDocuments, "Documenti aperti", TabView, () => Backend, LoadDocuments, BackendReason, new[] { "documenti" }),
+                // Ispeziona ▸: opens the group of tabs of the context (Misura, Sezione, + Visibilità and Verifica in Assieme)
+                new XrAction(IdGroupOpen, "Apri strumenti", TabInspect, () => Active && _shell != null && _catalog?.CurrentContext != null,
+                    OpenGroup, () => !Active ? LocalReason() : "Nessun documento in contesto."),
+                new XrAction(IdGroupExit, "Schede principali", TabExit, () => _shell != null && _shell.Palette.InTabGroup,
+                    () => _shell.Palette.TryLeaveGroup(TabInspect), () => "Le schede principali sono già visibili."),
+
+                // Esplora: browsing of the scene when no document context is open (the documents and Torna live in Documento)
+                new XrAction(IdBrowse, "Esplora", TabExplore, () => Backend && _context.Current != null, OpenBrowserPicker, BackendReason, new[] { "browser" }),
+                new XrAction(IdProperties, "Proprietà", TabExplore, () => Backend, () => { _showInfo = true; LoadInfo(); }, BackendReason),
+                new XrAction(IdDocuments, "Elenco documenti", TabExplore, () => Backend, LoadDocuments, BackendReason),
                 new XrAction(IdScale, "Scala", TabView, () => Local && _view != null, OpenScalePicker, LocalReason),
                 new XrAction(IdEnvironment, env, TabView, () => Local && _environment != null, () =>
                 {
                     _environment.Set(_environment.Mode == EnvironmentMode.MixedReality ? EnvironmentMode.StudioVr : EnvironmentMode.MixedReality);
                     Refresh();
                 }, LocalReason),
-                new XrAction(IdEnter, "Apri contesto", TabView, () => CanEnter, () => Enter(_selected),
+                new XrAction(IdEnter, "Apri contesto", TabExplore, () => CanEnter, () => Enter(_selected),
                     () => !Active ? LocalReason() : "Seleziona prima un componente con Esplora o toccandolo."),
-                new XrAction(IdBack, "Indietro", TabView, () => Active && _context.Path.Count > 1, ContextBack,
+                new XrAction(IdBack, "Livello superiore", TabExplore, () => Active && _context.Path.Count > 1, ContextBack,
                     () => !Active ? LocalReason() : "Sei già alla radice del documento."),
 
                 // Visibilità (local, view only)

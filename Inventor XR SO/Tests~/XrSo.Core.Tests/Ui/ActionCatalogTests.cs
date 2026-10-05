@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using InventorXrSo.Core.Navigation;
 using InventorXrSo.Core.Ui;
 
 namespace XrSo.Core.Tests.Ui
@@ -215,6 +216,134 @@ namespace XrSo.Core.Tests.Ui
             Assert.DoesNotContain(c.Tabs, t => t.Id == "_pick.0");
             Assert.Equal("Elenco", c.FindTab("_pick.0").Label);
             Assert.Null(c.FindTab("assente"));
+        }
+
+        // ---- M9 composizione delle schede dal contesto
+
+        private sealed class StatefulProvider : IActionProvider, ITabStateSource
+        {
+            public List<XrTab> TabList = new List<XrTab>();
+            public List<XrAction> All = new List<XrAction>();
+            public TabState State = new TabState();
+            public IReadOnlyList<XrTab> Tabs => TabList;
+            public IEnumerable<XrAction> Actions => All;
+            public IEnumerable<XrAction> ContextActions(SelectionKind s) => Enumerable.Empty<XrAction>();
+            public CommitBarState CommitBar => null;
+            public TabState TabState => State;
+        }
+
+        private static Provider SharedView()
+        {
+            var v = new Provider();
+            v.TabList.Add(new XrTab("vista", "Vista"));
+            v.All.Add(A("view.fit", "Adatta", "vista"));
+            return v;
+        }
+
+        private static Provider SharedInspect()
+        {
+            var i = new Provider();
+            i.TabList.Add(new XrTab(ContextTabs.Inspect, "Ispeziona ▸"));
+            i.TabList.Add(new XrTab("misura", "Misura"));
+            i.TabList.Add(new XrTab("sezione", "Sezione"));
+            i.TabList.Add(new XrTab("visibilita", "Visibilità"));
+            i.TabList.Add(new XrTab("verifica", "Verifica"));
+            i.TabList.Add(new XrTab(ActionCatalog.InspectExitTab, "◂"));
+            i.All.Add(A("inspect.group", "Ispeziona", ContextTabs.Inspect));
+            i.All.Add(A("inspect.measure", "Misura", "misura"));
+            i.All.Add(A("inspect.section", "Sezione", "sezione"));
+            i.All.Add(A("inspect.visibility.isolate", "Isola vista", "visibilita"));
+            i.All.Add(A("inspect.verify.health", "Salute", "verifica"));
+            i.All.Add(A("inspect.group.exit", "Indietro", ActionCatalog.InspectExitTab));
+            return i;
+        }
+
+        private static StatefulProvider PartProvider()
+        {
+            var d = new StatefulProvider();
+            foreach (var t in new[] { "schizzo", "vincoli", "feature", "opzioni", "parametri" }) d.TabList.Add(new XrTab(t, t));
+            foreach (var t in new[] { "schizzo", "vincoli", "feature", "opzioni", "parametri" }) d.All.Add(A("d." + t, "Azione " + t, t));
+            d.All.Add(A("d.model", "Vista modello", "vista"));
+            return d;
+        }
+
+        private static ActionCatalog Composed(IActionProvider active, DocContext? ctx)
+        {
+            var c = new ActionCatalog(Spaces());
+            c.AddShared(SharedInspect());
+            c.AddShared(SharedView());
+            c.ContextProbe = () => ctx;
+            c.SetActive(active);
+            return c;
+        }
+
+        [Fact]
+        public void Part_tabs_follow_ContextTabs_with_one_vista_and_no_empty_tab()
+        {
+            var part = PartProvider();
+            var c = Composed(part, DocContext.Part);
+            Assert.Equal(new[] { "schizzo", "feature", "parametri", "ispeziona", "vista", "documento" }, c.Tabs.Select(t => t.Id));
+            Assert.Equal(2, c.Palette("vista").Count);   // Adatta condiviso + azione di dominio dello stesso id
+        }
+
+        [Fact]
+        public void Auto_tabs_appear_only_with_their_state()
+        {
+            var part = PartProvider();
+            var c = Composed(part, DocContext.Part);
+            part.State = new TabState { SketchOpen = true };
+            Assert.Contains("vincoli", c.Tabs.Select(t => t.Id));
+            Assert.DoesNotContain("opzioni", c.Tabs.Select(t => t.Id));
+            part.State = new TabState { FeatureInProgress = true };
+            Assert.Equal("opzioni", c.Tabs[0].Id);
+        }
+
+        [Fact]
+        public void A_tab_without_actions_is_never_shown()
+        {
+            var lam = new StatefulProvider();
+            lam.TabList.Add(new XrTab("lamiera", "Lamiera"));
+            lam.TabList.Add(new XrTab("schizzo", "Schizzo"));
+            lam.TabList.Add(new XrTab("sviluppo", "Sviluppo"));
+            lam.All.Add(A("l.a", "Lamiera azione", "lamiera"));
+            lam.All.Add(A("l.s", "Schizzo azione", "schizzo"));   // «sviluppo» resta senza azioni
+            lam.State = new TabState { SketchOpen = true };     // «vincoli» non esiste in Lamiera
+            var c = Composed(lam, DocContext.SheetMetal);
+            Assert.Equal(new[] { "lamiera", "schizzo", "ispeziona", "vista", "documento" }, c.Tabs.Select(t => t.Id));
+        }
+
+        [Fact]
+        public void Without_context_the_fallback_shows_local_tools_vista_and_documento()
+        {
+            var inspect = SharedInspect();
+            var c = new ActionCatalog(Spaces());
+            c.AddShared(SharedView());
+            c.ContextProbe = () => null;
+            c.SetActive(inspect);
+            Assert.Equal(new[] { "misura", "sezione", "vista", ActionCatalog.DocumentTab }, c.Tabs.Select(t => t.Id));
+            Assert.Single(c.Palette("misura"));   // il fornitore attivo non si conta due volte
+        }
+
+        [Fact]
+        public void Voice_reaches_shared_actions_only_where_the_context_shows_them()
+        {
+            var part = PartProvider();
+            var assembly = new StatefulProvider();
+            assembly.TabList.Add(new XrTab("componenti", "Componenti"));
+            assembly.All.Add(A("a.c", "Componenti", "componenti"));
+            Assert.Equal(VoiceMatchKind.NotFound, Composed(part, DocContext.Part).ResolveVoice("isola vista").Kind);
+            Assert.Equal(VoiceMatchKind.Ok, Composed(assembly, DocContext.Assembly).ResolveVoice("isola vista").Kind);
+            Assert.Equal(VoiceMatchKind.Ok, Composed(part, DocContext.Part).ResolveVoice("misura").Kind);
+        }
+
+        [Fact]
+        public void Shared_ids_colliding_with_the_active_provider_are_rejected()
+        {
+            var c = new ActionCatalog(Spaces());
+            c.AddShared(SharedView());
+            var clash = new Provider();
+            clash.All.Add(A("view.fit", "Altro", "x"));
+            Assert.Throws<InvalidOperationException>(() => c.SetActive(clash));
         }
     }
 }

@@ -55,7 +55,7 @@ namespace InventorXrSo.Tests
             var visuals = _view.gameObject.AddComponent<SelectionVisuals>(); visuals.Configure(_view, null, null);
             _env = Child("Environment").AddComponent<EnvironmentModeController>(); _env.Configure(eye, null);
             _workspace = Child("Workspace").AddComponent<InspectWorkspace>();
-            _workspace.OtherWorkspaceActive = () => _other;
+            _workspace.SuspendProbe = () => _other;
             _workspace.HudMessage += _hud.Add;
             _workspace.Initialize(_view, visuals, _ray, eye.transform, _env);
             _catalog = new ActionCatalog(TestDocs.Create());
@@ -131,8 +131,9 @@ namespace InventorXrSo.Tests
         [Test]
         public void TabsAreMeasureSectionViewVisibilityVerifyWithAtMostEightActionsEachAndUniqueIds()
         {
-            CollectionAssert.AreEqual(new[] { "misura", "sezione", "vista", "visibilita", "verifica" }, _workspace.Tabs.Select(t => t.Id).ToArray());
-            CollectionAssert.AreEqual(new[] { "Misura", "Sezione", "Vista", "Visibilità", "Verifica", "Documento" }, _catalog.Tabs.Select(t => t.Label).ToArray());
+            CollectionAssert.AreEqual(new[] { "ispeziona", "misura", "sezione", "visibilita", "verifica", "esplora", "_ispeziona_esci" }, _workspace.Tabs.Select(t => t.Id).ToArray());   // M9: Vista is the shared ViewActions tab
+            Assert.That(_catalog.Palette("vista").Count, Is.InRange(1, 8), "Scala and Ambiente share the Vista tab");
+            CollectionAssert.AreEqual(new[] { "Ispeziona ▸", "Misura", "Sezione", "Visibilità", "Verifica", "Esplora", "Documento" }, _catalog.Tabs.Select(t => t.Label).ToArray());
             foreach (var tab in _workspace.Tabs)
             {
                 var list = _catalog.Palette(tab.Id);
@@ -145,18 +146,18 @@ namespace InventorXrSo.Tests
         }
 
         [Test]
-        public void InspectIsTheDefaultWorkspaceAndStopsWhileAnAuthoringWorkspaceIsOpen()
+        public void InspectIsTheDefaultWorkspaceAndPausesOnlyWhileSuspended()
         {
             Assert.AreSame(_workspace, _catalog.Active, "the palette is never empty");
             Assert.True(_workspace.Active); Assert.True(Enabled(InspectWorkspace.IdMeasure));
             Do(InspectWorkspace.IdMeasure); Do(InspectWorkspace.IdSection);
             Assert.True(_workspace.Measuring); Assert.True(Section.Active);
-            _other = true; _workspace.OthersChanged();
+            _other = true; Update();   // M9: a handle capture or a CAD review suspends the tools; an open authoring workspace does not
             Assert.False(_workspace.Active);
-            Assert.False(_workspace.Measuring); Assert.False(Section.Active, "local tools stop while another workspace is open");
+            Assert.False(_workspace.Measuring, "the measurement in progress is dropped while suspended");
             Assert.False(Enabled(InspectWorkspace.IdMeasure));
             Assert.False(string.IsNullOrEmpty(Act(InspectWorkspace.IdMeasure).DisabledReason));
-            _other = false; _workspace.OthersChanged();
+            _other = false; Update();
             Assert.True(Enabled(InspectWorkspace.IdMeasure));
         }
 

@@ -358,13 +358,15 @@ namespace InventorXrSo.Tests
             foreach (var id in new[] { AssemblyWorkspace.IdComponents, AssemblyWorkspace.IdIsolate, AssemblyWorkspace.IdRelease, AssemblyWorkspace.IdMove,
                 AssemblyWorkspace.IdOpen, AssemblyWorkspace.IdOpenDesign, AssemblyWorkspace.IdOpenLamiera, AssemblyWorkspace.IdActivate,
                 AssemblyWorkspace.IdConstrain, AssemblyWorkspace.IdJoint, AssemblyWorkspace.IdReferences, AssemblyWorkspace.IdClearance,
-                AssemblyWorkspace.IdFit, AssemblyWorkspace.IdRecenter, AssemblyWorkspace.IdUndo, AssemblyWorkspace.IdRedo,
+                AssemblyWorkspace.IdUndo, AssemblyWorkspace.IdRedo,
                 CommitIds.Preview, CommitIds.Apply, CommitIds.Cancel, CommitIds.Recover })
                 CollectionAssert.Contains(ids, id);
             Assert.True(ids.All(id => id.StartsWith("assembly.") || id.StartsWith("commit.")), "every id is assembly.* or commit.*");
             Assert.AreEqual(ids.Length, ids.Distinct().Count(), "ids are unique");
-            CollectionAssert.AreEqual(new[] { "componenti", "vincoli", "vista" }, _workspace.Tabs.Select(t => t.Id).ToArray());
-            Assert.True(_workspace.Actions.Where(a => a.Tab != ActionCatalog.CommitTab).All(a => _workspace.Tabs.Any(t => t.Id == a.Tab)));
+            CollectionAssert.AreEqual(new[] { "componenti", "vincoli", "opzioni" }, _workspace.Tabs.Select(t => t.Id).ToArray());
+            // M9: the Vista tab is declared once by ViewActions; the provider keeps its own domain actions under the same id.
+            Assert.False(_workspace.Tabs.Any(t => t.Id == AssemblyWorkspace.TabView));
+            Assert.True(_workspace.Actions.Where(a => a.Tab != ActionCatalog.CommitTab && a.Tab != AssemblyWorkspace.TabView).All(a => _workspace.Tabs.Any(t => t.Id == a.Tab)));
         }
 
         [Test] public async Task EveryTabHasAtMostEightActionsAndListsAreSplitIntoPickerTabs()
@@ -799,7 +801,7 @@ namespace InventorXrSo.Tests
             var shell = AttachShell(out _, out _);
             Assert.AreEqual("componenti", shell.Palette.CurrentTab);
             shell.Palette.SelectTab(+1); Assert.AreEqual("vincoli", shell.Palette.CurrentTab);
-            shell.Palette.SelectTab(+1); Assert.AreEqual("vista", shell.Palette.CurrentTab);
+            shell.Palette.SelectTab(+1); Assert.AreEqual("opzioni", shell.Palette.CurrentTab);
             shell.Palette.SelectTab(+1); Assert.AreEqual("documento", shell.Palette.CurrentTab);
             shell.Palette.SelectTab(+1); Assert.AreEqual("componenti", shell.Palette.CurrentTab);
             _backend.ExtraOccurrences = 8; Start();
@@ -835,16 +837,15 @@ namespace InventorXrSo.Tests
             return Math.Max(size.x, Math.Max(size.y, size.z));
         }
 
-        [Test] public void ViewActionsFitAndRecenterTheRaisedPose()
+        // M9: Adatta lives in the shared ViewActions (ViewActionsTests); the workspace keeps the view methods it calls.
+        [Test] public void FitAndRecenterTheRaisedPose()
         {
             AttachShell(out var bench, out _);
-            Assert.True(Enabled(AssemblyWorkspace.IdFit)); Assert.True(Enabled(AssemblyWorkspace.IdRecenter));
+            Assert.False(_workspace.Actions.Any(a => a.Tab == AssemblyWorkspace.TabView && a.Label == "Adatta"), "the Vista tab is shared");
             _eye.transform.position = new Vector3(0, 1.6f, 0); _eye.transform.rotation = Quaternion.Euler(0, 90, 0);
-            Do(AssemblyWorkspace.IdRecenter);
+            _workspace.RecenterView();
             Assert.AreEqual(90, bench.Frame.YawDegrees, 1e-3); Assert.True(bench.Raised);
-            Do(AssemblyWorkspace.IdFit);
-            _workspace.Close();
-            Assert.False(Enabled(AssemblyWorkspace.IdFit), "closed: no view actions");
+            _workspace.FitView();
         }
 
         [Test] public async Task CommitBarSitsOnTheWorkPlaneAndFollowsThePhase()

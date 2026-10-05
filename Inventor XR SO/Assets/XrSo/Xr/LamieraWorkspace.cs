@@ -98,6 +98,10 @@ namespace InventorXrSo.Xr
 
         public bool Active { get; private set; }
         public bool RequiresCadReview => _reviewAfterRebind || _pendingMutations > 0 || _session?.Status == DesignStatus.Committing || _session?.Status == DesignStatus.RefreshRequired;
+        /// <summary>M9: Misura (Ispeziona) is armed and owns the trigger: the workspace does not pick or capture.</summary>
+        public Func<bool> PickSuppressed { get; set; }
+        /// <summary>M9: a handle is captured; Ispeziona tools suspend until it is released.</summary>
+        public bool HandleCaptured => _manip != null && _manip.Dragging;
         public Func<bool> CanEnter { get; set; }
         public event Action<bool> ActiveChanged;
         /// <summary>Raised only when an open workspace closes: the shell restores the Inspect placement of the model.</summary>
@@ -591,6 +595,7 @@ namespace InventorXrSo.Xr
             if (_shell == null && _ask != null) { _ask.CancelEdit(); _ask = null; return; }
             if (_ring != null && _ring.Visible) { HideRing(); return; }
             if (_picker != null) { ClosePicker(); return; }
+            if (_shell != null && _shell.Palette.TryLeaveGroup(ContextTabs.Inspect)) return;
             if (_armedField != null) { DisarmField(); return; }
             DiscardLastDraftStep();
         }
@@ -1246,6 +1251,7 @@ namespace InventorXrSo.Xr
         private void OnPenPressed()
         {
             if (!TryPenRay(out var ray, out bool overUi)) return;
+            if (PickSuppressed?.Invoke() == true) return;
             if (!overUi && !GripDown && CanManipulate
                 && _manip.TryBeginDrag(ray, CadCoordinates.FromWorld(_view.transform, _ray.Origin.position), Precision ? FlangeManipulator.PrecisionFactor : 1))
             { _grab = null; _grabFlat = false; return; }

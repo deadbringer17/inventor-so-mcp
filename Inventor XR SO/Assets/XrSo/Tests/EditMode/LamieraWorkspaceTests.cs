@@ -882,7 +882,7 @@ namespace InventorXrSo.Tests
             Assert.True(_view.GetComponentsInChildren<CadBody>(true).All(b => !b.GetComponent<MeshRenderer>().enabled));
             // Recentre: the pattern follows the new frame
             _eye.transform.position = new Vector3(0, 1.6f, 0); _eye.transform.rotation = Quaternion.Euler(0, 90, 0);
-            Do(LamieraWorkspace.IdRecenter); bench.Snap(); display.Snap();
+            _workspace.RecenterView(); bench.Snap(); display.Snap();
             var moved = WorldBounds(display.MeshRoot); var next = WorkbenchLayout.Part(bench.Frame, 0.4).Position;
             Assert.AreEqual((float)next.X, moved.center.x, 2e-3f); Assert.AreEqual((float)next.Z, moved.center.z, 2e-3f);
             Assert.AreEqual(0, _backend.Commits);
@@ -938,7 +938,7 @@ namespace InventorXrSo.Tests
             display.Snap();
             Assert.GreaterOrEqual(display.MeshRoot.lossyScale.x, (float)WorkbenchLayout.MinScale - 1e-6f);
             Assert.AreEqual(modelScale, _view.transform.localScale.x, "the folded part is not zoomed");
-            Do(LamieraWorkspace.IdFit); display.Snap();
+            _workspace.FitView(); display.Snap();
             Assert.That(WorldBounds(display.MeshRoot).size.x, Is.EqualTo(before).Within(2e-3f), "Adatta returns to the fitted size");
         }
 
@@ -1135,7 +1135,7 @@ namespace InventorXrSo.Tests
             var ids = _workspace.Actions.Select(a => a.Id).ToList();
             CollectionAssert.AllItemsAreUnique(ids, state + ": ids");
             Assert.True(ids.All(id => id.StartsWith("lamiera.") || id.StartsWith("commit.")), state + ": stable id namespaces");
-            var known = new HashSet<string>(_workspace.Tabs.Select(t => t.Id)) { ActionCatalog.CommitTab };
+            var known = new HashSet<string>(_workspace.Tabs.Select(t => t.Id)) { ActionCatalog.CommitTab, LamieraWorkspace.TabView };   // M9: the Vista tab is shared (ViewActions)
             foreach (var action in _workspace.Actions) Assert.True(known.Contains(action.Tab), state + ": tab of " + action.Id);
             foreach (var tab in _workspace.Tabs)
                 Assert.LessOrEqual(catalog.Palette(tab.Id).Count, ActionCatalog.MaxPalette, state + ": " + tab.Id);
@@ -1143,8 +1143,8 @@ namespace InventorXrSo.Tests
             Assert.False(_workspace.Actions.Any(a => a.Label == "Precedenti" || a.Label == "Successivi"), state + ": no pagination buttons");
             Assert.False(_workspace.Actions.Any(a => a.Label.StartsWith("Blocca") || a.Label == "Ispeziona" || a.Label == "Dettagli errore"), state);
             foreach (var action in _workspace.Actions.Where(a => !a.Enabled)) Assert.False(string.IsNullOrEmpty(action.DisabledReason), state + ": reason of " + action.Id);
-            CollectionAssert.AreEqual(new[] { "lamiera", "schizzo", "sviluppo", "vista" }, _workspace.Tabs.Where(t => !t.Hidden).Select(t => t.Id).ToArray(), state);
-            Assert.AreEqual(new[] { "Lamiera", "Schizzo", "Sviluppo", "Vista", "Documento" }, catalog.Tabs.Select(t => t.Label).ToArray(), state);
+            CollectionAssert.AreEqual(new[] { "lamiera", "schizzo", "sviluppo" }, _workspace.Tabs.Where(t => !t.Hidden).Select(t => t.Id).ToArray(), state);
+            Assert.AreEqual(new[] { "Lamiera", "Schizzo", "Sviluppo", "Documento" }, catalog.Tabs.Select(t => t.Label).ToArray(), state);
         }
 
         [Test] public void ActionIdsAreUniqueAndEveryTabHasAtMostEightActionsInEveryState()
@@ -1286,7 +1286,6 @@ namespace InventorXrSo.Tests
             Assert.AreEqual("lamiera", shell.Palette.CurrentTab);
             shell.Palette.SelectTab(+1); Assert.AreEqual("schizzo", shell.Palette.CurrentTab);
             shell.Palette.SelectTab(+1); Assert.AreEqual("sviluppo", shell.Palette.CurrentTab);
-            shell.Palette.SelectTab(+1); Assert.AreEqual("vista", shell.Palette.CurrentTab);
             shell.Palette.SelectTab(+1); Assert.AreEqual("documento", shell.Palette.CurrentTab);
             shell.Palette.SelectTab(+1); Assert.AreEqual("lamiera", shell.Palette.CurrentTab);
             _backend.ExtraRules = 8; Start(_backend);
@@ -1325,16 +1324,15 @@ namespace InventorXrSo.Tests
             Assert.AreEqual(Vector3.one, _view.transform.position, "released: nothing moves the model any more");
         }
 
-        [Test] public void ViewActionsFitAndRecenterTheWorkPlane()
+        // M9: Adatta lives in the shared ViewActions (ViewActionsTests); the workspace keeps the view methods it calls.
+        [Test] public void FitAndRecenterTheWorkPlane()
         {
             AttachShell(out var bench);
-            Assert.True(Enabled(LamieraWorkspace.IdFit)); Assert.True(Enabled(LamieraWorkspace.IdRecenter));
+            Assert.False(_workspace.Actions.Any(a => a.Tab == LamieraWorkspace.TabView && a.Label == "Adatta"), "the Vista tab is shared");
             _eye.transform.position = new Vector3(0, 1.6f, 0); _eye.transform.rotation = Quaternion.Euler(0, 90, 0);
-            Do(LamieraWorkspace.IdRecenter);
+            _workspace.RecenterView();
             Assert.AreEqual(90, bench.Frame.YawDegrees, 1e-3);
-            Do(LamieraWorkspace.IdFit);
-            _workspace.Close();
-            Assert.False(Enabled(LamieraWorkspace.IdFit), "closed: no view actions");
+            _workspace.FitView();
         }
 
         [Test] public void RingOnAnEdgeOffersFlangeWithTheEdgeAlreadySelected()

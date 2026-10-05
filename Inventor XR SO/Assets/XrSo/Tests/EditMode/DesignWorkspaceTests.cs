@@ -341,7 +341,7 @@ namespace InventorXrSo.Tests
             var ids=_workspace.Actions.Select(a=>a.Id).ToList();
             CollectionAssert.AllItemsAreUnique(ids,state+": ids");
             Assert.True(ids.All(id=>id.StartsWith("design.")||id.StartsWith("commit.")),state+": stable id namespaces");
-            var known=new HashSet<string>(_workspace.Tabs.Select(t=>t.Id)){ActionCatalog.CommitTab};
+            var known=new HashSet<string>(_workspace.Tabs.Select(t=>t.Id)){ActionCatalog.CommitTab,DesignWorkspace.TabView};   // M9: the Vista tab is shared (ViewActions)
             foreach(var action in _workspace.Actions) Assert.True(known.Contains(action.Tab),state+": tab of "+action.Id);
             foreach(var tab in _workspace.Tabs)
                 Assert.LessOrEqual(catalog.Palette(tab.Id).Count,ActionCatalog.MaxPalette,state+": "+tab.Id);
@@ -360,7 +360,7 @@ namespace InventorXrSo.Tests
         {
             _backend.ParameterCount=0;
             AssertCatalogIsValid("tools");
-            CollectionAssert.AreEqual(new[]{"schizzo","vincoli","feature","opzioni","parametri","vista"},_workspace.Tabs.Where(t=>!t.Hidden).Select(t=>t.Id).ToArray());
+            CollectionAssert.AreEqual(new[]{"schizzo","vincoli","feature","opzioni","parametri"},_workspace.Tabs.Where(t=>!t.Hidden).Select(t=>t.Id).ToArray());
             Do(Create); AssertCatalogIsValid("planes picker");
             Pick("XY"); AssertCatalogIsValid("sketch");
             Do(AddConstraint); AssertCatalogIsValid("constraint kinds"); Pick("Tangente");

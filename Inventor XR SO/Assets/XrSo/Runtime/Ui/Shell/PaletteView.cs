@@ -10,6 +10,7 @@ namespace InventorXrSo.Unity.Ui
     /// <summary>Tavolozza sul controller sinistro: scheda corrente in griglia 2×4 (160×110 mm), oppure tastierino.</summary>
     public sealed class PaletteView : MonoBehaviour
     {
+        public const string OptionsTab = "opzioni";
         public const float TextMm = 7f;
         public const float LineSpacing = -52f;
         private static readonly string[] Keys = { "7", "8", "9", "4", "5", "6", "1", "2", "3", "-", "0", ",", "←", "Annulla", "OK" };
@@ -21,7 +22,9 @@ namespace InventorXrSo.Unity.Ui
         private NumericEntry _entry;
         private string _keypadLabel;
         private IReadOnlyList<string> _group;
+        private bool _groupBackable;
         private readonly List<string> _tabs = new List<string>();
+        private readonly List<string> _previousMain = new List<string>();
 
         public Canvas Canvas { get; private set; }
         public string CurrentTab { get; private set; }
@@ -59,10 +62,15 @@ namespace InventorXrSo.Unity.Ui
         {
             _catalog = catalog;
             // Un workspace appena attivato parte dalla sua prima scheda, non da quella del precedente.
-            if (catalog.Active != _lastProvider) { _lastProvider = catalog.Active; CurrentTab = null; _group = null; }
+            if (catalog.Active != _lastProvider) { _lastProvider = catalog.Active; CurrentTab = null; _group = null; _groupBackable = false; _previousMain.Clear(); }
             _tabs.Clear();
-            _tabs.AddRange(_group ?? catalog.Tabs.Select(t => t.Id).ToList());
+            var main = catalog.Tabs.Select(t => t.Id).ToList();
+            _tabs.AddRange(_group ?? main);
             if (CurrentTab == null || !_tabs.Contains(CurrentTab)) CurrentTab = _tabs.FirstOrDefault();
+            // «Opzioni» compare da sola (feature in costruzione, spostamento in bozza) e diventa la scheda attiva (M9 §2).
+            if (_group == null && _previousMain.Count > 0 && main.Contains(OptionsTab) && !_previousMain.Contains(OptionsTab)) CurrentTab = OptionsTab;
+            _previousMain.Clear();
+            _previousMain.AddRange(main);
             Rebuild();
         }
 
@@ -86,10 +94,11 @@ namespace InventorXrSo.Unity.Ui
         /// Limita la rotazione delle schede (stick sinistro) a un gruppo, p. es. le pagine di un elenco lungo, e mostra la prima.
         /// Le schede possono essere nascoste: si risolvono dal catalogo.
         /// </summary>
-        public void ShowTabGroup(IReadOnlyList<string> tabIds)
+        public void ShowTabGroup(IReadOnlyList<string> tabIds, bool backable = false)
         {
             if (tabIds == null || tabIds.Count == 0) { ClearTabGroup(); return; }
             _group = tabIds.ToList();
+            _groupBackable = backable;
             _tabs.Clear();
             _tabs.AddRange(_group);
             CurrentTab = _group[0];
@@ -100,11 +109,23 @@ namespace InventorXrSo.Unity.Ui
         public void ClearTabGroup()
         {
             if (_group == null) return;
-            _group = null;
+            _group = null; _groupBackable = false;
             if (_catalog != null) Render(_catalog);
         }
 
         public bool InTabGroup => _group != null;
+
+        /// <summary>
+        /// X dentro un gruppo di schede «uscibile» (Ispeziona ▸): torna alle schede principali e mostra quella che l'ha aperto.
+        /// False se non c'e un gruppo uscibile (un elenco di pagine si chiude dal suo workspace).
+        /// </summary>
+        public bool TryLeaveGroup(string returnTab = null)
+        {
+            if (_group == null || !_groupBackable) return false;
+            ClearTabGroup();
+            if (returnTab != null) ShowTab(returnTab);
+            return true;
+        }
 
         public void ShowKeypad(NumericEntry entry, string label = null)
         {

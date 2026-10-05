@@ -59,6 +59,7 @@ namespace InventorXrSo.Xr
         private VoiceRig _voice;
         private WorkspaceVoiceTarget _voiceTarget;
         private DocumentActions _document;
+        private ViewActions _view;
         private InventorBackend _backend;
         private IReadOnlyList<OpenDocument> _openDocuments = new OpenDocument[0];
 
@@ -142,7 +143,18 @@ namespace InventorXrSo.Xr
             _assembly.Attach(_shell, _workbench, _sheet, _input);
             // Ispeziona is the default workspace: it draws on the palette whenever no authoring workspace is active.
             _inspect.Attach(_shell, _input);
-            _inspect.OtherWorkspaceActive = () => _design.Active || _assembly.Active || _lamiera.Active;
+            // M9: Ispeziona is a tool provider of every context (Misura, Sezione, + Visibilità and Verifica in Assieme); it pauses only
+            // during a handle capture or a CAD review, and the authoring workspace keeps the grips, X and the trigger it needs.
+            _inspect.SuspendProbe = () => _design.HandleCaptured || _assembly.HandleCaptured || _lamiera.HandleCaptured
+                || _design.RequiresCadReview || _assembly.RequiresCadReview || _lamiera.RequiresCadReview;
+            _inspect.AuthoringOwnsView = () => _design.Active || _assembly.Active || _lamiera.Active;
+            _inspect.ExternalSelection = () => _assembly.Active ? _assembly.SelectedOccurrenceId ?? "" : null;
+            Func<bool> measuring = () => _inspect.Active && (_inspect.Measuring);
+            _design.PickSuppressed = measuring; _assembly.PickSuppressed = measuring; _lamiera.PickSuppressed = measuring;
+            _view = new ViewActions(() => _design.Active || _assembly.Active || _lamiera.Active || _inspect.Active, FitActive) { Changed = _catalog.NotifyChanged };
+            _catalog.ContextProbe = ActiveContext;
+            _catalog.AddShared(_inspect);
+            _catalog.AddShared(_view);
             _inspect.HudMessage += text => _badge.Flash(text, 6f);
             _catalog.SetActive(_inspect);
             _design.HudMessage += text => _badge.Flash(text, 6f);
@@ -174,10 +186,6 @@ namespace InventorXrSo.Xr
             _input.TabDelta += _shell.Palette.SelectTab;
             // Sheet-metal detection is asynchronous: when it flips, the active document is routed again.
             _lamiera.PrimaryChanged += _ => RouteCurrentScene();
-            // Ispeziona stops its local tools while an authoring workspace is open and resumes when it closes.
-            _design.ActiveChanged += _ => _inspect.OthersChanged();
-            _assembly.ActiveChanged += _ => _inspect.OthersChanged();
-            _lamiera.ActiveChanged += _ => _inspect.OthersChanged();
             // Voice enablement follows the active workspace: re-evaluate whenever the mode changes.
             _design.ActiveChanged += _ => NotifyVoiceModeChanged();
             _design.ActiveChanged += _ => _catalog.NotifyChanged();
@@ -549,6 +557,19 @@ namespace InventorXrSo.Xr
                 case DocContext.SheetMetal: _lamiera.Open(); return _lamiera.Active;
                 default: _design.Open(); return _design.Active;
             }
+        }
+
+        /// <summary>Context of the open authoring workspace (it decides the tabs of the palette); null when none is open.</summary>
+        private DocContext? ActiveContext()
+            => _assembly.Active ? DocContext.Assembly : _lamiera.Active ? DocContext.SheetMetal : _design.Active ? DocContext.Part : (DocContext?)null;
+
+        /// <summary>The shared «Adatta» of the Vista tab: the workspace in use fits its model to the work plane.</summary>
+        private void FitActive()
+        {
+            if (_design.Active) _design.FitView();
+            else if (_assembly.Active) _assembly.FitView();
+            else if (_lamiera.Active) _lamiera.FitView();
+            else _inspect.FitView();
         }
 
         private void CloseAuthoring() { _design?.Close(); _assembly?.Close(); _lamiera?.Close(); }

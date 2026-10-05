@@ -15,7 +15,7 @@ namespace InventorXrSo.Xr
     /// </summary>
     public sealed partial class AssemblyWorkspace
     {
-        public const string TabComponents = "componenti", TabConstraints = "vincoli", TabView = "vista";
+        public const string TabComponents = "componenti", TabConstraints = "vincoli", TabOptions = "opzioni", TabView = "vista";
         public const string PickTabPrefix = "_pick.";
 
         public const string IdComponents = "assembly.components", IdIsolate = "assembly.isolate", IdRelease = "assembly.release",
@@ -24,7 +24,7 @@ namespace InventorXrSo.Xr
             IdConstrain = "assembly.constrain", IdJoint = "assembly.joint", IdReferences = "assembly.references",
             IdRayMode = "assembly.references.mode", IdRelationValue = "assembly.relation.value", IdFlip = "assembly.relation.flip",
             IdAlign = "assembly.relation.align", IdClearance = "assembly.clearance",
-            IdFit = "assembly.view.fit", IdRecenter = "assembly.view.recenter", IdRefresh = "assembly.refresh",
+            IdRefresh = "assembly.refresh",
             IdUndo = "assembly.history.undo", IdRedo = "assembly.history.redo",
             IdMoveMode = "assembly.move.mode", IdMoveAxis = "assembly.move.axis", IdMoveValue = "assembly.move.value",
             IdPickPrefix = "assembly.pick.", IdConstraintPrefix = "assembly.constraint.", IdJointPrefix = "assembly.joint.",
@@ -32,7 +32,7 @@ namespace InventorXrSo.Xr
 
         private static readonly XrTab[] StaticTabs =
         {
-            new XrTab(TabComponents, "Componenti"), new XrTab(TabConstraints, "Vincoli"), new XrTab(TabView, "Vista"),
+            new XrTab(TabComponents, "Componenti"), new XrTab(TabConstraints, "Vincoli"), new XrTab(TabOptions, "Opzioni"),
         };
 
         private sealed class PickerItem
@@ -238,9 +238,7 @@ namespace InventorXrSo.Xr
                 new XrAction(IdClearance, "Gioco minimo: " + Fmt(_clearance) + " mm", TabConstraints, () => Idle && !RequiresCadReview,
                     () => AskNumber(FieldClearance), CommandReason, kind: XrActionKind.Numeric),
 
-                // Vista
-                new XrAction(IdFit, "Adatta", TabView, () => Active && _bench != null, FitView, () => "Postazione non disponibile."),
-                new XrAction(IdRecenter, "Ricentra", TabView, () => Active && _bench != null, RecenterView, () => "Postazione non disponibile."),
+                // Vista (Adatta, scala, ambiente e legenda sono nella scheda comune ViewActions; qui solo cio che e dell'assieme)
                 new XrAction(IdRefresh, "Aggiorna", TabView,
                     () => Active && _online && _kind == "assembly" && !_busy && !Locked && _session != null && _session.Status != DesignStatus.RefreshRequired,
                     () => { CancelReads(); Load(); }, () => !_online ? "Offline." : _busy ? "Lettura Inventor in corso." : CommandReason()),
@@ -248,11 +246,11 @@ namespace InventorXrSo.Xr
                     () => historyReason("Nessuna modifica XR da annullare."), new[] { "annulla ultima modifica" }),
                 new XrAction(IdRedo, "Ripeti modifica XR", TabView, () => IsEnabled(CommandIds.Redo), () => History(true),
                     () => historyReason("Nessuna modifica XR da ripetere."), new[] { "ripeti ultima modifica" }),
-                new XrAction(IdMoveMode, _rotating ? "Rotazione → Traslazione" : "Traslazione → Rotazione", TabView,
+                new XrAction(IdMoveMode, _rotating ? "Rotazione → Traslazione" : "Traslazione → Rotazione", TabOptions,
                     () => Idle && IsMove && (_rotating ? _occurrence.TranslationAxes.Count > 0 : _occurrence.RotationAxes.Count > 0),
                     () => { _rotating = !_rotating; _axisIndex = 0; _angle = 0; _translation = default; InvalidateDraft(); Draw(); SyncEntries(); Refresh(); }, NeedMove),
-                new XrAction(IdMoveAxis, "Asse", TabView, () => Idle && IsMove && Axes.Count > 0, OpenAxisPicker, NeedMove),
-                new XrAction(IdMoveValue, _rotating ? "Angolo preciso" : "Spostamento preciso", TabView, () => Idle && IsMove && Axes.Count > _axisIndex,
+                new XrAction(IdMoveAxis, "Asse", TabOptions, () => Idle && IsMove && Axes.Count > 0, OpenAxisPicker, NeedMove),
+                new XrAction(IdMoveValue, _rotating ? "Angolo preciso" : "Spostamento preciso", TabOptions, () => Idle && IsMove && Axes.Count > _axisIndex,
                     () => AskNumber(MoveField), NeedMove, kind: XrActionKind.Numeric),
 
                 // Barra di conferma: l'unico percorso verso il CAD

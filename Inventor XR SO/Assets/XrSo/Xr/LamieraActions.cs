@@ -25,13 +25,13 @@ namespace InventorXrSo.Xr
             IdCutDirection = "lamiera.cut.direction", IdCutAcrossBends = "lamiera.cut.acrossbends",
             IdFlatCreate = "lamiera.flat.create", IdFlatShow = "lamiera.flat.show", IdFlatHide = "lamiera.flat.hide",
             IdFlatDetach = "lamiera.flat.detach", IdFlatAttach = "lamiera.flat.attach",
-            IdFit = "lamiera.view.fit", IdRecenter = "lamiera.view.recenter", IdRefresh = "lamiera.refresh",
+            IdRefresh = "lamiera.refresh",
             IdViewFolded = "lamiera.view.folded", IdViewFlat = "lamiera.view.flat",
             IdPickPrefix = "lamiera.pick.";
 
         private static readonly XrTab[] StaticTabs =
         {
-            new XrTab(TabLamiera, "Lamiera"), new XrTab(TabSketch, "Schizzo"), new XrTab(TabFlat, "Sviluppo"), new XrTab(TabView, "Vista"),
+            new XrTab(TabLamiera, "Lamiera"), new XrTab(TabSketch, "Schizzo"), new XrTab(TabFlat, "Sviluppo"),
         };
 
         private sealed class PickerItem
@@ -221,8 +221,6 @@ namespace InventorXrSo.Xr
                     () => FlatVisible ? "Lo sviluppo è già agganciato." : "Mostra prima lo sviluppo."),
 
                 // Vista
-                new XrAction(IdFit, "Adatta", TabView, () => Active && _bench != null, FitView, () => "Postazione non disponibile."),
-                new XrAction(IdRecenter, "Ricentra", TabView, () => Active && _bench != null, RecenterView, () => "Postazione non disponibile."),
                 new XrAction(IdViewFolded, "Vista: piegato", TabView, () => Active && FlatViewShown, () => { FoldedView(); Refresh(); },
                     () => FlatPatternExists ? "La vista Piegato è già attiva." : "Lo sviluppo piano non esiste: usa Crea sviluppo.", new[] { "vista piegato" }),
                 new XrAction(IdViewFlat, "Vista: sviluppo", TabView,

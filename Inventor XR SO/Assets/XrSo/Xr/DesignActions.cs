@@ -21,7 +21,7 @@ namespace InventorXrSo.Xr
         private static readonly XrTab[] StaticTabs =
         {
             new XrTab(TabSketch, "Schizzo"), new XrTab(TabConstraints, "Vincoli"), new XrTab(TabFeature, "Feature"),
-            new XrTab(TabOptions, "Opzioni feature"), new XrTab(TabParameters, "Parametri"), new XrTab(TabView, "Vista"),
+            new XrTab(TabOptions, "Opzioni feature"), new XrTab(TabParameters, "Parametri"),
         };
 
         private sealed class PickerItem
@@ -189,8 +189,6 @@ namespace InventorXrSo.Xr
                     () => Active && _sheet != null && _bench?.Frame != null && _sketch?.Frame != null && _sheet.State != InventorXrSo.Unity.Scene.SketchSheetState.Sheet, ShowSheetView,
                     () => _sketch?.Frame == null ? "Serve prima uno schizzo con il suo piano." : "Il foglio è già visibile.",
                     isOn: () => _sheet != null && _sheet.State == InventorXrSo.Unity.Scene.SketchSheetState.Sheet, kind: XrActionKind.Toggle),
-                new XrAction("design.view.fit", "Adatta", TabView, () => Active && _bench != null, FitView, () => "Postazione non disponibile."),
-                new XrAction("design.view.recenter", "Ricentra", TabView, () => Active && _bench != null, RecenterView, () => "Postazione non disponibile."),
 
                 // Barra di conferma: l'unico percorso verso il CAD
                 new XrAction(CommitIds.Preview, "Anteprima", ActionCatalog.CommitTab,

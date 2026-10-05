@@ -62,10 +62,40 @@ namespace InventorXrSo.Xr
         private IReadOnlyList<OpenDocument> _documents = new OpenDocument[0];
 
         public bool Measuring => _measure != null && _measure.Measuring;
-        /// <summary>Inspect is the workspace in use: the scene is shown and no authoring workspace is open.</summary>
-        public bool Active => _visible && !(OtherWorkspaceActive?.Invoke() ?? false);
-        /// <summary>True while Progettazione, Lamiera or Assieme is open (set by the app controller).</summary>
-        public Func<bool> OtherWorkspaceActive { get; set; }
+        /// <summary>
+        /// M9: Ispeziona is a tool provider included by every context (Misura and Sezione only look, they never write the CAD).
+        /// Its tools are usable while the scene is shown and not <see cref="Suspended"/>.
+        /// </summary>
+        public bool Active => _visible && !Suspended;
+        /// <summary>True during a handle capture or a pending CAD review of an authoring workspace (set by the app controller).</summary>
+        public Func<bool> SuspendProbe { get; set; }
+        public bool Suspended => SuspendProbe?.Invoke() ?? false;
+        /// <summary>
+        /// True while an authoring workspace owns the model grips, two-hand gesture, X and Y: Ispeziona then only moves its own
+        /// section plane and cancels its own measurement.
+        /// </summary>
+        public Func<bool> AuthoringOwnsView { get; set; }
+        private bool ViewOwnedElsewhere => AuthoringOwnsView?.Invoke() ?? false;
+        /// <summary>Occurrence id selected in the active authoring workspace (Assieme), "" for none, null when not applicable.</summary>
+        public Func<string> ExternalSelection { get; set; }
+        private bool _wasSuspended;
+
+        private string _externalSeen;
+
+        /// <summary>
+        /// Follows the selection of the active authoring workspace (Assieme): Visibilità and Verifica act on it. The delegate returns
+        /// null when it does not apply and "" for no selection; a change drops the properties read for the previous node.
+        /// </summary>
+        private void SyncExternalSelection()
+        {
+            var id = ExternalSelection?.Invoke();
+            if (id == _externalSeen) return;
+            _externalSeen = id;
+            if (id == null) return;
+            _selected = id.Length == 0 ? null : _context.SelectionTarget(id);
+            _info = null;
+            Refresh();
+        }
         /// <summary>Notices, context and properties for the HUD.</summary>
         public event Action<string> HudMessage;
         public string Notice => _notice;
@@ -119,10 +149,13 @@ namespace InventorXrSo.Xr
             _input = null;
         }
 
-        /// <summary>An authoring workspace opened or closed: the local tools stop (or resume) with it.</summary>
-        public void OthersChanged()
+        /// <summary>
+        /// A capture or a CAD review started: the tools pause (a measurement in progress is dropped, a grab ends, the keypad closes).
+        /// Everything resumes by itself when the suspension ends; the section plane keeps its place.
+        /// </summary>
+        private void Suspend()
         {
-            if (!Active) { _measure?.Cancel(); _section?.SetActive(false); EndGrabs(); CloseKeypad(); ClosePicker(false); LeaveVerifyView(); }
+            _measure?.Cancel(); EndGrabs(); CloseKeypad(); ClosePicker(false);
             Refresh();
         }
 
@@ -452,14 +485,14 @@ namespace InventorXrSo.Xr
         /// <summary>Y short press: applies the current scale mode again.</summary>
         public void FitView()
         {
-            if (!Active || _view == null) return;
+            if (!Active || _view == null || ViewOwnedElsewhere) return;
             InspectionGeometry.ApplyScale(_view.transform, ScenePlacement.LocalBounds(_view.transform), _scaleMode, _roomExtent);
         }
 
         /// <summary>Brings the model in front of the user (also Y long press).</summary>
         public void Recenter()
         {
-            if (!Active || _view == null || _head == null) return;
+            if (!Active || _view == null || _head == null || ViewOwnedElsewhere) return;
             var root = _view.transform;
             var bounds = ScenePlacement.LocalBounds(root);
             var scaled = new Bounds(bounds.center * root.localScale.x, bounds.size * root.localScale.x);
@@ -471,8 +504,18 @@ namespace InventorXrSo.Xr
         public void Back()
         {
             if (!Active) return;
+            if (ViewOwnedElsewhere)
+            {
+                // The authoring workspace owns the Back chain (keypad, group, ring, draft); only Inspect's own list and measurement here.
+                if (_picker != null) { ClosePicker(); return; }
+                if (_shell != null && _shell.Palette.InTabGroup) return;
+                if (_distanceA != null) { CancelDistance(); SetNotice("Distanza annullata."); Refresh(); return; }
+                if (Measuring) { _measure.Cancel(); SetNotice("Misura annullata."); Refresh(); }
+                return;
+            }
             if (_ask != null || (_shell != null && _shell.Palette.KeypadVisible)) { CloseKeypad(); return; }
             if (_picker != null) { ClosePicker(); return; }
+            if (_shell != null && _shell.Palette.TryLeaveGroup(ContextTabs.Inspect)) return;
             if (ClearFocus()) { SetNotice(""); Refresh(); return; }
             if (_distanceA != null) { CancelDistance(); SetNotice("Distanza annullata."); Refresh(); return; }
             if (Measuring) { _measure.Cancel(); SetNotice("Misura annullata."); Refresh(); return; }
@@ -499,7 +542,7 @@ namespace InventorXrSo.Xr
             if (_twoHandActive || !TryPenRay(out var ray, out bool overUi) || overUi) return;
             _grab = null;
             if (_section.Active && _section.HitHandle(ray, out _)) _grab = _section.transform;
-            else if (CadRaycaster.TryPick(ray, 20, out _, out _, out _)) _grab = _view.transform;
+            else if (!ViewOwnedElsewhere && CadRaycaster.TryPick(ray, 20, out _, out _, out _)) _grab = _view.transform;
             if (_grab == null) return;
             _grabPosition = _ray.Origin.InverseTransformPoint(_grab.position);
             _grabRotation = Quaternion.Inverse(_ray.Origin.rotation) * _grab.rotation;
@@ -527,7 +570,7 @@ namespace InventorXrSo.Xr
 
         private void OnTwoHandChanged(bool on)
         {
-            if (!Active) return;
+            if (!Active || ViewOwnedElsewhere) return;
             if (!on) { _twoHandActive = false; return; }
             if (_ray?.Origin == null || !LeftHandPose(out var left)) return;
             _grab = null;
@@ -554,7 +597,10 @@ namespace InventorXrSo.Xr
         private void Update()
         {
             if (!_visible) return;
+            bool suspended = Suspended;
+            if (suspended != _wasSuspended) { _wasSuspended = suspended; if (suspended) Suspend(); else Refresh(); }
             DropClosedKeypad();
+            SyncExternalSelection();
             TickVerify();
             if (!Active || _ray == null || _ray.Origin == null) return;
             if (_input != null && !_input.PenTracked) { EndGrabs(); return; }

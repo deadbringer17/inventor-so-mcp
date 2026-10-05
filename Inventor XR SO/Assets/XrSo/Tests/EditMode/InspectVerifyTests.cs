@@ -53,7 +53,7 @@ namespace InventorXrSo.Tests
             var visuals = _view.gameObject.AddComponent<SelectionVisuals>(); visuals.Configure(_view, null, null);
             _env = Child("Environment").AddComponent<EnvironmentModeController>(); _env.Configure(eye, null);
             _workspace = Child("Workspace").AddComponent<InspectWorkspace>();
-            _workspace.OtherWorkspaceActive = () => _other;
+            _workspace.SuspendProbe = () => _other;
             _workspace.HudMessage += _hud.Add;
             _workspace.Initialize(_view, visuals, _ray, eye.transform, _env);
             _catalog = new ActionCatalog(TestDocs.Create());
@@ -136,8 +136,9 @@ namespace InventorXrSo.Tests
         [Test]
         public void TabsAddVisibilityAndVerifyAfterViewWithAtMostEightActions()
         {
-            CollectionAssert.AreEqual(new[] { "misura", "sezione", "vista", "visibilita", "verifica" }, _workspace.Tabs.Select(t => t.Id).ToArray());
-            CollectionAssert.AreEqual(new[] { "Misura", "Sezione", "Vista", "Visibilità", "Verifica", "Documento" }, _catalog.Tabs.Select(t => t.Label).ToArray());
+            CollectionAssert.AreEqual(new[] { "ispeziona", "misura", "sezione", "visibilita", "verifica", "esplora", "_ispeziona_esci" }, _workspace.Tabs.Select(t => t.Id).ToArray());   // M9: Vista is the shared ViewActions tab
+            Assert.That(_catalog.Palette("vista").Count, Is.InRange(1, 8), "Scala and Ambiente share the Vista tab");
+            CollectionAssert.AreEqual(new[] { "Ispeziona ▸", "Misura", "Sezione", "Visibilità", "Verifica", "Esplora", "Documento" }, _catalog.Tabs.Select(t => t.Label).ToArray());
             foreach (var tab in _workspace.Tabs) Assert.That(_catalog.Palette(tab.Id).Count, Is.InRange(1, 8), tab.Id);
             Assert.True(_workspace.Actions.Where(a => a.Id.StartsWith("inspect.verify.") || a.Id.StartsWith("inspect.visibility.")).All(a => !a.VoiceInvokes));
         }
@@ -300,17 +301,17 @@ namespace InventorXrSo.Tests
         }
 
         [Test]
-        public async Task LeavingIspezionaDuringARunDrawsAndAnnouncesNothing()
+        public async Task SuspendingIspezionaDuringARunKeepsTheAnswerButDrawsAndAnnouncesNothing()
         {
             var backend = Online();
             Do(InspectWorkspace.IdInterference);
             int hudBefore = _hud.Count;
-            _other = true; _workspace.OthersChanged();
+            _other = true;
             backend.Interference.SetResult(OnePair());
             await Until(() => Field<VerifySession>("_verifySession").Gate.CanStart);
             Assert.True(Field<VerifySession>("_verifySession").Gate.CanStart);
             Assert.AreEqual(0, Field<VerifyOverlay>("_overlay").BoxCount);
-            Assert.AreEqual(0, Field<IReadOnlyList<VerifyFinding>>("_findings").Count);
+            Assert.AreEqual(1, Field<IReadOnlyList<VerifyFinding>>("_findings").Count, "M9: a suspension keeps the result for when the tools resume");
             Assert.That(string.Join(" | ", _hud.Skip(hudBefore)), Does.Not.Contain("interferenze"));
         }
 
