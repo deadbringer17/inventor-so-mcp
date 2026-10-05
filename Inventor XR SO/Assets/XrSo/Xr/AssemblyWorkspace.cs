@@ -1000,6 +1000,8 @@ namespace InventorXrSo.Xr
 
         /// <summary>Test seam: seconds clock of the double Trigger detector (default: unscaled game time).</summary>
         public Func<double> DoubleTriggerClock { get; set; }
+        /// <summary>0..1 of the double-Trigger window after a first valid press (for the controller legend ring); 0 otherwise.</summary>
+        public float DoubleTriggerProgress => (float)_doubleTrigger.PendingProgress(DoubleTriggerClock != null ? DoubleTriggerClock() : Time.unscaledTimeAsDouble);
 
         // ---------------------------------------------------------------- labels
 

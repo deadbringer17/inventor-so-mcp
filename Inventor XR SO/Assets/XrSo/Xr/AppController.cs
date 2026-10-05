@@ -60,6 +60,7 @@ namespace InventorXrSo.Xr
         private WorkspaceVoiceTarget _voiceTarget;
         private DocumentActions _document;
         private ViewActions _view;
+        private ControllerLegend _legend;
         private InventorBackend _backend;
         private IReadOnlyList<OpenDocument> _openDocuments = new OpenDocument[0];
 
@@ -158,6 +159,14 @@ namespace InventorXrSo.Xr
             _catalog.ContextProbe = ActiveContext;
             _catalog.AddShared(_inspect);
             _catalog.AddShared(_view);
+            // M9 legenda 3D: one label per key active in the state, on the controller models; follows the Vista preference.
+            var right = head.parent.Find("RightHandAnchor/RightControllerAnchor") ?? head.parent.Find("RightHandAnchor");
+            _legend = ControllerLegend.Create(head, left, right);
+            _legend.Enabled = _view.LegendOn;
+            _legend.Shown = false;
+            _legend.TriggerProgress = () => _assembly.Active ? _assembly.DoubleTriggerProgress : 0f;
+            _legend.BackProgress = () => _input.BackHoldProgress;
+            _view.LegendChanged += on => _legend.Enabled = on;
             _inspect.HudMessage += text => _badge.Flash(text, 6f);
             _catalog.SetActive(_inspect);
             _design.HudMessage += text => _badge.Flash(text, 6f);
@@ -210,6 +219,7 @@ namespace InventorXrSo.Xr
         private void Update()
         {
             if (_inSession && OVRInput.GetDown(OVRInput.Button.Start)) LeaveSession();
+            if (_legend != null) _legend.SetState(_input.Dispatcher.State);
         }
 
         private void OnDestroy()
@@ -220,6 +230,7 @@ namespace InventorXrSo.Xr
             if (ray != null) { ray.Picked -= OnPicked; ray.PickedNothing -= OnPickedNothing; }
             if (_home != null) Destroy(_home.gameObject);
             if (_shell != null) Destroy(_shell.gameObject);
+            if (_legend != null) Destroy(_legend.gameObject);
             _lifetime.Dispose();
         }
 
@@ -445,6 +456,7 @@ namespace InventorXrSo.Xr
         private void ShowHome()
         {
             _inSession = false;
+            if (_legend != null) _legend.Shown = false;
             _catalog?.NotifyChanged();
             if (_voiceTarget != null) _voiceTarget.InSession = false;
             _inspect?.SetVisible(false);
@@ -468,6 +480,7 @@ namespace InventorXrSo.Xr
         {
             environment.Set(mode);
             _inSession = true;
+            if (_legend != null) _legend.Shown = true;
             _catalog?.NotifyChanged();
             if (_voiceTarget != null) _voiceTarget.InSession = true;
             _home.gameObject.SetActive(false);
