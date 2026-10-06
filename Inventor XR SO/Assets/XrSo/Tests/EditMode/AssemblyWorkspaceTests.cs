@@ -241,6 +241,30 @@ namespace InventorXrSo.Tests
             Assert.AreEqual(CommitBarPhase.Applied, _workspace.CommitBar.Phase, "MarkApplied after a successful apply");
         }
 
+        // The bridge answers a read with occurrence_id for that occurrence ONLY: the component list must survive the selection.
+        [Test] public async Task ComponentsPickerListsEveryComponentAfterASelection()
+        {
+            await Task.Yield(); await Select("ent_b");
+            Do(AssemblyWorkspace.IdComponents);
+            var labels = _workspace.Actions.Where(a => a.Id.StartsWith(AssemblyWorkspace.IdPickPrefix)).Select(a => a.Label).ToArray();
+            CollectionAssert.AreEqual(new[] { "ent_a", "● ent_b" }, labels.OrderBy(l => l.TrimStart('●', ' ')).ToArray());
+        }
+
+        [Test] public async Task VoiceFindsAnotherComponentAfterASelection()
+        {
+            await Task.Yield(); await Select("ent_a");
+            var found = _workspace.FindOccurrenceByName("ent_b");
+            Assert.True(found.Found, found.Message); Assert.AreEqual("ent_b", found.OccurrenceId);
+        }
+
+        [Test] public async Task ComponentListIsRepopulatedAfterARevisionChange()
+        {
+            await Task.Yield(); await Select("ent_a");
+            _workspace.SetDocumentState(new DocumentState("doc_bolt", "r_non_visual", "v"));
+            await Task.Yield();
+            Assert.True(_workspace.FindOccurrenceByName("ent_b").Found);
+        }
+
         [Test] public async Task NonVisualRevisionBumpKeepsTheSceneCurrentAndTheActionsEnabled()
         {
             await Select(); Assert.True(Enabled(AssemblyWorkspace.IdComponents));

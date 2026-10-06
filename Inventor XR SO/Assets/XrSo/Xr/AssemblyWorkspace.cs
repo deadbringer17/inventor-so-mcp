@@ -70,6 +70,7 @@ namespace InventorXrSo.Xr
         private string _kind, _notice = "", _command, _type, _rendered, _lastHeadline, _lastErrorShown;
         private string _armedField;
         private AssemblyContext _context;
+        private IReadOnlyList<AssemblyOccurrence> _allOccurrences;
         private AssemblyOccurrence _occurrence;
         private SceneGraph _graph;
         private AssemblyReference _a, _b;
@@ -235,7 +236,7 @@ namespace InventorXrSo.Xr
             if (_session != null) { _session.Changed -= Changed; _session.Dispose(); }
             _backend = backend; _session = backend == null ? null : new DesignSession(backend);
             if (_session != null) { if (_reviewAfterRebind) _session.RequireCadReview(); _session.Changed += Changed; }
-            _online = false; _state = null; _context = null; Reset(); Refresh();
+            _online = false; _state = null; _context = null; _allOccurrences = null; Reset(); Refresh();
         }
 
         public void SetScene(LoadedScene scene)
@@ -260,7 +261,7 @@ namespace InventorXrSo.Xr
         {
             bool changed = _state?.DocumentId != state?.DocumentId || _state?.Revision != state?.Revision;
             _state = state;
-            if (changed) { CancelReads(); _context = null; Reset(); }
+            if (changed) { CancelReads(); _context = null; _allOccurrences = null; Reset(); }
             _session?.SetContext(state, _online, _kind == "assembly");
             if (changed && Active) Load();
             Refresh();
@@ -269,7 +270,7 @@ namespace InventorXrSo.Xr
         public void SetOnline(bool online)
         {
             if (_online == online) return;
-            _online = online; CancelReads(); _context = null; Reset();
+            _online = online; CancelReads(); _context = null; _allOccurrences = null; Reset();
             _session?.SetContext(_state, online, _kind == "assembly");
             if (online && Active) Load();
             Refresh();
@@ -732,6 +733,7 @@ namespace InventorXrSo.Xr
                 var context = await _backend.GetAssemblyContextAsync(state, occurrenceId, _reads.Token);
                 if (generation != _generation) return;
                 _context = context;
+                UpdateAllOccurrences(context, occurrenceId);
                 if (context.Truncated) SetNotice("Elenco parziale. Alcuni riferimenti non sono disponibili.");
                 else _notice = "";
                 if (occurrenceId != null) { _occurrence = context.Occurrences.FirstOrDefault(o => o.Id == occurrenceId); announce = _occurrence != null; }
@@ -745,6 +747,23 @@ namespace InventorXrSo.Xr
             catch (OperationCanceledException) { }
             finally { if (generation == _generation) { _busy = false; Draw(); Refresh(); if (announce) AnnounceSelection(); } }
         }
+
+        /// <summary>
+        /// A read with an occurrence id returns that occurrence only (plus its references): it must not replace the full list that the
+        /// Componenti picker and the voice name match use. An unlimited read refreshes the list; a single-occurrence read refreshes just
+        /// that entry (state, DOF).
+        /// </summary>
+        private void UpdateAllOccurrences(AssemblyContext context, string occurrenceId)
+        {
+            if (occurrenceId == null || context.Occurrences.Count > 1) { _allOccurrences = context.Occurrences; return; }
+            if (_allOccurrences == null || _allOccurrences.Count == 0 || context.Occurrences.Count == 0) return;
+            var fresh = context.Occurrences[0];
+            if (_allOccurrences.All(o => o.Id != fresh.Id)) return;
+            _allOccurrences = _allOccurrences.Select(o => o.Id == fresh.Id ? fresh : o).ToList();
+        }
+
+        private IReadOnlyList<AssemblyOccurrence> AllOccurrences =>
+            _allOccurrences != null && _allOccurrences.Count > 0 ? _allOccurrences : _context?.Occurrences;
 
         public async Task SelectOccurrenceAsync(string id)
         {
@@ -998,7 +1017,7 @@ namespace InventorXrSo.Xr
                 if (await ActivateDefinitionAsync(true))
                 {
                     if (enter) EntryRequested?.Invoke(occurrence.DefinitionId, occurrence.Id, FindPose(graph?.Root, occurrence.Id), false);
-                    _context = null; _notice = "Attendo il sottoassieme attivo. Le modifiche alla definizione riguardano tutte le sue istanze."; HudMessage?.Invoke(_notice);
+                    _context = null; _allOccurrences = null; _notice = "Attendo il sottoassieme attivo. Le modifiche alla definizione riguardano tutte le sue istanze."; HudMessage?.Invoke(_notice);
                 }
             }
             catch (Exception ex) { SetNotice(ex.Message); Refresh(); }
@@ -1039,7 +1058,7 @@ namespace InventorXrSo.Xr
         {
             if (!Active || _context == null)
                 return new VoiceOpenResult(VoiceOpenStatus.Unavailable, null, "Componenti non ancora caricati.");
-            return OccurrenceNameMatcher.Match(_context.Occurrences.Select(o => new KeyValuePair<string, string>(o.Id, o.Name)), spokenName);
+            return OccurrenceNameMatcher.Match(AllOccurrences.Select(o => new KeyValuePair<string, string>(o.Id, o.Name)), spokenName);
         }
 
         /// <summary>

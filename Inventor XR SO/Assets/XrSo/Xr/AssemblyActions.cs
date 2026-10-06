@@ -104,7 +104,7 @@ namespace InventorXrSo.Xr
         private void OpenComponentsPicker()
         {
             if (_context == null) return;
-            OpenPicker("Componenti", _context.Occurrences.Select(occurrence =>
+            OpenPicker("Componenti", AllOccurrences.Select(occurrence =>
             {
                 var item = occurrence;
                 return new PickerItem((item.Id == _occurrence?.Id ? "● " : "") + item.Name, async () =>
