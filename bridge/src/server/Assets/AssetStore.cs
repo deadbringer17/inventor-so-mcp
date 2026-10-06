@@ -149,7 +149,13 @@ public sealed class AssetStore
             var path = PathOf(id);
             var temp = path + ".tmp";
             File.WriteAllBytes(temp, bytes);
-            File.Move(temp, path, overwrite: true);
+            try { File.Move(temp, path, overwrite: true); }
+            catch (Exception ex) when ((ex is IOException or UnauthorizedAccessException) && File.Exists(path))
+            {
+                // A reader outside the lock still holds an evicted copy. The name is the SHA-256 of the content
+                // and files only appear by atomic move, so that copy already holds exactly these bytes.
+                try { File.Delete(temp); } catch { }
+            }
             var record = new AssetRecord
             {
                 Id = id, Sha256 = sha, MimeType = mimeType, Size = bytes.Length, CreatedUtc = now,
@@ -194,7 +200,13 @@ public sealed class AssetStore
         // Up to 64 MB of I/O and hashing happen outside the global lock; a concurrent eviction simply
         // makes the read fail, which reads as "not found".
         byte[] data;
-        try { data = File.ReadAllBytes(path); }
+        // FileShare.Delete: an eviction or a same-id Put may delete/replace the name while this read is open.
+        try
+        {
+            using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            data = new byte[file.Length];
+            file.ReadExactly(data);
+        }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             lock (_gate) RemoveIfCurrent(found);
