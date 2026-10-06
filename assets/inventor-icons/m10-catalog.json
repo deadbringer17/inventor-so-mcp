@@ -1,0 +1,331 @@
+{
+  "schemaVersion": 2,
+  "variant": "dark",
+  "icons": [
+    {
+      "key": "sketch",
+      "action": "design.sketch.create",
+      "label": "Crea schizzo",
+      "resource": "resources/dark/icons/ribbon/inv_2dsketch_sketch2d_cmd_wrapper_32x32.ico",
+      "actions": [
+        "design.sketch.create"
+      ]
+    },
+    {
+      "key": "line",
+      "action": "design.shape.line",
+      "label": "Linea",
+      "resource": "resources/dark/icons/ribbon/inv_sketch_line_cmd_wrapper_32x32.ico",
+      "actions": [
+        "design.shape.line"
+      ]
+    },
+    {
+      "key": "rectangle",
+      "action": "design.shape.rectangle",
+      "label": "Rettangolo",
+      "resource": "resources/dark/icons/ribbon/inv_2dsketch_twopointrectangle_cmd_32x32.ico",
+      "actions": [
+        "design.shape.rectangle"
+      ]
+    },
+    {
+      "key": "circle",
+      "action": "design.shape.circle",
+      "label": "Cerchio",
+      "resource": "resources/dark/icons/ribbon/inv_2dsketch_centerpointcircle_cmd_32x32.ico",
+      "actions": [
+        "design.shape.circle"
+      ]
+    },
+    {
+      "key": "extrude",
+      "action": "design.extrude",
+      "label": "Estrusione",
+      "resource": "resources/dark/icons/ribbon/inv_model_extrude_cmd_32x32.ico",
+      "actions": [
+        "design.extrude"
+      ]
+    },
+    {
+      "key": "hole",
+      "action": "design.hole",
+      "label": "Foro",
+      "resource": "resources/dark/icons/ribbon/inv_model_hole_cmd_32x32.ico",
+      "actions": [
+        "design.hole"
+      ]
+    },
+    {
+      "key": "fillet",
+      "action": "design.fillet",
+      "label": "Raccordo",
+      "resource": "resources/dark/icons/ribbon/inv_model_roundfillet_cmd_32x32.ico",
+      "actions": [
+        "design.fillet"
+      ]
+    },
+    {
+      "key": "chamfer",
+      "action": "design.chamfer",
+      "label": "Smusso",
+      "resource": "resources/dark/icons/ribbon/inv_model_chamfer_cmd_32x32.ico",
+      "actions": [
+        "design.chamfer"
+      ]
+    },
+    {
+      "key": "parameters",
+      "action": "design.parameters",
+      "label": "Parametri",
+      "resource": "resources/dark/icons/ribbon/inv_tools_parameters_cmd_32x32.ico",
+      "actions": [
+        "design.parameters"
+      ]
+    },
+    {
+      "key": "undo",
+      "action": "design.history.undo",
+      "label": "Annulla modifica XR",
+      "resource": "resources/dark/icons/ribbon/inv_edit_undo_cmd_32x32.ico",
+      "actions": [
+        "design.history.undo",
+        "lamiera.history.undo",
+        "assembly.history.undo"
+      ]
+    },
+    {
+      "key": "redo",
+      "action": "design.history.redo",
+      "label": "Ripeti modifica XR",
+      "resource": "resources/dark/icons/ribbon/inv_edit_redo_cmd_32x32.ico",
+      "actions": [
+        "design.history.redo",
+        "lamiera.history.redo",
+        "assembly.history.redo"
+      ]
+    },
+    {
+      "key": "sheetmetal-rule",
+      "action": "lamiera.rule",
+      "label": "Regola / Spessore",
+      "resource": "resources/dark/icons/ribbon/inv_sheetmetal_styles_cmd_32x32.ico",
+      "actions": [
+        "lamiera.rule"
+      ]
+    },
+    {
+      "key": "flange",
+      "action": "lamiera.flange",
+      "label": "Flangia",
+      "resource": "resources/dark/icons/ribbon/inv_sheetmetal_flange_cmd_32x32.ico",
+      "actions": [
+        "lamiera.flange"
+      ]
+    },
+    {
+      "key": "sheetmetal-face",
+      "action": "lamiera.face",
+      "label": "Faccia da schizzo",
+      "resource": "resources/dark/icons/ribbon/inv_sheetmetal_face_cmd_32x32.ico",
+      "actions": [
+        "lamiera.face"
+      ]
+    },
+    {
+      "key": "sheetmetal-cut",
+      "action": "lamiera.cut",
+      "label": "Taglio da schizzo",
+      "resource": "resources/dark/icons/ribbon/inv_sheetmetal_cut_cmd_32x32.ico",
+      "actions": [
+        "lamiera.cut"
+      ]
+    },
+    {
+      "key": "select-sketch",
+      "action": "lamiera.sketch.change",
+      "label": "Cambia schizzo",
+      "resource": "resources/dark/icons/ribbon/inv_assembly_selectsketch_cmd_32x32.ico",
+      "actions": [
+        "lamiera.sketch.change"
+      ]
+    },
+    {
+      "key": "flatpattern",
+      "action": "lamiera.flat.create",
+      "label": "Crea sviluppo",
+      "resource": "resources/dark/icons/ribbon/inv_sheetmetal_flatpattern_cmd_32x32.ico",
+      "actions": [
+        "lamiera.flat.create",
+        "lamiera.flat.show",
+        "lamiera.view.flat"
+      ]
+    },
+    {
+      "key": "refresh",
+      "action": "lamiera.refresh",
+      "label": "Aggiorna",
+      "resource": "resources/dark/icons/ribbon/inv_app_refresh_cmd_32x32.ico",
+      "actions": [
+        "lamiera.refresh",
+        "assembly.refresh",
+        "design.refresh"
+      ]
+    },
+    {
+      "key": "isolate",
+      "action": "assembly.isolate",
+      "label": "Isola",
+      "resource": "resources/dark/icons/ribbon/isolate_32x32.ico",
+      "actions": [
+        "assembly.isolate",
+        "inspect.visibility.isolate"
+      ]
+    },
+    {
+      "key": "release-isolation",
+      "action": "assembly.release",
+      "label": "Rilascia",
+      "resource": "resources/dark/icons/ribbon/inv_assembly_isolateundo_cmd_32x32.ico",
+      "actions": [
+        "assembly.release"
+      ]
+    },
+    {
+      "key": "move",
+      "action": "assembly.move",
+      "label": "Sposta",
+      "resource": "resources/dark/icons/ribbon/inv_assembly_movecomponent_cmd_32x32.ico",
+      "actions": [
+        "assembly.move"
+      ]
+    },
+    {
+      "key": "open-component",
+      "action": "assembly.open",
+      "label": "Apri",
+      "resource": "resources/dark/icons/ribbon/inv_opencomponent_32x32.ico",
+      "actions": [
+        "assembly.open"
+      ]
+    },
+    {
+      "key": "joint",
+      "action": "assembly.joint",
+      "label": "Giunto",
+      "resource": "resources/dark/icons/ribbon/inv_assembly_joint_cmd_32x32.ico",
+      "actions": [
+        "assembly.joint"
+      ]
+    },
+    {
+      "key": "measure",
+      "action": "inspect.measure",
+      "label": "Punto-punto (locale)",
+      "resource": "resources/dark/icons/ribbon/inv_tools_measuredistance_cmd_32x32.ico",
+      "actions": [
+        "inspect.measure",
+        "inspect.verify.distance"
+      ],
+      "conditions": {
+        "inspect.verify.distance": "_distanceA != null"
+      }
+    },
+    {
+      "key": "section",
+      "action": "inspect.section",
+      "label": "Sezione",
+      "resource": "resources/dark/icons/ribbon/inv_tools_crosssection_cmd_32x32.ico",
+      "actions": [
+        "inspect.section"
+      ]
+    },
+    {
+      "key": "properties",
+      "action": "inspect.properties",
+      "label": "Proprietà",
+      "resource": "resources/dark/icons/ribbon/inv_file_iproperties_cmd_wrapper_32x32.ico",
+      "actions": [
+        "inspect.properties"
+      ]
+    },
+    {
+      "key": "documents",
+      "action": "inspect.documents",
+      "label": "Elenco documenti",
+      "resource": "resources/dark/icons/ribbon/switch_windows_32x32.ico",
+      "actions": [
+        "inspect.documents",
+        "doc.documents"
+      ]
+    },
+    {
+      "key": "back",
+      "action": "inspect.context.back",
+      "label": "Livello superiore",
+      "resource": "resources/dark/icons/ribbon/inv_quickaccess_returnparent_cmd_32x32.ico",
+      "actions": [
+        "inspect.context.back",
+        "doc.back"
+      ]
+    },
+    {
+      "key": "assembly-health",
+      "action": "inspect.verify.health",
+      "label": "Salute assieme",
+      "resource": "resources/dark/icons/ribbon/inv_assembly_showsick_cmd_32x32.ico",
+      "actions": [
+        "inspect.verify.health"
+      ]
+    },
+    {
+      "key": "interference",
+      "action": "inspect.verify.interference",
+      "label": "Interferenze",
+      "resource": "resources/dark/icons/ribbon/inv_tools_assemblyanalyzeinterference_cmd_32x32.ico",
+      "actions": [
+        "inspect.verify.interference"
+      ],
+      "conditions": {
+        "inspect.verify.interference": "_scopeSelection && _selected != null"
+      }
+    },
+    {
+      "key": "save",
+      "action": "doc.save",
+      "label": "Salva",
+      "resource": "resources/dark/icons/ribbon/inv_file_save_cmd_32x32.ico",
+      "actions": [
+        "doc.save"
+      ]
+    },
+    {
+      "key": "fit",
+      "action": "view.fit",
+      "label": "Adatta",
+      "resource": "resources/dark/icons/ribbon/inv_view_zoomall_cmd_32x32.ico",
+      "actions": [
+        "view.fit"
+      ]
+    },
+    {
+      "key": "dimension",
+      "action": "design.sketch.dimension",
+      "label": "Quota geometria",
+      "resource": "resources/dark/icons/ribbon/inv_sketch_dimension_cmd_wrapper_32x32.ico",
+      "actions": [
+        "design.sketch.dimension"
+      ]
+    },
+    {
+      "key": "constrain",
+      "action": "assembly.constrain",
+      "actions": [
+        "assembly.constrain"
+      ],
+      "label": "Vincola",
+      "resource": "resources/dark/icons/ribbon/inv_assembly_insertconstraint_cmd_32x32.ico",
+      "nativeCommand": "AssemblyInsertConstraintCmd"
+    }
+  ]
+}

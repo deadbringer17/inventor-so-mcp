@@ -2,6 +2,21 @@
 
 Target: Inventor 2027 x64. Full functional scope remains the 80-point assessment in `analisi-spec-inventor-so-mcp.md`; the work below does not replace it with a smaller goal.
 
+## M10 icone Inventor — 2026-10-06
+
+Migrazione software estesa ai sei provider XR: **34 immagini native/46 azioni**,
+tooltip, fallback e testo conservato per valori/nomi CAD/XR. Pack locale:
+8.386 PNG, manifest/hash, catalogo HTML e ZIP. Core: **590/590 PASS**.
+Unity: **646 PASS, 6 ignored, zero failed**. Runner M10, build QA/ordinaria,
+wrapper di fixture/ripristino e profilo A/B/A implementati. Quest 3 con Inventor
+reale: **PASS COMPLETE sintetico**, run 20261006-184204; 100 rebuild senza crescita
+di materiali/texture/sprite. Fixture ripristinata e APK ordinario reinstallato
+con hash verificato. Prova fisica MR/VR **confermata dall'utente** il 6 ottobre;
+**budget GPU aperto**, distinto nel verbale.
+[Spec M10](superpowers/specs/2026-10-06-m10-icone-inventor-design.md),
+[piano](superpowers/plans/2026-10-06-m10-icone-inventor.md),
+[inventario](xr-m10-action-inventory.md), [verbale](xr-m10-verification.md).
+
 ## M9 navigazione per contesto — 2026-10-05
 
 Client Quest guidato dal documento attivo (pila di navigazione, doppio Trigger,

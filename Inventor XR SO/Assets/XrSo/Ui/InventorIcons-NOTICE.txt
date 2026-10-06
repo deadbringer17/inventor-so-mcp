@@ -1,0 +1,1 @@
+Autodesk proprietary resources from a local installation. No redistribution license has been verified. Not covered by repository MIT/Apache licenses.

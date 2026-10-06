@@ -8,6 +8,7 @@ namespace InventorXrSo.Unity.Ui
     {
         public UnityEngine.UI.Image Border;
         public TextMeshProUGUI Label;
+        public UnityEngine.UI.Image Icon;
         public bool Primary;
 
         protected override void DoStateTransition(SelectionState state, bool instant)
@@ -17,6 +18,7 @@ namespace InventorXrSo.Unity.Ui
                 ? UiTheme.Signal : state == SelectionState.Pressed ? UiTheme.Text : UiTheme.Border,
                 instant ? 0 : UiTheme.MicroSeconds, true, true);
             if (Label != null) Label.color = state == SelectionState.Disabled ? UiTheme.Text : Primary ? UiTheme.Ink : UiTheme.Text;
+            if (Icon != null) Icon.color = new Color(1, 1, 1, state == SelectionState.Disabled ? 0.45f : 1f);
         }
     }
 }

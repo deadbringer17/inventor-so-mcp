@@ -180,7 +180,7 @@ namespace InventorXrSo.Xr
             var list = new List<XrAction>
             {
                 // Misura
-                new XrAction(IdMeasure, "Punto-punto (locale)", TabMeasure, () => Local, BeginMeasure, LocalReason, new[] { "misurazione" }),
+                new XrAction(IdMeasure, "Punto-punto (locale)", TabMeasure, () => Local, BeginMeasure, LocalReason, new[] { "misurazione" }, icon: "measure"),
                 new XrAction(IdMeasurePin, "Fissa misura", TabMeasure, () => Local && _measure != null && _measure.DistanceMm.HasValue, PinMeasure,
                     () => !Active ? LocalReason() : "Completa prima una misura tra due punti."),
                 new XrAction(IdMeasureCancel, "Annulla misura", TabMeasure, () => Active && Measuring,
@@ -190,7 +190,7 @@ namespace InventorXrSo.Xr
 
                 // Sezione
                 new XrAction(IdSection, "Sezione", TabSection, () => Local, () => { _section.SetActive(!_section.Active); Refresh(); },
-                    LocalReason, new[] { "seziona", "attiva sezione", "disattiva sezione" }, XrActionKind.Toggle, isOn: () => _section != null && _section.Active),
+                    LocalReason, new[] { "seziona", "attiva sezione", "disattiva sezione" }, XrActionKind.Toggle, isOn: () => _section != null && _section.Active, icon: "section"),
                 new XrAction(IdSectionOffset, "Scostamento: " + Format(_section?.OffsetMm, "mm"), TabSection, () => Local,
                     () => AskNumber(IdSectionOffset, "Scostamento (mm)", QuantityUnit.Millimeters, -1000000, 1000000, _section.OffsetMm, v => _section.SetOffset((float)v)),
                     LocalReason, kind: XrActionKind.Numeric),
@@ -208,8 +208,8 @@ namespace InventorXrSo.Xr
 
                 // Esplora: browsing of the scene when no document context is open (the documents and Torna live in Documento)
                 new XrAction(IdBrowse, "Esplora", TabExplore, () => Backend && _context.Current != null, OpenBrowserPicker, BackendReason, new[] { "browser" }),
-                new XrAction(IdProperties, "Proprietà", TabExplore, () => Backend, () => { _showInfo = true; LoadInfo(); }, BackendReason),
-                new XrAction(IdDocuments, "Elenco documenti", TabExplore, () => Backend, LoadDocuments, BackendReason),
+                new XrAction(IdProperties, "Proprietà", TabExplore, () => Backend, () => { _showInfo = true; LoadInfo(); }, BackendReason, icon: "properties"),
+                new XrAction(IdDocuments, "Elenco documenti", TabExplore, () => Backend, LoadDocuments, BackendReason, icon: "documents"),
                 new XrAction(IdScale, "Scala", TabView, () => Local && _view != null, OpenScalePicker, LocalReason),
                 new XrAction(IdEnvironment, env, TabView, () => Local && _environment != null, () =>
                 {
@@ -219,7 +219,7 @@ namespace InventorXrSo.Xr
                 new XrAction(IdEnter, "Apri contesto", TabExplore, () => CanEnter, () => Enter(_selected),
                     () => !Active ? LocalReason() : "Seleziona prima un componente con Esplora o toccandolo."),
                 new XrAction(IdBack, "Livello superiore", TabExplore, () => Active && _context.Path.Count > 1, ContextBack,
-                    () => !Active ? LocalReason() : "Sei già alla radice del documento."),
+                    () => !Active ? LocalReason() : "Sei già alla radice del documento.", icon: "back"),
 
                 // Visibilità (local, view only)
                 new XrAction(IdXRay, "X-Ray", TabVisibility, () => Local && _selected != null,
@@ -227,7 +227,7 @@ namespace InventorXrSo.Xr
                     voiceInvokes: false),
                 new XrAction(IdIsolate, "Isola", TabVisibility, () => Local && _selected != null,
                     () => VisibilityOnSelection(_visibility.Isolate, "Isolato"), () => !Active ? LocalReason() : "Seleziona prima un componente.",
-                    voiceInvokes: false),
+                    voiceInvokes: false, icon: "isolate"),
                 new XrAction(IdHide, "Nascondi", TabVisibility, () => Local && _selected != null,
                     () => VisibilityOnSelection(_visibility.Hide, "Nascosto"), () => !Active ? LocalReason() : "Seleziona prima un componente.",
                     voiceInvokes: false),
@@ -237,15 +237,15 @@ namespace InventorXrSo.Xr
                 // Verifica (Inventor, read-only)
                 new XrAction(IdInterference, _scopeSelection && _selected != null ? "Interferenze di " + _selected.Name : "Interferenze", TabVerify,
                     () => VerifyReady && (!_scopeSelection || DirectSelection), RunInterference,
-                    () => VerifyReady ? "Seleziona un componente di primo livello o togli Solo selezione." : VerifyReason(), voiceInvokes: false),
+                    () => VerifyReady ? "Seleziona un componente di primo livello o togli Solo selezione." : VerifyReason(), voiceInvokes: false, icon: _scopeSelection && _selected != null ? null : "interference"),
                 new XrAction(IdScope, "Solo selezione", TabVerify, () => Local && (_scopeSelection || DirectSelection),
                     () => { _scopeSelection = !_scopeSelection; Refresh(); },
                     () => !Active ? LocalReason() : "Seleziona un componente di primo livello.", kind: XrActionKind.Toggle,
                     isOn: () => _scopeSelection, voiceInvokes: false),
                 new XrAction(IdDistance, _distanceA == null ? "Distanza minima" : "Distanza minima da " + _distanceA.Name, TabVerify,
                     () => VerifyReady && DirectSelection, Distance,
-                    () => VerifyReady ? "Seleziona un componente di primo livello." : VerifyReason(), voiceInvokes: false),
-                new XrAction(IdHealth, "Salute assieme", TabVerify, () => VerifyReady, RunHealth, VerifyReason, voiceInvokes: false),
+                    () => VerifyReady ? "Seleziona un componente di primo livello." : VerifyReason(), voiceInvokes: false, icon: _distanceA != null ? null : "measure"),
+                new XrAction(IdHealth, "Salute assieme", TabVerify, () => VerifyReady, RunHealth, VerifyReason, voiceInvokes: false, icon: "assembly-health"),
                 new XrAction(IdResults, "Risultati (" + _findings.Count + ")", TabVerify, () => Active && _findings.Count > 0, OpenResults,
                     () => !Active ? LocalReason() : "Nessun risultato da mostrare.", voiceInvokes: false),
                 new XrAction(IdIgnore, "Ignora risultato", TabVerify, () => Active && _verifySession.Running != null, IgnoreRunning,

@@ -15,9 +15,11 @@ namespace InventorXrSo.Editor
         public static void BuildApk()
             => Build(false);
 
-        private static void Build(bool acceptance)
+        private static void Build(bool acceptance, bool profile = false)
         {
             XrSoProjectSetup.ValidateXr();
+            if (Resources.LoadAll<Sprite>("InventorIcons").Length != 34)
+                throw new BuildFailedException("M10 icon pack incomplete: run scripts/prepare-m10-icons.ps1 and import all 34 Sprites.");
             var theme = InventorXrSo.Unity.Ui.UiThemeAssets.Current;
             if (theme == null || theme.Medium == null || theme.Bold == null || theme.RoundedPanel == null || theme.FontLicense == null || theme.FallbackFontLicense == null)
                 throw new BuildFailedException("M8 theme assets/license missing: run XrSoThemeAssets.GenerateBatch before building.");
@@ -26,7 +28,7 @@ namespace InventorXrSo.Editor
                 scenes = new[] { XrSoSceneBuilder.ScenePath },
                 locationPathName = ApkPath,
                 target = BuildTarget.Android,
-                options = BuildOptions.None,
+                options = profile ? BuildOptions.Development : BuildOptions.None,
                 extraScriptingDefines = acceptance ? new[] { "XR_SO_ACCEPTANCE" } : Array.Empty<string>(),
             });
             if (report.summary.result != BuildResult.Succeeded)
@@ -64,6 +66,23 @@ namespace InventorXrSo.Editor
                 File.Copy(ApkPath, Path.Combine(output, "InventorXrSo-m8-acceptance.apk"), true);
                 Build(false);
                 File.Copy(ApkPath, Path.Combine(output, "InventorXrSo-m8-ordinary.apk"), true);
+                EditorApplication.Exit(0);
+            }
+            catch (Exception ex) { Debug.LogException(ex); EditorApplication.Exit(1); }
+        }
+
+        public static void BuildM10ApksBatch()
+        {
+            try
+            {
+                var args = Environment.GetCommandLineArgs();
+                int index = Array.IndexOf(args, "-m10Output");
+                var output = Path.GetFullPath(index >= 0 && index + 1 < args.Length ? args[index + 1] : "../artifacts/m10-verification");
+                Directory.CreateDirectory(output);
+                Build(true, true);
+                File.Copy(ApkPath, Path.Combine(output, "InventorXrSo-m10-acceptance.apk"), true);
+                Build(false);
+                File.Copy(ApkPath, Path.Combine(output, "InventorXrSo-m10-ordinary.apk"), true);
                 EditorApplication.Exit(0);
             }
             catch (Exception ex) { Debug.LogException(ex); EditorApplication.Exit(1); }

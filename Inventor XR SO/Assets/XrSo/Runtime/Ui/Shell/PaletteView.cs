@@ -189,7 +189,7 @@ namespace InventorXrSo.Unity.Ui
             foreach (var action in _catalog.Palette(CurrentTab))
             {
                 var a = action;
-                var b = UiFactory.TextButton(_grid, a.Label, a.IsOn ? UiFactory.Accent : UiFactory.Key, TextMm, () => a.TryInvoke());
+                var b = UiFactory.ActionButton(_grid, a, TextMm, 16f, () => a.TryInvoke());
                 FitLabel(b);
                 b.interactable = a.Enabled;
             }
@@ -198,7 +198,7 @@ namespace InventorXrSo.Unity.Ui
         // Le etichette vanno a capo (max 2 righe) e non vengono mai troncate.
         private static void FitLabel(Button b)
         {
-            var t = b.GetComponentInChildren<TextMeshProUGUI>();
+            var t = b.GetComponentInChildren<TextMeshProUGUI>(true);
             t.textWrappingMode = TextWrappingModes.Normal;
             t.overflowMode = TextOverflowModes.Overflow;
             t.margin = new Vector4(2, 0, 2, 0);

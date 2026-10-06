@@ -190,3 +190,41 @@ Lamiera apre la modifica della feature. Misura e Sezione sono nel gruppo
 (si spegne dalla scheda Vista). Y = Adatta; Ricentra è nella scheda Documento.
 [Spec M9](../docs/superpowers/specs/2026-10-04-m9-navigazione-contesto-design.md),
 [verbale](../docs/xr-m9-verification.md): collaudo Quest e prova fisica aperti.
+
+## M10 icone Inventor
+
+Migrazione software estesa ai sei fornitori Progettazione, Lamiera, Assieme,
+Ispeziona, Documento e Vista: **46 azioni, 34 icone native locali** per tavolozza
+ed anello. Nome e motivo disabled compaiono al puntamento; icona sconosciuta:
+scritta completa. Valori, nomi CAD, tastierino, conferme e comandi XR senza
+corrispondenza verificata conservano il testo; id, callback e voce invariati.
+
+Pack completo: `../artifacts/m10-icons/pack/index.html` e
+`../artifacts/m10-icons/inventor-2027-icons.zip`. Estrazione:
+`scripts/export-inventor-icons.ps1`; import: `scripts/prepare-m10-icons.ps1`;
+mapping definitivo: `assets/inventor-icons/m10-catalog.json`. Solo i 34 PNG
+selezionati entrano nel client, con manifest e NOTICE offline.
+Menu Editor: **Inventor XR SO → M10 → Capture icon gallery**.
+Build: `InventorXrSo.Editor.XrSoBuild.BuildM10ApksBatch`, QA Development con
+`XR_SO_ACCEPTANCE` e ordinario senza runner. Output:
+`../artifacts/m10-verification/InventorXrSo-m10-{acceptance,ordinary}.apk`.
+
+Collaudo automatico dalla radice, con Quest acceso e ADB sul PATH:
+
+```powershell
+./scripts/run-m10-acceptance.ps1 -Serial '<seriale Quest>' `
+  -Apk artifacts/m10-verification/InventorXrSo-m10-acceptance.apk `
+  -OrdinaryApk artifacts/m10-verification/InventorXrSo-m10-ordinary.apk
+```
+
+Usa la fixture M6 dedicata; ripristina documento precedente e APK ordinario,
+con hash verificato. Include controlli UI sintetici, regressione CAD M6,
+100 rebuild e profilo A/B/A testo/icona; non certifica il controller fisico.
+Run del 6 ottobre 2026: **PASS COMPLETE sintetico**, Inventor ripristinato e
+APK ordinario installato con hash verificato. Core 590 PASS, Unity 646 PASS e
+6 ignored; prova fisica MR/VR confermata dall'utente il 6 ottobre. Resta aperto
+il budget GPU (contatore non disponibile).
+[Spec M10](../docs/superpowers/specs/2026-10-06-m10-icone-inventor-design.md),
+[piano](../docs/superpowers/plans/2026-10-06-m10-icone-inventor.md),
+[inventario](../docs/xr-m10-action-inventory.md),
+[esiti e gate aperti](../docs/xr-m10-verification.md).
