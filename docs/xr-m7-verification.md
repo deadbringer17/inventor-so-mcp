@@ -152,5 +152,7 @@ ripristinano la vista (stesso snapshot di `ClearFocus`). La fase e' calcolata in
 sincroni.
 
 - `PASS` test EditMode (636/636 su Unity 6000.6.3f1): vista globale applicata e ripristinata, 0 interferenze senza vista, Salute senza vista, pulsazione spenta dopo 5 s, materiale ghost invariato.
-- `PASS [M7-xray-pulse]` nel runner Quest: da eseguire al prossimo run (controllo sintetico aggiunto, non ancora girato sul dispositivo).
+- `PASS [M7-xray-pulse]` nel runner Quest (2026-10-06, `quest-acceptance-run-20261006-191023.json`, input sintetico): vista globale con X-Ray, tinta rossa, 1 box e pulsazione avviata dopo il risultato; `PASS [M7-01]` e `PASS [M7-02]` (riga di Risultati e Indietro) nello stesso run.
+- Difetto trovato dal runner e corretto: nell'Assieme (M9) `InspectWorkspace.Back()` non ripristinava la vista di verifica (la ramificazione `ViewOwnedElsewhere` saltava `ClearFocus`). Test EditMode dedicato.
+- **Run M7 non completo (`FAIL`)**: dopo M7-02 il passo M7-03 cade in `SelectComponentAsync`: «Assieme lists M7_A (entries: ● M7_C)», cioe' la lista Componenti dell'Assieme contiene solo M7_C. Il runner M7 migrato a M9 non era mai stato rieseguito: causa non ancora indagata (lista o contesto Assieme del runner, non la vista di verifica). M7-03, M7-04 e seguenti **restano da riverificare** sul Quest.
 - `NOT COVERED [M7-xray-pulse-visual]`: resa visiva, ritmo e leggibilita' della pulsazione sul Quest richiedono prova fisica. **Aperta.**
