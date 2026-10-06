@@ -141,11 +141,15 @@ public sealed class ControlPipeServer : IAsyncDisposable
                     try
                     {
                         var request = await ControlWire.ReadAsync<ControlRequest>(pipe, deadline.Token).ConfigureAwait(false);
-                        var response = request.Version == 1 ? handle(request) : ControlResponse.Error("PROTOCOL_VERSION", "Versione non supportata.");
+                        ControlResponse response;
+                        try { response = request.Version == 1 ? handle(request) : ControlResponse.Error("PROTOCOL_VERSION", "Versione non supportata."); }
+                        catch (Exception) { response = ControlResponse.Error("INTERNAL", "Errore interno del gestore."); }   // a handler bug must not end the loop
                         await ControlWire.WriteAsync(pipe, response, deadline.Token).ConfigureAwait(false);
                     }
                     catch (Exception ex) when (ex is IOException or InvalidDataException or OperationCanceledException or JsonException)
                     { /* Disconnected, malformed or stalled client; never log frame contents. */ }
+                    catch (Exception) when (!_stop.IsCancellationRequested)
+                    { /* Anything else is confined to this connection; the next client is still served. */ }
                 }
                 if (!_stop.IsCancellationRequested) pipe = Create(name);
             }

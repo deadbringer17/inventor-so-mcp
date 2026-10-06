@@ -18,6 +18,7 @@ using Newtonsoft.Json.Linq;
 
 namespace Bimwright.Ipt.Tests;
 
+[Collection("ProcessEnvironment")]
 public sealed class BindingPolicyTests
 {
     private static InventorMcpConfig Config(params string[] urls) => new() { HttpUrls = urls.ToList() };
@@ -55,6 +56,49 @@ public sealed class BindingPolicyTests
     [InlineData("ftp://127.0.0.1:21")]
     [InlineData("127.0.0.1:8787")]
     public void MalformedUrlsAreRefused(string url) => Assert.NotEmpty(BindingPolicy.Check(Config(url)));
+
+    [Theory]
+    [InlineData("https://0.0.0.0:8443", true, false)]
+    [InlineData("https://0.0.0.0:8443", false, true)]
+    [InlineData("https://192.168.1.20:8443", true, true)]
+    public void DangerousFeaturesOffLoopbackNeedTheExplicitOptIn(string url, bool fullAccess, bool sendCode)
+    {
+        var config = Config(url);
+        config.HttpSelfSignedCertificate = true;
+        config.FullAccess = fullAccess;
+        config.EnableSendCode = sendCode;
+        var problems = BindingPolicy.Check(config);
+        Assert.Contains(problems, p => p.Contains("--http-allow-dangerous"));
+        config.HttpAllowDangerous = true;
+        Assert.Empty(BindingPolicy.Check(config));
+    }
+
+    [Fact]
+    public void DangerousFeaturesOnLoopbackNeedNoOptInAndSafeConfigsAreUnaffected()
+    {
+        var loopback = Config("http://127.0.0.1:8787");
+        loopback.FullAccess = true; loopback.EnableSendCode = true;
+        Assert.Empty(BindingPolicy.Check(loopback));
+        var lan = Config("https://0.0.0.0:8443");
+        lan.HttpSelfSignedCertificate = true;
+        Assert.Empty(BindingPolicy.Check(lan));
+    }
+
+    [Fact]
+    public void TheDangerousOptInIsReadFromCliAndEnvironment()
+    {
+        const string Var = "INVENTOR_SO_HTTP_ALLOW_DANGEROUS";
+        var prior = System.Environment.GetEnvironmentVariable(Var);
+        try
+        {
+            System.Environment.SetEnvironmentVariable(Var, null);
+            Assert.False(InventorMcpConfig.Load(System.Array.Empty<string>()).HttpAllowDangerous);
+            Assert.True(InventorMcpConfig.Load(new[] { "--http-allow-dangerous" }).HttpAllowDangerous);
+            System.Environment.SetEnvironmentVariable(Var, "1");
+            Assert.True(InventorMcpConfig.Load(System.Array.Empty<string>()).HttpAllowDangerous);
+        }
+        finally { System.Environment.SetEnvironmentVariable(Var, prior); }
+    }
 
     [Fact]
     public void HttpsWithTheSelfSignedCertificateIsAllowed()
@@ -240,6 +284,22 @@ public sealed class HttpHostTests : IAsyncLifetime
         request.Headers.Add("Mcp-Session-Id", session);
         var response = await laptop.SendAsync(request);
         Assert.False(response.IsSuccessStatusCode);
+    }
+
+    [Theory]
+    [InlineData("W/\"{sha}\"", HttpStatusCode.NotModified)]
+    [InlineData("\"x\", \"{sha}\"", HttpStatusCode.NotModified)]
+    [InlineData("\"x\", W/\"{sha}\" , \"y\"", HttpStatusCode.NotModified)]
+    [InlineData("*", HttpStatusCode.NotModified)]
+    [InlineData("\"x\"", HttpStatusCode.OK)]
+    public async Task ConditionalAssetGetHonoursWeakValuesAndLists(string ifNoneMatch, HttpStatusCode expected)
+    {
+        var store = _app.Services.GetRequiredService<AssetStore>();
+        var record = store.Put(new byte[] { 7, 7, 7, 1 }, "model/gltf-binary", "quest");
+        using var quest = Client(_questToken);
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/assets/" + record.Id);
+        request.Headers.TryAddWithoutValidation("If-None-Match", ifNoneMatch.Replace("{sha}", record.Sha256));
+        Assert.Equal(expected, (await quest.SendAsync(request)).StatusCode);
     }
 
     [Fact]

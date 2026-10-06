@@ -163,6 +163,23 @@ public sealed class PluginClient
         return result.Data ?? JValue.CreateNull();
     }
 
+    /// <summary>
+    /// Extra time the client waits beyond <see cref="InventorMcpConfig.TimeoutMs"/> for the response. The
+    /// add-in measures the same deadline from a later start, so without this a command could commit after
+    /// the client gave up; with it the add-in's own structured TIMEOUT normally arrives first.
+    /// </summary>
+    internal const int AddInGraceMs = 3000;
+
+    /// <summary>Wait for <paramref name="task"/> up to <paramref name="timeoutMs"/>: caller cancellation throws
+    /// <see cref="OperationCanceledException"/>, the deadline throws <paramref name="onTimeout"/>'s exception. No timer outlives the call.</summary>
+    private static async Task<T> WithDeadlineAsync<T>(Func<CancellationToken, Task<T>> start, int timeoutMs, CancellationToken ct, Func<InventorGatewayException> onTimeout)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        linked.CancelAfter(timeoutMs);
+        try { return await start(linked.Token); }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested && linked.IsCancellationRequested) { throw onTimeout(); }
+    }
+
     private async Task<string> SendLineAsync(TargetDescriptor target, string line, CancellationToken ct)
     {
         Stream stream;
@@ -174,12 +191,11 @@ public sealed class PluginClient
             owner = pipe;
             try
             {
-                var connect = pipe.ConnectAsync(ct);
-                if (await Task.WhenAny(connect, Task.Delay(_config.TimeoutMs, ct)) != connect)
-                    throw new InventorGatewayException(InventorErrorCodes.TIMEOUT, $"connect to target {target.TargetId} timed out");
-                await connect;
+                await WithDeadlineAsync(async t => { await pipe.ConnectAsync(t); return 0; },
+                    _config.TimeoutMs, ct, () => ConnectTimeout(target));
             }
             catch (InventorGatewayException) { pipe.Dispose(); throw; }
+            catch (OperationCanceledException) { pipe.Dispose(); throw; }
             catch (Exception ex)
             {
                 pipe.Dispose();
@@ -193,12 +209,11 @@ public sealed class PluginClient
             owner = client;
             try
             {
-                var connect = client.ConnectAsync("127.0.0.1", target.Port);
-                if (await Task.WhenAny(connect, Task.Delay(_config.TimeoutMs, ct)) != connect)
-                    throw new InventorGatewayException(InventorErrorCodes.TIMEOUT, $"connect to target {target.TargetId} timed out");
-                await connect;
+                await WithDeadlineAsync(async t => { await client.ConnectAsync("127.0.0.1", target.Port, t); return 0; },
+                    _config.TimeoutMs, ct, () => ConnectTimeout(target));
             }
             catch (InventorGatewayException) { client.Dispose(); throw; }
+            catch (OperationCanceledException) { client.Dispose(); throw; }
             catch (Exception ex)
             {
                 client.Dispose();
@@ -213,13 +228,22 @@ public sealed class PluginClient
             await stream.WriteAsync(Encoding.UTF8.GetBytes(line), ct);
 
             using var reader = new StreamReader(stream, Encoding.UTF8);
-            var readTask = NdjsonLineReader.ReadLineBoundedAsync(reader, _config.MaxResponseBytes);
-            if (await Task.WhenAny(readTask, Task.Delay(_config.TimeoutMs, ct)) != readTask)
-                throw new InventorGatewayException(InventorErrorCodes.TIMEOUT, $"request {target.TargetId} timed out after {_config.TimeoutMs} ms");
-            var read = await readTask;
+            var read = await WithDeadlineAsync(t =>
+                {
+                    // The bounded reader takes no token: abandon it on deadline/cancel (disposing the stream ends it)
+                    // and observe whatever it throws afterwards.
+                    var pending = NdjsonLineReader.ReadLineBoundedAsync(reader, _config.MaxResponseBytes);
+                    _ = pending.ContinueWith(x => _ = x.Exception, TaskContinuationOptions.OnlyOnFaulted);
+                    return pending.WaitAsync(t);
+                },
+                _config.TimeoutMs + AddInGraceMs, ct,
+                () => new InventorGatewayException(InventorErrorCodes.TIMEOUT, $"request {target.TargetId} timed out after {_config.TimeoutMs} ms"));
             if (read.Overflow)
                 throw new InventorGatewayException(InventorErrorCodes.RESPONSE_TOO_LARGE, $"add-in response exceeded {_config.MaxResponseBytes} bytes");
             return read.Line ?? throw new InventorGatewayException(InventorErrorCodes.TARGET_UNAVAILABLE, "add-in closed the connection");
         }
     }
+
+    private static InventorGatewayException ConnectTimeout(TargetDescriptor target) =>
+        new(InventorErrorCodes.TIMEOUT, $"connect to target {target.TargetId} timed out");
 }

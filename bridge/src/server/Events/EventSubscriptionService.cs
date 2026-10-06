@@ -124,10 +124,14 @@ public sealed class EventSubscriptionService : BackgroundService
                 await server.SendNotificationAsync(NotificationMethods.ResourceUpdatedNotification,
                     new ResourceUpdatedNotificationParams { Uri = uri }, cancellationToken: ct);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
-                // A session that cannot be notified is gone; drop all its subscriptions.
-                lock (_gate) _subscriptions.Remove(key);
+                // A session that cannot be notified is gone; drop all its subscriptions - unless it
+                // re-subscribed through a newer request handle while this send was in flight.
+                // (A cancellation of the poll itself, i.e. shutdown, still propagates.)
+                lock (_gate)
+                    if (_subscriptions.TryGetValue(key, out var current) && ReferenceEquals(current.Server, server))
+                        _subscriptions.Remove(key);
             }
         }
     }

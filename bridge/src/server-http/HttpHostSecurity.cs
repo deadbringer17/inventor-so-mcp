@@ -141,6 +141,9 @@ public static class BindingPolicy
             if (scheme == "http" && !IsLoopback(host) && !config.HttpAllowInsecureLan)
                 problems.Add("'" + url + "' would expose plain HTTP beyond this machine. Use https with a certificate, or opt in with --http-allow-insecure-lan on a trusted network.");
         }
+        bool exposed = config.HttpUrls.Any(u => !TryParse(u, out _, out var h) || !IsLoopback(h));
+        if (exposed && (config.FullAccess || config.EnableSendCode) && !config.HttpAllowDangerous)
+            problems.Add("--full-access / --enable-send-code beyond this machine lets any paired client run unreviewed or arbitrary code. Bind to loopback, or opt in explicitly with --http-allow-dangerous (INVENTOR_SO_HTTP_ALLOW_DANGEROUS).");
         if (config.HttpRateLimitPerMinute < 1) problems.Add("The rate limit must be at least 1 request per minute.");
         return problems;
     }

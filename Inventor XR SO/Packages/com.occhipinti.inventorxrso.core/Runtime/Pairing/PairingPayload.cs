@@ -30,15 +30,18 @@ namespace InventorXrSo.Core.Pairing
             {
                 if ((int?)json["v"] != 1) throw new FormatException("Unsupported pairing code version.");
                 var host = (string)json["host"];
-                var port = (int?)json["port"] ?? 0;
+                var portToken = json["port"];
+                long port = portToken != null && portToken.Type == JTokenType.Integer ? (long)portToken : 0;
                 var ott = (string)json["ott"];
                 var sha = (string)json["cert_sha256"];
                 if (string.IsNullOrWhiteSpace(host) || port < 1 || port > 65535 || string.IsNullOrEmpty(ott))
                     throw new FormatException("Incomplete pairing code.");
+                if (host.IndexOfAny(new[] { '/', '\\', '@', '?', '#', ' ', '\t', '\r', '\n' }) >= 0 || Uri.CheckHostName(host) == UriHostNameType.Unknown)
+                    throw new FormatException("Invalid host in the pairing code.");
                 if (!CertificatePin.IsValid(sha)) throw new FormatException("Invalid certificate fingerprint in the pairing code.");
-                return new PairingPayload(host, port, ott, CertificatePin.Normalize(sha));
+                return new PairingPayload(host, (int)port, ott, CertificatePin.Normalize(sha));
             }
-            catch (ArgumentException ex) { throw new FormatException("Malformed pairing code.", ex); }
+            catch (Exception ex) when (ex is ArgumentException || ex is OverflowException || ex is InvalidCastException) { throw new FormatException("Malformed pairing code.", ex); }
         }
     }
 }

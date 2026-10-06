@@ -111,6 +111,70 @@ namespace InventorXrSo.Tests
         }
 
         [Test]
+        public void ReleasedInstancesAreDetachedFromTheRootBeforeTheyAreDestroyed()
+        {
+            // Play mode defers Destroy to the end of the frame; EditMode destroys at once, so observe the moment in between:
+            // InstanceDetached fires after the detach and before the destroy. Without the detach LocalBounds would still see the old bodies.
+            var view = View();
+            view.Show(BoltScene());
+            var detachedParents = new List<Transform>();
+            var rootChildCountAtDetach = new List<int>();
+            view.InstanceDetached += go => { detachedParents.Add(go.transform.parent); rootChildCountAtDetach.Add(_root.transform.childCount); };
+            view.Show(BoltScene());
+            Assert.AreEqual(2, detachedParents.Count);
+            Assert.That(detachedParents, Has.All.Null);
+            Assert.AreEqual(new[] { 1, 0 }, rootChildCountAtDetach);   // the old instances leave the root one by one
+            Assert.AreEqual(2, _root.transform.childCount);
+            Assert.AreEqual(2, _root.GetComponentsInChildren<CadInstance>(true).Length);
+        }
+
+        [Test]
+        public void LocalBoundsAfterARebuildCoverOnlyTheNewScene()
+        {
+            var view = View();
+            view.Show(BoltScene());
+            var before = ScenePlacement.LocalBounds(_root.transform);
+            view.Show(BoltScene());
+            Assert.AreEqual(before.size.x, ScenePlacement.LocalBounds(_root.transform).size.x, 1e-5f);
+            view.Show(null);
+            Assert.AreEqual(0, _root.GetComponentsInChildren<CadBody>(true).Length);
+        }
+
+        [Test]
+        public void FindFollowsTheRebuildAndIsNullForRemovedOrUnknownIds()
+        {
+            var view = View();
+            view.Show(BoltScene());
+            var first = view.Find("ent_occ_2");
+            Assert.IsNotNull(first);
+            Assert.IsNull(view.Find("ent_occ_9"));
+            Assert.IsNull(view.Find(null));
+            view.Show(BoltScene());
+            var second = view.Find("ent_occ_2");
+            Assert.IsNotNull(second);
+            Assert.AreEqual("ent_occ_2", second.OccurrenceId);
+            Assert.That(view.Instances, Does.Contain(second));
+            view.Show(null);
+            Assert.IsNull(view.Find("ent_occ_1"));
+            Assert.IsNull(view.Find("ent_occ_2"));
+        }
+
+        [Test]
+        public void ThePartDocumentRootWithoutOccurrenceIdIsStillFoundByNull()
+        {
+            var bolt = GlbModel.Parse(File.ReadAllBytes(CoreInUnityTests.BoltFixture));
+            var graph = SceneGraph.FromJson(JObject.Parse(@"{""document_id"":""doc_bolt"",""kind"":""part"",""revision"":""r"",""visual_revision"":""v"",
+                ""definition_document_ids"":[""doc_bolt""],""root"":{""name"":""Bolt"",""definition_kind"":""part"",""definition_document_id"":""doc_bolt"",""children"":[]}}"));
+            var view = View();
+            view.Show(new LoadedScene(graph, new Dictionary<string, GlbModel> { ["doc_bolt"] = bolt },
+                new Dictionary<string, string> { ["doc_bolt"] = "a_bolt" }, new List<string>()));
+            Assert.AreEqual(1, view.Instances.Count);
+            Assert.AreSame(view.Instances[0], view.Find(null));
+            view.Show(null);
+            Assert.IsNull(view.Find(null));
+        }
+
+        [Test]
         public void TheModelLandsInFrontOfTheHeadAtOneToOne()
         {
             var pose = ScenePlacement.InFront(new Bounds(Vector3.zero, Vector3.one * 0.1f), new Vector3(0, 1.6f, 0), new Vector3(0, -1, 1));

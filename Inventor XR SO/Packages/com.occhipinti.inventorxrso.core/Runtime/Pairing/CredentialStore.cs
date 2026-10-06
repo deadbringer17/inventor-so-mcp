@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Security.Cryptography;
+using Newtonsoft.Json;
 
 namespace InventorXrSo.Core.Pairing
 {
@@ -38,10 +40,15 @@ namespace InventorXrSo.Core.Pairing
         {
             if (!File.Exists(_path)) return null;
             try { return PairedServer.FromJson(_protector.Unprotect(File.ReadAllText(_path))); }
+            catch (Exception ex) when (ex is FormatException || ex is JsonException || ex is CryptographicException)
+            {
+                // Corrupt file: forget it, the user pairs again.
+                Clear();
+                return null;
+            }
             catch (Exception)
             {
-                // Corrupt file or a reset Keystore key: forget it, the user pairs again.
-                Clear();
+                // Transient (IO, permissions, a Keystore hiccup): keep the file; pairing again overwrites it anyway.
                 return null;
             }
         }

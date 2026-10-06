@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -53,7 +54,11 @@ namespace InventorXrSo.Core.Session
                     models[id] = GlbModel.Parse(await _backend.GetAssetAsync(mesh, ct));
                     assetIds[id] = mesh.AssetId;
                 }
-                catch (McpToolException ex) when (ex.Code == "MESH_TOO_LARGE")
+                catch (McpException ex) when (ex.Code == "MESH_TOO_LARGE" || ex.Code == "ASSET_CORRUPT")
+                {
+                    omitted.Add(id);
+                }
+                catch (Exception ex) when (ex is FormatException || ex is NotSupportedException)
                 {
                     omitted.Add(id);
                 }

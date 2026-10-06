@@ -37,6 +37,9 @@ public sealed class FakeAddIn : System.IAsyncDisposable
     public string DescriptorDirectory { get; }
     public List<string> Commands { get; } = new();
     public bool DesignPartMode { get; set; }
+
+    /// <summary>Optional scripted answer consulted before the built-in handlers; null falls through.</summary>
+    public System.Func<InventorCommandEnvelope, InventorCommandResult?>? Override { get; set; }
     public string ActiveDocumentId => DesignPartMode ? BoltId : AssemblyId;
 
     public const string AssemblyId = "doc_asm";
@@ -126,6 +129,7 @@ public sealed class FakeAddIn : System.IAsyncDisposable
         var meta = new InventorResponseMeta { InventorYear = 2027 };
         InventorCommandResult Ok(JToken data) => InventorCommandResult.Success(envelope.Id, data, meta);
         InventorCommandResult Fail(string code, string message) => InventorCommandResult.Fail(envelope.Id, code, message, meta);
+        if (Override?.Invoke(envelope) is { } scripted) return scripted;
         switch (envelope.Command)
         {
             case "get_capabilities":

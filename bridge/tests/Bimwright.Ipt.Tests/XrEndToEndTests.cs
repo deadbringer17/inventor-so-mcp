@@ -189,6 +189,18 @@ public sealed class XrEndToEndTests : IAsyncLifetime
         Assert.Equal("INVALID_ARGUMENT", (string?)range["error"]!["code"]);
     }
 
+    [Theory]
+    [InlineData(9.0)]
+    [InlineData(0.0)]
+    [InlineData(-1.0)]
+    public async Task SceneGraphRefusesAnOutOfRangeToleranceBeforeCallingTheAddIn(double tolerance)
+    {
+        var before = _addIn.Commands.Count(c => c == "get_scene_graph");
+        var refused = await Tool("inventor_get_scene_graph", new { include_meshes = true, tolerance_mm = tolerance });
+        Assert.Equal("INVALID_ARGUMENT", (string?)refused["error"]!["code"]);
+        Assert.Equal(before, _addIn.Commands.Count(c => c == "get_scene_graph"));
+    }
+
     [Fact]
     public async Task DisplayMeshOfOnePartIsAValidGlbInMetres()
     {

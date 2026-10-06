@@ -67,6 +67,10 @@ namespace InventorXrSo.Xr
         // Cache of the face ordinal shown by the label (the lookup walks the bodies' face maps).
         private InventorXrSo.Core.Selection.Selection _labelFaceSelection;
         private int _labelFaceOrdinal;
+        // Resolved label names, kept per selection: Unity's Object.name allocates a string on every read and the label ticks per frame.
+        private string _labelFaceName;
+        private InventorXrSo.Core.Selection.Selection _labelOccurrenceSelection;
+        private string _labelOccurrenceName;
         private InventorBackend _backend;
         private IReadOnlyList<OpenDocument> _openDocuments = new OpenDocument[0];
 
@@ -283,18 +287,21 @@ namespace InventorXrSo.Xr
             {
                 if (!ReferenceEquals(current, _labelFaceSelection))
                 {
-                    _labelFaceSelection = current; _labelFaceOrdinal = 0;
+                    _labelFaceSelection = current; _labelFaceOrdinal = 0; _labelFaceName = null;
                     var instance = sceneView.Find(current.OccurrenceId);
                     if (instance != null)
+                    {
+                        _labelFaceName = instance.name;
                         foreach (var body in instance.Bodies)
                         {
                             var range = body.Primitive.FaceMap.Find(current.FaceId);
                             if (range != null) { _labelFaceOrdinal = range.Ordinal; break; }
                         }
+                    }
                 }
                 target.Kind = SelectionLabelKind.Face;
                 target.FaceOrdinal = _labelFaceOrdinal;
-                target.Name = sceneView.Find(current.OccurrenceId)?.name ?? Navigation.Top?.Name;
+                target.Name = _labelFaceName ?? Navigation.Top?.Name;
                 target.HasBounds = selectionVisuals.TryGetBounds(out target.Bounds);
                 return target;
             }
@@ -309,7 +316,12 @@ namespace InventorXrSo.Xr
             else if (current != null && current.Kind == InventorXrSo.Core.Selection.SelectionKind.Occurrence)
             {
                 target.Kind = SelectionLabelKind.Part;
-                target.Name = sceneView.Find(current.OccurrenceId)?.name;
+                if (!ReferenceEquals(current, _labelOccurrenceSelection))
+                {
+                    _labelOccurrenceSelection = current;
+                    _labelOccurrenceName = sceneView.Find(current.OccurrenceId)?.name;
+                }
+                target.Name = _labelOccurrenceName;
             }
             else return target;
             target.HasBounds = selectionVisuals.TryGetBounds(out target.Bounds);
@@ -320,7 +332,7 @@ namespace InventorXrSo.Xr
         {
             _lifetime.Cancel();
             StopSession();
-            qrScanner?.Stop();
+            if (qrScanner != null) qrScanner.Stop();
             if (ray != null) { ray.Picked -= OnPicked; ray.PickedNothing -= OnPickedNothing; }
             if (_home != null) Destroy(_home.gameObject);
             if (_shell != null) Destroy(_shell.gameObject);
@@ -510,6 +522,7 @@ namespace InventorXrSo.Xr
             if (_documentId != scene?.Graph.DocumentId) _placed = false;
             _documentId = scene?.Graph.DocumentId;
             sceneView.Show(scene);
+            _labelFaceSelection = null; _labelFaceName = null; _labelOccurrenceSelection = null; _labelOccurrenceName = null;
             _inspect.SetScene(scene);
             _design.SetScene(scene);
             _assembly.SetScene(scene);
@@ -835,7 +848,7 @@ namespace InventorXrSo.Xr
             if (_design.Active || _assembly.Active || _lamiera.Active) return;
             if (_inspect.Measuring) return;
             _inspect.ClearSelection();
-            if (_selection == null || _selecting || _session.Status != SessionStatus.Online) return;
+            if (_selection == null || _picking == null || _selecting || _session == null || _session.Status != SessionStatus.Online) return;
             _selecting = true;
             try { await _selection.ClearAsync(_picking.Token); }
             catch (Exception) { selectionVisuals.Clear(); }

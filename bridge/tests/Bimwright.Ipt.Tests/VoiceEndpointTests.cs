@@ -342,6 +342,21 @@ public sealed class ExternalProcessSpeechEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task AGrandchildHoldingStdoutCannotOutliveTheDeadline()
+    {
+        // The command exits at once but leaves a child with the inherited stdout pipe open.
+        string command = Posix
+            ? "/bin/sh -c 'sleep 30 & exit 0' x"
+            : "powershell -NoProfile -Command \"Start-Process -NoNewWindow -FilePath ping -ArgumentList '-n','30','127.0.0.1'; $null = '{wav}'; exit 0\"";
+        var engine = new ExternalProcessSpeechEngine(command, TimeSpan.FromSeconds(2), _tmp);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var ex = await Assert.ThrowsAsync<SpeechEngineException>(() => engine.TranscribeAsync(new byte[3200], 16000, CancellationToken.None));
+        Assert.Equal(SpeechEngineException.Timeout, ex.Code);
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(15), "took " + clock.Elapsed);
+        Assert.Empty(Directory.GetFiles(_tmp));
+    }
+
+    [Fact]
     public async Task NonZeroExitAndMissingBinaryAreCodedAndStderrIsNotEchoed()
     {
         if (!Posix) return;

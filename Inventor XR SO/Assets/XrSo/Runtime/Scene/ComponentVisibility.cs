@@ -77,7 +77,8 @@ namespace InventorXrSo.Unity.Scene
             foreach (var body in instance.Bodies)
             {
                 _ghosts.Remove(body);
-                if (body.Renderer != null) body.Renderer.enabled = state == OccurrenceVisibility.Normal;
+                body.RendererWanted = state == OccurrenceVisibility.Normal;
+                body.RefreshRenderer();   // stays off while another ghost overlay (isolation) still replaces the body
                 var collider = body.GetComponent<Collider>();
                 if (collider != null) collider.enabled = state != OccurrenceVisibility.Hidden;
                 if (state == OccurrenceVisibility.Ghost) _ghosts.Add(body);

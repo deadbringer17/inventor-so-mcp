@@ -25,6 +25,39 @@ public class PairingPayloadTests
     [InlineData("{\"v\":1,\"host\":\"h\",\"port\":1,\"ott\":\"s\",\"cert_sha256\":\"abc\"}")]
     public void RejectsAnythingElse(string text) => Assert.Throws<FormatException>(() => PairingPayload.Parse(text));
 
+    [Theory]
+    [InlineData("1e12")]
+    [InlineData("8443.5")]
+    [InlineData("\"8443\"")]
+    [InlineData("-1")]
+    [InlineData("0")]
+    [InlineData("65536")]
+    [InlineData("99999999999999999999")]
+    [InlineData("true")]
+    public void RejectsPortsThatAreNotIntegersInRange(string port) =>
+        Assert.Throws<FormatException>(() => PairingPayload.Parse("{\"v\":1,\"host\":\"h\",\"port\":" + port + ",\"ott\":\"s\",\"cert_sha256\":\"" + Sha + "\"}"));
+
+    [Theory]
+    [InlineData("user@host")]
+    [InlineData("host/path")]
+    [InlineData("host\\path")]
+    [InlineData("a b")]
+    [InlineData("host:8443")]
+    [InlineData("host?x")]
+    [InlineData("host#x")]
+    [InlineData("https://host")]
+    public void RejectsHostsThatAreNotPlainHostnames(string host) =>
+        Assert.Throws<FormatException>(() => PairingPayload.Parse(new Newtonsoft.Json.Linq.JObject
+        { ["v"] = 1, ["host"] = host, ["port"] = 8443, ["ott"] = "s", ["cert_sha256"] = Sha }.ToString()));
+
+    [Theory]
+    [InlineData("pc.local")]
+    [InlineData("192.168.1.20")]
+    [InlineData("fe80::1")]
+    public void AcceptsHostnamesAndIpLiterals(string host) =>
+        Assert.Equal(host, PairingPayload.Parse(new Newtonsoft.Json.Linq.JObject
+        { ["v"] = 1, ["host"] = host, ["port"] = 8443, ["ott"] = "s", ["cert_sha256"] = Sha }.ToString()).Host);
+
     [Fact]
     public void PairedServerRoundTripsAndBracketsIpv6()
     {

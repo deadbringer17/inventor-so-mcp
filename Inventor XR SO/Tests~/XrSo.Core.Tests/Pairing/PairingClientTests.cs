@@ -54,4 +54,23 @@ public class PairingClientTests : IClassFixture<BackendFixture>
             _client.PairAsync(_f.Base.Host, _f.Base.Port, "not-the-code", ServerTrust.Pinned(_f.CertSha256), "Quest 3", CancellationToken.None));
         Assert.Equal("PAIRING_INVALID", ex.Code);
     }
+
+    [Fact]
+    public async Task AnUnpinnedTrustIsRefusedBeforeTheSecretIsSent()
+    {
+        int sent = 0;
+        var client = new PairingClient(trust => new CountingTransport(() => sent++));
+        var ex = await Assert.ThrowsAsync<PairingException>(() =>
+            client.PairAsync("pc", 8443, "secret", ServerTrust.FirstUse(), "Quest 3", CancellationToken.None));
+        Assert.Equal("PAIRING_NOT_PINNED", ex.Code);
+        Assert.Equal(0, sent);
+    }
+
+    private sealed class CountingTransport : IHttpTransport
+    {
+        private readonly Action _onSend;
+        public CountingTransport(Action onSend) { _onSend = onSend; }
+        public Task<TransportResponse> SendAsync(TransportRequest request, CancellationToken ct) { _onSend(); throw new InvalidOperationException(); }
+        public Task<int> StreamLinesAsync(TransportRequest request, Action<string> onLine, CancellationToken ct) => throw new NotSupportedException();
+    }
 }

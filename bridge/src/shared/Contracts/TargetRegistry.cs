@@ -36,7 +36,11 @@ public sealed class TargetRegistry
     private static bool IsProcessAlive(int pid)
     {
         if (pid <= 0) return false;
-        try { System.Diagnostics.Process.GetProcessById(pid); return true; }
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(pid);
+            return true;
+        }
         catch { return false; }
     }
 

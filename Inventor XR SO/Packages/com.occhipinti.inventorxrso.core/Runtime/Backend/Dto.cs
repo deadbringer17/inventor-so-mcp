@@ -187,12 +187,19 @@ namespace InventorXrSo.Core.Backend
         public string AssetUrl { get; private set; }
         public string VisualRevision { get; private set; }
 
-        public static DefinitionMesh FromJson(string definitionDocumentId, JObject json) => new DefinitionMesh
+        public static DefinitionMesh FromJson(string definitionDocumentId, JObject json)
         {
-            DefinitionDocumentId = definitionDocumentId,
-            AssetId = (string)json["asset"]?["asset_id"],
-            AssetUrl = (string)json["asset"]?["asset_url"],
-            VisualRevision = (string)json["visual_revision"],
-        };
+            var assetId = (string)json["asset"]?["asset_id"];
+            var assetUrl = (string)json["asset"]?["asset_url"];
+            if (string.IsNullOrEmpty(assetId) || string.IsNullOrEmpty(assetUrl))
+                throw new Mcp.McpException("ASSET_MISSING", "The PC returned no asset for " + definitionDocumentId + ".");
+            return new DefinitionMesh
+            {
+                DefinitionDocumentId = definitionDocumentId,
+                AssetId = assetId,
+                AssetUrl = assetUrl,
+                VisualRevision = (string)json["visual_revision"],
+            };
+        }
     }
 }

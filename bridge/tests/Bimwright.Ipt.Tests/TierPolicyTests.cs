@@ -5,6 +5,7 @@ using ModelContextProtocol.Server;
 
 namespace Bimwright.Ipt.Tests;
 
+[Collection("ProcessEnvironment")]
 public sealed class TierPolicyTests
 {
     private static readonly string[] PreviousProduction =
@@ -89,7 +90,16 @@ public sealed class TierPolicyTests
     [Fact]
     public void ExperimentalFlagLoadsFromCliAndEnvironment()
     {
-        Assert.True(InventorMcpConfig.Load(new[] { "--enable-experimental" }).EnableExperimental);
-        Assert.False(InventorMcpConfig.Load(System.Array.Empty<string>()).EnableExperimental);
+        const string Var = "INVENTOR_SO_EXPERIMENTAL";
+        var prior = System.Environment.GetEnvironmentVariable(Var);
+        try
+        {
+            System.Environment.SetEnvironmentVariable(Var, null);
+            Assert.True(InventorMcpConfig.Load(new[] { "--enable-experimental" }).EnableExperimental);
+            Assert.False(InventorMcpConfig.Load(System.Array.Empty<string>()).EnableExperimental);
+            System.Environment.SetEnvironmentVariable(Var, "1");
+            Assert.True(InventorMcpConfig.Load(System.Array.Empty<string>()).EnableExperimental);
+        }
+        finally { System.Environment.SetEnvironmentVariable(Var, prior); }
     }
 }

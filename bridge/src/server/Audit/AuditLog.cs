@@ -85,24 +85,44 @@ public sealed class AuditLog
     public static JObject Record(string tool, IDictionary<string, JsonElement>? arguments, string? resultText, string? exceptionCode,
         string client, string? sessionId, string? declaredClient, long durationMs)
     {
+        // The audit filter runs around a call that already happened: a malformed argument or result must
+        // never turn into an exception that discards the tool's real answer.
+        try { return RecordCore(tool, arguments, resultText, exceptionCode, client, sessionId, declaredClient, durationMs); }
+        catch (Exception ex)
+        {
+            return new JObject
+            {
+                ["session_id"] = sessionId, ["client"] = client, ["declared_client"] = declaredClient, ["tool"] = tool,
+                ["result"] = exceptionCode != null ? "error" : "ok", ["error_code"] = exceptionCode,
+                ["duration_ms"] = durationMs, ["audit_error"] = ex.GetType().Name,
+            };
+        }
+    }
+
+    private static string? Str(JToken? token) => token?.Type == JTokenType.String ? (string?)token : null;
+    private static bool? Flag(JToken? token) => token?.Type == JTokenType.Boolean ? (bool?)token : null;
+
+    private static JObject RecordCore(string tool, IDictionary<string, JsonElement>? arguments, string? resultText, string? exceptionCode,
+        string client, string? sessionId, string? declaredClient, long durationMs)
+    {
         var args = arguments == null ? new JObject() : JObject.Parse(System.Text.Json.JsonSerializer.Serialize(arguments));
         JObject? result = null;
         if (resultText != null) { try { result = JObject.Parse(resultText); } catch (Newtonsoft.Json.JsonException) { } }
-        string? errorCode = exceptionCode ?? (result?["ok"]?.Type == JTokenType.Boolean && !(bool)result["ok"]! ? (string?)result["error"]?["code"] : null);
+        string? errorCode = exceptionCode ?? (Flag(result?["ok"]) == false ? Str((result?["error"] as JObject)?["code"]) : null);
         string outcome = errorCode != null ? "error"
-            : (string?)result?["status"] ?? ((string?)result?["plan_id"] != null && tool == "inventor_plan_change" ? "planned" : "ok");
+            : Str(result?["status"]) ?? (Str(result?["plan_id"]) != null && tool == "inventor_plan_change" ? "planned" : "ok");
         return new JObject
         {
             ["session_id"] = sessionId,
             ["client"] = client,
             ["declared_client"] = declaredClient,
             ["tool"] = tool,
-            ["document_id"] = (string?)args["document_id"] ?? (string?)result?["document_id"],
-            ["revision_before"] = (string?)args["expected_revision"],
-            ["revision_after"] = (string?)result?["revision"],
-            ["preview"] = (bool?)args["preview"] ?? (tool is "inventor_plan_change" or "inventor_sample_parameter_motion" ? true : null),
+            ["document_id"] = Str(args["document_id"]) ?? Str(result?["document_id"]),
+            ["revision_before"] = Str(args["expected_revision"]),
+            ["revision_after"] = Str(result?["revision"]),
+            ["preview"] = Flag(args["preview"]) ?? (tool is "inventor_plan_change" or "inventor_sample_parameter_motion" ? true : null),
             ["validation"] = args["validate"]?.DeepClone() ?? result?["validated"]?.DeepClone(),
-            ["plan_id"] = (string?)args["plan_id"] ?? (string?)result?["plan_id"],
+            ["plan_id"] = Str(args["plan_id"]) ?? Str(result?["plan_id"]),
             ["result"] = outcome,
             ["error_code"] = errorCode,
             ["duration_ms"] = durationMs,

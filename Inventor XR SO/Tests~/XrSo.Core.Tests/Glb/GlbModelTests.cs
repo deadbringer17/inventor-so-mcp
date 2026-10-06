@@ -188,6 +188,91 @@ public class GlbModelTests
         Assert.Equal(9, normalised.Positions.Length);
     }
 
+    private static int AccessorOf(JObject json, string attribute) => (int)((JObject)FirstPrimitive(json)["attributes"])[attribute];
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(int.MaxValue)]
+    [InlineData(1000000000)]
+    public void RejectsNegativeOrHugeAccessorCount(int count)
+    {
+        var glb = WithMutatedJson(json => ((JObject)json["accessors"][AccessorOf(json, "POSITION")])["count"] = count);
+        Assert.Throws<FormatException>(() => GlbModel.Parse(glb));
+    }
+
+    [Fact]
+    public void RejectsNegativeByteOffset()
+    {
+        var glb = WithMutatedJson(json => ((JObject)json["accessors"][AccessorOf(json, "POSITION")])["byteOffset"] = -4);
+        Assert.Throws<FormatException>(() => GlbModel.Parse(glb));
+    }
+
+    [Fact]
+    public void RejectsAccessorWithoutBufferView()
+    {
+        var glb = WithMutatedJson(json => ((JObject)json["accessors"][AccessorOf(json, "POSITION")]).Remove("bufferView"));
+        Assert.Throws<FormatException>(() => GlbModel.Parse(glb));
+    }
+
+    [Fact]
+    public void RejectsAccessorPastItsBufferView()
+    {
+        var glb = WithMutatedJson(json =>
+        {
+            var accessor = (JObject)json["accessors"][AccessorOf(json, "POSITION")];
+            ((JObject)json["bufferViews"][(int)accessor["bufferView"]])["byteLength"] = 12;
+        });
+        Assert.Throws<FormatException>(() => GlbModel.Parse(glb));
+    }
+
+    [Fact]
+    public void RejectsChunkLengthsPastTheFile()
+    {
+        var jsonTooLong = BoltGlb();
+        BitConverter.GetBytes(uint.MaxValue).CopyTo(jsonTooLong, 12);
+        Assert.Throws<FormatException>(() => GlbModel.Parse(jsonTooLong));
+        var jsonNegative = BoltGlb();
+        BitConverter.GetBytes(0x80000000u).CopyTo(jsonNegative, 12);
+        Assert.Throws<FormatException>(() => GlbModel.Parse(jsonNegative));
+
+        var glb = BoltGlb();
+        int binStart = 20 + (int)BitConverter.ToUInt32(glb, 12);
+        BitConverter.GetBytes(uint.MaxValue).CopyTo(glb, binStart);
+        Assert.Throws<FormatException>(() => GlbModel.Parse(glb));
+    }
+
+    [Fact]
+    public void RejectsIndexCountThatIsNotWholeTriangles()
+    {
+        var glb = WithMutatedJson(json => ((JObject)json["accessors"][(int)FirstPrimitive(json)["indices"]])["count"] = 35);
+        Assert.Throws<FormatException>(() => GlbModel.Parse(glb));
+    }
+
+    [Fact]
+    public void RejectsIndicesBeyondTheVertexCount()
+    {
+        var glb = WithMutatedJson(json =>
+        {
+            ((JObject)json["accessors"][AccessorOf(json, "POSITION")])["count"] = 4;
+            ((JObject)json["accessors"][AccessorOf(json, "NORMAL")])["count"] = 4;
+        });
+        Assert.Throws<FormatException>(() => GlbModel.Parse(glb));
+    }
+
+    [Fact]
+    public void RejectsNormalsThatDoNotMatchPositions()
+    {
+        var glb = WithMutatedJson(json => ((JObject)json["accessors"][AccessorOf(json, "NORMAL")])["count"] = 10);
+        Assert.Throws<FormatException>(() => GlbModel.Parse(glb));
+    }
+
+    [Fact]
+    public void ReadsAPrimitiveWithoutIndicesAsSequential()
+    {
+        var primitive = Assert.Single(GlbModel.Parse(TriangleGlb(null, null)).Primitives);
+        Assert.Equal(new uint[] { 0, 1, 2 }, primitive.Indices);
+    }
+
     /// <summary>
     /// Golden GLB for the Unity EditMode tests (Unity cannot run GlbBuilder). Regenerate with
     /// XRSO_UPDATE_FIXTURES=1 when GlbBuilder changes on purpose.

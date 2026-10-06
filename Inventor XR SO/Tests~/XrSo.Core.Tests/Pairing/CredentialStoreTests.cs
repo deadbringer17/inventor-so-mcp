@@ -50,6 +50,38 @@ public class CredentialStoreTests : IDisposable
         Assert.False(File.Exists(FilePath));
     }
 
+    private sealed class Throwing : IProtector
+    {
+        private readonly Exception _ex;
+        public Throwing(Exception ex) { _ex = ex; }
+        public string Protect(string plain) => plain;
+        public string Unprotect(string text) => throw _ex;
+    }
+
+    [Fact]
+    public void ATransientErrorKeepsTheStoredPairing()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(FilePath, "{}");
+        foreach (Exception ex in new Exception[] { new IOException("busy"), new UnauthorizedAccessException("locked") })
+        {
+            Assert.Null(new FileCredentialStore(FilePath, new Throwing(ex)).Load());
+            Assert.True(File.Exists(FilePath));
+        }
+    }
+
+    [Fact]
+    public void CorruptDataIsForgotten()
+    {
+        foreach (Exception ex in new Exception[] { new FormatException("bad"), new System.Security.Cryptography.CryptographicException("bad key"), new Newtonsoft.Json.JsonReaderException("bad") })
+        {
+            Directory.CreateDirectory(_dir);
+            File.WriteAllText(FilePath, "{}");
+            Assert.Null(new FileCredentialStore(FilePath, new Throwing(ex)).Load());
+            Assert.False(File.Exists(FilePath));
+        }
+    }
+
     [Fact]
     public void ClearRemovesThePairing()
     {

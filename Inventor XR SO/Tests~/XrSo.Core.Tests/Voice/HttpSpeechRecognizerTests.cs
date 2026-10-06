@@ -221,6 +221,23 @@ public sealed class HttpSpeechRecognizerTests : IAsyncLifetime
         Assert.True(ex.Code == "NETWORK" || ex.Code == "TIMEOUT");
     }
 
+    private sealed class ThrowingTransport : IHttpTransport
+    {
+        private readonly Exception _ex;
+        public ThrowingTransport(Exception ex) { _ex = ex; }
+        public Task<TransportResponse> SendAsync(TransportRequest request, CancellationToken ct) => Task.FromException<TransportResponse>(_ex);
+        public Task<int> StreamLinesAsync(TransportRequest request, Action<string> onLine, CancellationToken ct) => throw new NotSupportedException();
+    }
+
+    [Fact]
+    public async Task A_transport_timeout_is_a_timeout_not_a_network_error()
+    {
+        var ex = await Fail(Recognizer(new ThrowingTransport(new TransportTimeoutException("slow"))).RecognizeAsync(Audio(), CancellationToken.None));
+        Assert.Equal("TIMEOUT", ex.Code);
+        ex = await Fail(Recognizer(new ThrowingTransport(new TransportException("down"))).RecognizeAsync(Audio(), CancellationToken.None));
+        Assert.Equal("NETWORK", ex.Code);
+    }
+
     // ---- end to end: microfono simulato -> controller -> HTTP -> router ----
 
     private sealed class Availability : ICommandAvailability

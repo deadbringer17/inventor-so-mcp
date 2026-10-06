@@ -54,7 +54,15 @@ namespace InventorXrSo.Core.Mcp
             catch (TransportTimeoutException ex) { throw new McpException("TIMEOUT", name + " did not answer in time: " + ex.Message); }
             // A transport that enforces the timeout by cancelling its own request (not the caller's) reports it as a cancellation.
             catch (OperationCanceledException ex) when (!ct.IsCancellationRequested) { throw new McpException("TIMEOUT", name + " did not answer in time: " + ex.Message); }
-            var text = (string)result["content"]?[0]?["text"];
+            string text = null;
+            if (result["content"] is JArray content)
+            {
+                foreach (var item in content)
+                    if (item is JObject o && (string)o["type"] == "text" && o["text"] != null) { text = (string)o["text"]; break; }
+                if (text == null)
+                    foreach (var item in content)
+                        if (item is JObject o && o["text"] != null) { text = (string)o["text"]; break; }
+            }
             bool isError = (bool?)result["isError"] ?? false;
             if (text == null) throw new McpToolException(name, "TOOL_NO_CONTENT", name + " returned no text content.", null);
             JObject payload;
@@ -115,6 +123,13 @@ namespace InventorXrSo.Core.Mcp
                 throw new McpException("HTTP_" + status, body == null || body.Length <= 200 ? body : body.Substring(0, 200));
         }
 
+        private static bool IdMatches(JToken token, int id)
+        {
+            if (!(token is JValue value) || value.Value == null) return false;
+            if (value.Type == JTokenType.Integer) return Convert.ToInt64(value.Value) == id;
+            return value.Type == JTokenType.String && (string)value.Value == id.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
         internal static JObject ReadReply(TransportResponse response, int id)
         {
             var type = response.Header("Content-Type") ?? "";
@@ -122,8 +137,11 @@ namespace InventorXrSo.Core.Mcp
             {
                 foreach (var data in SseParser.DataPayloads(response.Text))
                 {
-                    var message = JObject.Parse(data);
-                    if ((int?)message["id"] == id) return message;
+                    JObject message;
+                    try { message = JToken.Parse(data) as JObject; }
+                    catch (JsonReaderException) { continue; }
+                    if (message == null || message["method"] != null || (message["result"] == null && message["error"] == null)) continue;
+                    if (IdMatches(message["id"], id)) return message;
                 }
                 throw new McpException("RPC_NO_REPLY", "The server closed the stream without answering request " + id + ".");
             }

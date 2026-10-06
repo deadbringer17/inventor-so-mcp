@@ -150,7 +150,7 @@ public static class MeshPayload
                 Color = NormalizeColor(f["color"]?.Type == JTokenType.String ? (string?)f["color"] : null),
             };
             if (range.FirstIndex < 0 || range.IndexCount < 0 || range.IndexCount % 3 != 0 ||
-                range.FirstIndex + range.IndexCount > body.Indices.Length)
+                (long)range.FirstIndex + range.IndexCount > body.Indices.Length)
                 throw new FormatException("Face range " + range.Ordinal + " is outside the index array.");
             body.Faces.Add(range);
         }

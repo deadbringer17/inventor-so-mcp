@@ -29,6 +29,8 @@ public sealed class InventorMcpConfig
     /// <summary>Single token from INVENTOR_SO_HTTP_TOKEN (client name "default").</summary>
     public string? HttpToken { get; set; }
     public bool HttpAllowInsecureLan { get; set; }
+    /// <summary>Explicit opt-in to run --full-access or --enable-send-code on a non-loopback HTTP binding.</summary>
+    public bool HttpAllowDangerous { get; set; }
     public List<string> HttpAllowedOrigins { get; set; } = new();
     public int HttpRateLimitPerMinute { get; set; } = 240;
     /// <summary>Public base URL used to build asset_url (e.g. https://pc.lan:8787). Null in stdio mode.</summary>
@@ -66,7 +68,8 @@ public sealed class InventorMcpConfig
     // --- Release packages ---
     public string ReleaseDirectory { get; set; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InventorSO", "releases");
-    public int TimeoutMs { get; set; } = 30000;
+    public const int DefaultTimeoutMs = 30000;
+    public int TimeoutMs { get; set; } = DefaultTimeoutMs;
     public int MaxResponseBytes { get; set; } = 5_000_000;
     public string? TargetId { get; set; }
     public List<string> Toolsets { get; set; } = new();
@@ -82,6 +85,12 @@ public sealed class InventorMcpConfig
         ApplyJson(config, args);   // lowest precedence
         ApplyEnv(config);          // middle
         ApplyCli(config, args);    // highest
+        if (config.TimeoutMs <= 0)
+        {
+            // A zero or negative deadline would fail every call instantly; fall back to the default and say so.
+            Console.Error.WriteLine($"inventor-so-mcp: timeout {config.TimeoutMs} ms is not positive; using {DefaultTimeoutMs} ms.");
+            config.TimeoutMs = DefaultTimeoutMs;
+        }
         return config;
     }
 
@@ -105,6 +114,7 @@ public sealed class InventorMcpConfig
         if (o["httpCertificatePath"] is { } cp) c.HttpCertificatePath = cp.Value<string>();
         if (o["httpTokenFile"] is { } tf) c.HttpTokenFile = tf.Value<string>();
         if (o["httpAllowInsecureLan"] is { } il) c.HttpAllowInsecureLan = il.Value<bool>();
+        if (o["httpAllowDangerous"] is { } dangerousJson) c.HttpAllowDangerous = dangerousJson.Value<bool>();
         if (o["httpAllowedOrigins"] is JArray origins) c.HttpAllowedOrigins = origins.Select(x => x.Value<string>()!).ToList();
         if (o["httpRateLimitPerMinute"] is { } rl) c.HttpRateLimitPerMinute = rl.Value<int>();
         if (o["voiceCommand"] is { } vc) c.VoiceCommand = vc.Value<string>();
@@ -146,6 +156,7 @@ public sealed class InventorMcpConfig
         var origins = Environment.GetEnvironmentVariable("INVENTOR_SO_HTTP_ORIGINS");
         if (!string.IsNullOrWhiteSpace(origins)) c.HttpAllowedOrigins = SplitCsv(origins);
         if (Bool("INVENTOR_SO_HTTP_ALLOW_INSECURE_LAN") is { } lan) c.HttpAllowInsecureLan = lan;
+        if (Bool("INVENTOR_SO_HTTP_ALLOW_DANGEROUS") is { } dangerous) c.HttpAllowDangerous = dangerous;
         if (Bool("INVENTOR_SO_HTTP_SELF_SIGNED") is { } selfSigned) c.HttpSelfSignedCertificate = selfSigned;
         if (Int("INVENTOR_SO_HTTP_RATE_LIMIT") is { } rate) c.HttpRateLimitPerMinute = rate;
         var voiceCommand = Environment.GetEnvironmentVariable("INVENTOR_SO_VOICE_COMMAND");
@@ -180,6 +191,7 @@ public sealed class InventorMcpConfig
                 case "--pair-control":         c.PairControl = true; break;
                 case "--http-token-file":      c.HttpTokenFile = Next(args, ref i); break;
                 case "--http-allow-insecure-lan": c.HttpAllowInsecureLan = true; break;
+                case "--http-allow-dangerous": c.HttpAllowDangerous = true; break;
                 case "--http-origins":         c.HttpAllowedOrigins = SplitCsv(Next(args, ref i)); break;
                 case "--http-rate-limit":      if (int.TryParse(Next(args, ref i), out var r)) c.HttpRateLimitPerMinute = r; break;
                 case "--voice-command":        c.VoiceCommand = Next(args, ref i); break;

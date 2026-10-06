@@ -104,8 +104,10 @@ public sealed class ExternalProcessSpeechEngine : ISpeechEngine
         try
         {
             await process.WaitForExitAsync(linked.Token);
-            var text = await stdout;
-            await stderr;
+            // A grandchild that inherited the pipes keeps them open after the command exited: bound the
+            // drain by the same deadline, so it cannot hold the busy gate forever.
+            var text = await stdout.WaitAsync(linked.Token);
+            await stderr.WaitAsync(linked.Token);
             if (process.ExitCode != 0)
                 throw new SpeechEngineException(process.ExitCode == 3 ? SpeechEngineException.Unavailable : SpeechEngineException.Failed,
                     "The voice command failed (exit code " + process.ExitCode + ").");

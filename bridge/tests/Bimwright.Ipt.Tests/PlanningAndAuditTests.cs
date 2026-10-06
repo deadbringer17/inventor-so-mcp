@@ -173,6 +173,17 @@ public sealed class AuditLogTests : System.IDisposable
     }
 
     [Fact]
+    public void MalformedArgumentTypesNeverThrow()
+    {
+        var record = AuditLog.Record("inventor_atomic_batch", Args("{\"document_id\":{\"x\":1},\"preview\":\"yes\",\"expected_revision\":5}"),
+            "{\"ok\":false,\"error\":\"plain string\",\"revision\":{\"a\":1}}", null, "stdio", null, null, 4);
+        Assert.Equal("inventor_atomic_batch", (string?)record["tool"]);
+        Assert.Null((string?)record["document_id"]);
+        Assert.Null((bool?)record["preview"]);
+        Assert.Contains("document_id", record["argument_names"]!.Select(t => (string)t!));
+    }
+
+    [Fact]
     public void ErrorsAreRecordedWithTheirCode()
     {
         var record = AuditLog.Record("inventor_commit_plan", Args("{\"plan_id\":\"plan_x\"}"),

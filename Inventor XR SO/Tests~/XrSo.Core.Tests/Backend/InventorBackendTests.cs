@@ -1,3 +1,5 @@
+using InventorXrSo.Core.Mcp;
+using Newtonsoft.Json.Linq;
 using Bimwright.Ipt.Tests;
 using InventorXrSo.Core.Backend;
 using InventorXrSo.Core.Glb;
@@ -53,6 +55,37 @@ public class InventorBackendTests : IClassFixture<BackendFixture>
         var second = await backend.GetAssetAsync(mesh, CancellationToken.None);
         Assert.Equal(first, second);
         Assert.Equal(1, cache.Puts);
+    }
+
+    [Fact]
+    public void ADefinitionMeshWithoutAnAssetIsRefused()
+    {
+        foreach (var json in new[] { new JObject(), new JObject { ["asset"] = new JObject { ["asset_id"] = "a_" + new string('0', 64) } }, new JObject { ["asset"] = new JObject { ["asset_url"] = "/assets/x" } } })
+            Assert.Equal("ASSET_MISSING", Assert.Throws<McpException>(() => DefinitionMesh.FromJson("d", json)).Code);
+    }
+
+    [Theory]
+    [InlineData("not-an-id", "/assets/not-an-id")]
+    [InlineData("a_0000000000000000000000000000000000000000000000000000000000000000", "http://evil.example/assets/x")]
+    [InlineData("a_0000000000000000000000000000000000000000000000000000000000000000", "//evil.example/assets/x")]
+    public async Task AnInvalidAssetIdOrForeignUrlIsRefusedBeforeAnyRequest(string id, string url)
+    {
+        var backend = await Connected(new CountingCache());
+        var mesh = DefinitionMesh.FromJson("d", new JObject { ["asset"] = new JObject { ["asset_id"] = id, ["asset_url"] = url } });
+        var ex = await Assert.ThrowsAsync<McpException>(() => backend.GetAssetAsync(mesh, CancellationToken.None));
+        Assert.Equal("ASSET_MISSING", ex.Code);
+    }
+
+    [Fact]
+    public async Task APublicUrlOnAnotherHostIsFetchedFromThePairedHost()
+    {
+        var backend = await Connected(new CountingCache());
+        var mesh = await backend.GetDefinitionMeshAsync(FakeAddIn.PlateId, CancellationToken.None);
+        var path = mesh.AssetUrl.StartsWith("https://") ? new Uri(mesh.AssetUrl).AbsolutePath : "/" + mesh.AssetUrl.TrimStart('/');
+        var foreign = DefinitionMesh.FromJson("d", new JObject { ["asset"] = new JObject { ["asset_id"] = mesh.AssetId, ["asset_url"] = "https://evil.example:9999" + path } });
+        var expected = await backend.GetAssetAsync(mesh, CancellationToken.None);
+        var cold = await Connected(new CountingCache());   // empty cache: the foreign URL is really fetched
+        Assert.Equal(expected, await cold.GetAssetAsync(foreign, CancellationToken.None));
     }
 
     private sealed class CountingCache : IAssetCache

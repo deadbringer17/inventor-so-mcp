@@ -32,6 +32,8 @@ namespace InventorXrSo.Core.Pairing
 
         public async Task<PairedServer> PairAsync(string host, int port, string secret, ServerTrust trust, string deviceName, CancellationToken ct)
         {
+            if (trust == null || trust.PinnedSha256 == null)
+                throw new PairingException("PAIRING_NOT_PINNED", "Pairing needs a pinned certificate fingerprint.");
             var body = new JObject { ["secret"] = secret, ["device_name"] = deviceName }.ToString(Formatting.None);
             var response = await _transportFactory(trust).SendAsync(
                 TransportRequest.Json("POST", PairedServer.MakeBaseUrl(host, port) + "/pair", body), ct);
@@ -45,7 +47,7 @@ namespace InventorXrSo.Core.Pairing
             var token = (string)json?["token"];
             if (string.IsNullOrEmpty(client) || string.IsNullOrEmpty(token))
                 throw new PairingException("PAIRING_FAILED", "The PC answered without a token.");
-            return new PairedServer(host, port, trust.LastPresentedSha256, client, token);
+            return new PairedServer(host, port, trust.PinnedSha256, client, token);
         }
     }
 }

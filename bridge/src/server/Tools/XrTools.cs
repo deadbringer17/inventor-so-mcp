@@ -195,6 +195,7 @@ public sealed class XrTools
         try
         {
             if (max_nodes < 1 || max_nodes > 50_000) return Error(InventorErrorCodes.INVALID_ARGUMENT, "max_nodes must be between 1 and 50000.");
+            if (!(tolerance_mm >= 0.01 && tolerance_mm <= 5)) return Error(InventorErrorCodes.INVALID_ARGUMENT, "tolerance_mm must be between 0.01 and 5.");
             var scene = (JObject)await _client.SendAsync("get_scene_graph", new JObject { ["document_id"] = document_id, ["max_nodes"] = max_nodes }, ct);
             var definitions = SceneComposer.Annotate(scene);
             if (include_meshes)

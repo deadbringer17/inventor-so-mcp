@@ -118,6 +118,19 @@ public sealed class PairingControlTests : IDisposable
     }
 
     [Fact]
+    public async Task AHandlerThatThrowsAnswersInternalAndTheLoopKeepsServing()
+    {
+        var name = "InventorSO.Test." + Guid.NewGuid().ToString("N");
+        await using var server = new ControlPipeServer(name, request =>
+            request.Operation == "boom" ? throw new InvalidOperationException("handler bug") : _controller.Handle(request));
+        var failed = await ControlWire.CallAsync(name, new ControlRequest(Operation: "boom"), CancellationToken.None);
+        Assert.False(failed.Ok);
+        Assert.Equal("INTERNAL", failed.ErrorCode);
+        Assert.DoesNotContain("handler bug", failed.Message);
+        Assert.True((await ControlWire.CallAsync(name, new ControlRequest(), CancellationToken.None)).Ok);
+    }
+
+    [Fact]
     public async Task OversizedFrameIsDiscardedAndNextClientStillWorks()
     {
         var name = "InventorSO.Test." + Guid.NewGuid().ToString("N");

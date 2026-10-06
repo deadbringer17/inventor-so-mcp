@@ -71,12 +71,14 @@ public sealed class TcpTransportServer : ITransportServer
 
     private void ListenLoop()
     {
+        var backoff = new ListenBackoff();
         while (_running)
         {
             TcpClient? client = null;
             try
             {
                 client = _listener!.AcceptTcpClient();
+                backoff.Reset();
                 HandleClient(client);
             }
             catch (SocketException) when (!_running)
@@ -85,7 +87,8 @@ public sealed class TcpTransportServer : ITransportServer
             }
             catch
             {
-                // accept error; keep listening
+                // accept error; keep listening, but not in a tight loop
+                backoff.Wait(() => _running);
             }
             finally
             {
@@ -134,7 +137,11 @@ public sealed class TcpTransportServer : ITransportServer
 
                 JObject request;
                 try { request = JObject.Parse(line); }
-                catch { continue; }
+                catch
+                {
+                    if (!TryWrite(writer, ErrorJson(Guid.Empty, InventorErrorCodes.INVALID_ARGUMENT, "malformed request"))) break;
+                    continue;
+                }
 
                 var id = ParseId(request);
                 var token = request.Value<string>("auth_token");

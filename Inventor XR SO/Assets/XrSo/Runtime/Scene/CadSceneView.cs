@@ -14,21 +14,28 @@ namespace InventorXrSo.Unity.Scene
         [SerializeField] private Material bodyMaterial;
         private readonly Dictionary<string, Mesh[]> _meshesByAsset = new Dictionary<string, Mesh[]>();
         private readonly List<CadInstance> _instances = new List<CadInstance>();
+        private readonly Dictionary<string, CadInstance> _byOccurrence = new Dictionary<string, CadInstance>();
+        private CadInstance _withoutOccurrence;   // a part document's root has no occurrence id; Find(null) keeps resolving it
 
         public Material BodyMaterial { get => bodyMaterial; set => bodyMaterial = value; }
         public IReadOnlyList<CadInstance> Instances => _instances;
         public event Action Rebuilt;
+        /// <summary>A released instance was detached from this root and is about to be destroyed (destruction is deferred in play mode).</summary>
+        public event Action<GameObject> InstanceDetached;
         public SectionPlane Section { get; set; }
         public string DocumentId { get; private set; }
 
-        public CadInstance Find(string occurrenceId) => _instances.FirstOrDefault(i => i.OccurrenceId == occurrenceId);
+        public CadInstance Find(string occurrenceId) =>
+            occurrenceId == null ? _withoutOccurrence : _byOccurrence.TryGetValue(occurrenceId, out var instance) ? instance : null;
 
         public void Show(LoadedScene scene)
         {
             DocumentId = scene?.Graph.DocumentId;
             foreach (var instance in _instances)
-                if (instance != null) { instance.gameObject.SetActive(false); Release(instance.gameObject); }
+                if (instance != null) { instance.gameObject.SetActive(false); ReleaseInstance(instance.gameObject); }
             _instances.Clear();
+            _byOccurrence.Clear();
+            _withoutOccurrence = null;
             var used = new HashSet<string>();
             if (scene != null)
             {
@@ -43,7 +50,10 @@ namespace InventorXrSo.Unity.Scene
                         meshes = model.Primitives.Select(MeshFactory.Build).ToArray();
                         _meshesByAsset[assetId] = meshes;
                     }
-                    _instances.Add(CreateInstance(placed.Node.Name ?? definition, placed.Node.OccurrenceId, definition, placed.MatrixGltf, model, meshes));
+                    var created = CreateInstance(placed.Node.Name ?? definition, placed.Node.OccurrenceId, definition, placed.MatrixGltf, model, meshes);
+                    _instances.Add(created);
+                    if (created.OccurrenceId == null) { if (_withoutOccurrence == null) _withoutOccurrence = created; }
+                    else _byOccurrence.TryAdd(created.OccurrenceId, created);
                 }
             }
             foreach (var stale in _meshesByAsset.Keys.Where(k => !used.Contains(k)).ToList())
@@ -85,6 +95,17 @@ namespace InventorXrSo.Unity.Scene
             foreach (var meshes in _meshesByAsset.Values)
                 foreach (var mesh in meshes) Release(mesh);
             _meshesByAsset.Clear();
+        }
+
+        /// <summary>
+        /// Destroy is deferred to the end of the frame in play mode: detach first, so the old instances are no longer children of the
+        /// root (<see cref="ScenePlacement.LocalBounds"/> walks the children including inactive ones) when the new scene is placed.
+        /// </summary>
+        private void ReleaseInstance(GameObject instance)
+        {
+            instance.transform.SetParent(null, false);
+            InstanceDetached?.Invoke(instance);
+            Release(instance);
         }
 
         private static void Release(Object target)

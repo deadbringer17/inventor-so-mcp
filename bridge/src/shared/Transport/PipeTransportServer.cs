@@ -72,6 +72,7 @@ public sealed class PipeTransportServer : ITransportServer
 
     private void ListenLoop()
     {
+        var backoff = new ListenBackoff();
         while (_running)
         {
             NamedPipeServerStream? pipe = null;
@@ -87,6 +88,7 @@ public sealed class PipeTransportServer : ITransportServer
                 pipe.WaitForConnection();
                 if (!_running) break;
 
+                backoff.Reset();
                 HandleClient(pipe);
             }
             catch (IOException) when (!_running)
@@ -95,7 +97,8 @@ public sealed class PipeTransportServer : ITransportServer
             }
             catch
             {
-                // listen error; keep listening
+                // listen error; keep listening, but not in a tight loop
+                backoff.Wait(() => _running);
             }
             finally
             {
@@ -143,7 +146,11 @@ public sealed class PipeTransportServer : ITransportServer
 
                 JObject request;
                 try { request = JObject.Parse(line); }
-                catch { continue; }
+                catch
+                {
+                    if (!TryWrite(writer, ErrorJson(Guid.Empty, InventorErrorCodes.INVALID_ARGUMENT, "malformed request"))) break;
+                    continue;
+                }
 
                 var id = ParseId(request);
                 var token = request.Value<string>("auth_token");

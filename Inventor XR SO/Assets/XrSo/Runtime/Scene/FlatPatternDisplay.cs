@@ -284,8 +284,8 @@ namespace InventorXrSo.Unity.Scene
             if (_view == null) return;
             foreach (var body in _view.GetComponentsInChildren<CadBody>(true))
             {
-                var renderer = body.GetComponent<MeshRenderer>();
-                if (renderer != null) renderer.enabled = !hidden;
+                body.FoldedHidden = hidden;   // a body hidden or faded by visibility/isolation stays so when the pattern goes
+                body.RefreshRenderer();
             }
         }
 

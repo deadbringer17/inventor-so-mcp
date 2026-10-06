@@ -61,6 +61,7 @@ namespace InventorXrSo.Core.Voice
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                 { throw new VoiceRecognitionException("TIMEOUT", Describe("TIMEOUT")); }
                 catch (CertificateRejectedException) { throw new VoiceRecognitionException("CERTIFICATE_CHANGED", Describe("CERTIFICATE_CHANGED")); }
+                catch (TransportTimeoutException) { throw new VoiceRecognitionException("TIMEOUT", Describe("TIMEOUT")); }
                 catch (TransportException) { throw new VoiceRecognitionException("NETWORK", Describe("NETWORK")); }
                 finally { Array.Clear(body, 0, body.Length); }
             }

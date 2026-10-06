@@ -73,36 +73,34 @@ public sealed class TargetDescriptorWriter : IDisposable
         }
     }
 
-    private void Heartbeat()
-    {
-        lock (_gate)
-        {
-            if (_disposed) return;
-            _descriptor.LastHeartbeatUtc = DateTimeOffset.UtcNow;
-        }
-        WriteOnce();
-    }
+    private void Heartbeat() => WriteOnce();
 
-    /// <summary>Re-stamps <c>last_heartbeat_utc</c> and serializes the descriptor to disk.</summary>
+    /// <summary>
+    /// Re-stamps <c>last_heartbeat_utc</c> and writes the descriptor atomically (temp file in the same
+    /// directory, then replace). The disposed check and the write share one lock, so a heartbeat that
+    /// races <see cref="Dispose"/> cannot recreate the file after it was deleted.
+    /// </summary>
     public void WriteOnce()
     {
-        string path;
-        string json;
         lock (_gate)
         {
             if (_disposed) return;
             _descriptor.LastHeartbeatUtc = DateTimeOffset.UtcNow;
-            path = Path_;
-            json = JsonConvert.SerializeObject(_descriptor, Formatting.Indented);
-        }
-        try
-        {
-            Directory.CreateDirectory(_dir);
-            File.WriteAllText(path, json);
-        }
-        catch
-        {
-            // best effort — the server treats a missing/stale descriptor as "no target".
+            var path = Path_;
+            var json = JsonConvert.SerializeObject(_descriptor, Formatting.Indented);
+            var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                Directory.CreateDirectory(_dir);
+                File.WriteAllText(temp, json);
+                if (File.Exists(path)) File.Replace(temp, path, null);
+                else File.Move(temp, path);
+            }
+            catch
+            {
+                // best effort — the server treats a missing/stale descriptor as "no target".
+                try { if (File.Exists(temp)) File.Delete(temp); } catch { }
+            }
         }
     }
 
@@ -127,9 +125,9 @@ public sealed class TargetDescriptorWriter : IDisposable
         {
             if (_disposed) return;
             _disposed = true;
+            try { _heartbeat?.Dispose(); } catch { }
+            _heartbeat = null;
+            Delete(_dir, _descriptor.InventorYear, _descriptor.ProcessId);
         }
-        try { _heartbeat?.Dispose(); } catch { }
-        _heartbeat = null;
-        Delete(_dir, _descriptor.InventorYear, _descriptor.ProcessId);
     }
 }

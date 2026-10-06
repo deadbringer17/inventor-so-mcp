@@ -13,7 +13,7 @@ public sealed class AssetRecord
 {
     public string Id { get; init; } = "";
     public string Sha256 { get; init; } = "";
-    public string MimeType { get; init; } = "";
+    public string MimeType { get; set; } = "";
     public long Size { get; init; }
     public DateTimeOffset CreatedUtc { get; init; }
     public DateTimeOffset ExpiresUtc { get; set; }
@@ -134,8 +134,11 @@ public sealed class AssetStore
         lock (_gate)
         {
             Sweep(now);
-            if (_records.TryGetValue(id, out var existing) && existing.MimeType == mimeType)
+            if (_records.TryGetValue(id, out var existing))
             {
+                // Same bytes: the file is already on disk and already counted, so nothing is rewritten and
+                // the size is not counted twice; a different MIME type just relabels the record (owners merge).
+                existing.MimeType = mimeType;
                 existing.Owners.Add(owner);
                 existing.ExpiresUtc = now + _ttl;
                 existing.LastAccessUtc = now;
@@ -160,13 +163,16 @@ public sealed class AssetStore
     }
 
     /// <summary>Metadata only, subject to the same ownership and expiry rules as the bytes.</summary>
-    public AssetRecord? Describe(string? id, string requester)
+    public AssetRecord? Describe(string? id, string requester, bool renew = false)
     {
         if (!IsValidId(id)) return null;
         lock (_gate)
         {
-            Sweep(_clock());
-            return _records.TryGetValue(id!, out var record) && record.Owners.Contains(requester) ? record : null;
+            var now = _clock();
+            Sweep(now);
+            if (!_records.TryGetValue(id!, out var record) || !record.Owners.Contains(requester)) return null;
+            if (renew) { record.LastAccessUtc = now; record.ExpiresUtc = now + _ttl; }
+            return record;
         }
     }
 
@@ -176,25 +182,39 @@ public sealed class AssetStore
         record = null;
         bytes = null;
         if (!IsValidId(id)) return false;
+        AssetRecord found;
+        string path;
         lock (_gate)
         {
+            Sweep(_clock());
+            if (!_records.TryGetValue(id!, out var candidate) || !candidate.Owners.Contains(requester)) return false;
+            found = candidate;
+            path = PathOf(id!);
+        }
+        // Up to 64 MB of I/O and hashing happen outside the global lock; a concurrent eviction simply
+        // makes the read fail, which reads as "not found".
+        byte[] data;
+        try { data = File.ReadAllBytes(path); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            lock (_gate) RemoveIfCurrent(found);
+            return false;
+        }
+        if (Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant() != found.Sha256)
+        {
+            lock (_gate) RemoveIfCurrent(found);
+            return false;
+        }
+        lock (_gate)
+        {
+            if (!_records.TryGetValue(id!, out var current) || !ReferenceEquals(current, found)) return false;   // evicted meanwhile
             var now = _clock();
-            Sweep(now);
-            if (!_records.TryGetValue(id!, out var found) || !found.Owners.Contains(requester)) return false;
-            byte[] data;
-            try { data = File.ReadAllBytes(PathOf(id!)); }
-            catch (IOException) { Remove(id!); return false; }
-            if (Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant() != found.Sha256)
-            {
-                Remove(id!);
-                return false;
-            }
             found.LastAccessUtc = now;
             found.ExpiresUtc = now + _ttl;
-            record = found;
-            bytes = data;
-            return true;
         }
+        record = found;
+        bytes = data;
+        return true;
     }
 
     public IReadOnlyList<AssetRecord> List(string requester)
@@ -223,6 +243,11 @@ public sealed class AssetStore
             if (_stored + incoming <= _totalBytes) break;
             Remove(victim);
         }
+    }
+
+    private void RemoveIfCurrent(AssetRecord record)
+    {
+        if (_records.TryGetValue(record.Id, out var current) && ReferenceEquals(current, record)) Remove(record.Id);
     }
 
     private void Remove(string id)

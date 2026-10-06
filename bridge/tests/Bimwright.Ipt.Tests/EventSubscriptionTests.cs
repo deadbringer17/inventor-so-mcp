@@ -19,7 +19,8 @@ public class EventSubscriptionTests
     private sealed class RequestServer : McpServer
     {
         private readonly string? _session;
-        public RequestServer(string? session) => _session = session;
+        private readonly Func<Task>? _onSend;
+        public RequestServer(string? session, Func<Task>? onSend = null) { _session = session; _onSend = onSend; }
         public override string? SessionId => _session;
         public override ClientCapabilities? ClientCapabilities => null;
         public override Implementation? ClientInfo => null;
@@ -29,7 +30,7 @@ public class EventSubscriptionTests
         public override string? NegotiatedProtocolVersion => null;
         public override Task RunAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public override Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public override Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public override Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default) => _onSend?.Invoke() ?? Task.CompletedTask;
         public override IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler) => throw new NotSupportedException();
         public override ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
@@ -56,5 +57,26 @@ public class EventSubscriptionTests
         service.Subscribe(new RequestServer("b"), "inventor://events");
         service.Unsubscribe(new RequestServer("a"), "inventor://events");
         Assert.Equal(1, service.SubscriberCount);
+    }
+
+    [Fact]
+    public async Task A_cancelled_send_to_one_session_does_not_stop_the_others_and_drops_the_dead_session()
+    {
+        var dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ipt-events-" + Guid.NewGuid().ToString("N"));
+        await using var addIn = new FakeAddIn(dir);
+        try
+        {
+            var service = new EventSubscriptionService(new PluginClient(new InventorMcpConfig { DescriptorDirectory = dir, TimeoutMs = 5000 }));
+            int delivered = 0;
+            service.Subscribe(new RequestServer("dead", () => throw new OperationCanceledException()), "inventor://events");
+            service.Subscribe(new RequestServer("alive", () => { delivered++; return Task.CompletedTask; }), "inventor://events");
+            addIn.RaiseDocumentChanged(geometry: false);
+
+            await service.PollOnce(CancellationToken.None);
+
+            Assert.Equal(1, delivered);
+            Assert.Equal(1, service.SubscriberCount);
+        }
+        finally { try { System.IO.Directory.Delete(dir, true); } catch { } }
     }
 }

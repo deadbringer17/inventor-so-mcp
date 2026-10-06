@@ -44,6 +44,7 @@ namespace InventorXrSo.Core.Backend
 
         private async Task<byte[]> DownloadAssetAsync(DefinitionMesh mesh, IAssetCache cache, CancellationToken ct)
         {
+            if (!AssetIds.IsValid(mesh.AssetId)) throw new McpException("ASSET_MISSING", "Asset id " + mesh.AssetId + " is not valid.");
             if (cache.TryGet(mesh.AssetId, out var cached)) return cached;
             var request = new TransportRequest("GET", Resolve(mesh.AssetUrl)) { Timeout = TimeSpan.FromMinutes(2) };
             request.Headers["Authorization"] = "Bearer " + _server.Token;
@@ -74,7 +75,17 @@ namespace InventorXrSo.Core.Backend
         }
 
         /// <summary>asset_url is relative ("/assets/…") unless the host has a public URL.</summary>
-        private string Resolve(string assetUrl) =>
-            assetUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ? assetUrl : _server.BaseUrl + "/" + assetUrl.TrimStart('/');
+        private string Resolve(string assetUrl)
+        {
+            if (assetUrl.StartsWith("//", StringComparison.Ordinal) || assetUrl.IndexOf("://", StringComparison.Ordinal) >= 0)
+            {
+                // The bearer token goes only to the paired host: a public URL naming another host (pc.lan while
+                // paired by IP) is fetched by its path from the paired base URL instead.
+                if (!Uri.TryCreate(assetUrl, UriKind.Absolute, out var absolute) || absolute.Scheme != Uri.UriSchemeHttps)
+                    throw new McpException("ASSET_MISSING", "Asset URL " + assetUrl + " is not an https URL.");
+                return _server.BaseUrl.TrimEnd('/') + absolute.AbsolutePath;
+            }
+            return _server.BaseUrl + "/" + assetUrl.TrimStart('/');
+        }
     }
 }

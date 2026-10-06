@@ -58,8 +58,9 @@ namespace InventorXrSo.Core.Glb
             if (glb == null || glb.Length < 20 || U32(glb, 0) != Magic) throw new FormatException("Not a GLB file.");
             if (U32(glb, 4) != 2) throw new FormatException("Only glTF 2.0 GLB files are supported.");
             if (U32(glb, 8) != glb.Length) throw new FormatException("GLB length does not match its header.");
-            int jsonLength = (int)U32(glb, 12);
-            if (U32(glb, 16) != JsonChunk || 20 + jsonLength > glb.Length) throw new FormatException("GLB JSON chunk missing.");
+            uint jsonLengthRaw = U32(glb, 12);
+            if (U32(glb, 16) != JsonChunk || jsonLengthRaw > (uint)(glb.Length - 20)) throw new FormatException("GLB JSON chunk missing.");
+            int jsonLength = (int)jsonLengthRaw;
             JObject gltf;
             try { gltf = JObject.Parse(Encoding.UTF8.GetString(glb, 20, jsonLength)); }
             catch (JsonReaderException ex) { throw new FormatException("GLB JSON chunk unreadable.", ex); }
@@ -67,8 +68,9 @@ namespace InventorXrSo.Core.Glb
             int binStart = 20 + jsonLength, binOffset = 0, binLength = 0;
             if (binStart + 8 <= glb.Length)
             {
-                binLength = (int)U32(glb, binStart);
-                if (U32(glb, binStart + 4) != BinChunk || binStart + 8 + binLength > glb.Length) throw new FormatException("GLB BIN chunk corrupt.");
+                uint binLengthRaw = U32(glb, binStart);
+                if (U32(glb, binStart + 4) != BinChunk || binLengthRaw > (uint)(glb.Length - binStart - 8)) throw new FormatException("GLB BIN chunk corrupt.");
+                binLength = (int)binLengthRaw;
                 binOffset = binStart + 8;
             }
             var bin = new Bin(glb, binOffset, binLength);
@@ -82,9 +84,14 @@ namespace InventorXrSo.Core.Glb
                 var positions = ReadFloats(gltf, bin, (int?)attributes["POSITION"] ?? throw new FormatException("Primitive without POSITION."), "VEC3");
                 var normals = attributes["NORMAL"] == null ? new float[0] : ReadFloats(gltf, bin, (int)attributes["NORMAL"], "VEC3");
                 var colors = ReadColors(gltf, bin, attributes["COLOR_0"], positions.Length / 3);
-                var indices = p["indices"] == null
-                    ? Enumerable.Range(0, positions.Length / 3).Select(i => (uint)i).ToArray()
-                    : ReadIndices(gltf, bin, (int)p["indices"]);
+                uint[] indices;
+                if (p["indices"] == null)
+                {
+                    indices = new uint[positions.Length / 3];
+                    for (int i = 0; i < indices.Length; i++) indices[i] = (uint)i;
+                }
+                else indices = ReadIndices(gltf, bin, (int)p["indices"]);
+                Validate(positions, normals, indices);
                 var extras = p["extras"] as JObject ?? new JObject();
                 var faces = (extras["faces"] as JArray ?? new JArray())
                     .Select(f => new FaceRange((string)f["face_id"], (int?)f["ordinal"] ?? 0, (int)f["first_index"], (int)f["index_count"]))
@@ -94,6 +101,15 @@ namespace InventorXrSo.Core.Glb
                     positions, normals, indices, faces, colors));
             }
             return new GlbModel((string)gltf["asset"]?["extras"]?["document_id"], primitives);
+        }
+
+        private static void Validate(float[] positions, float[] normals, uint[] indices)
+        {
+            if (indices.Length % 3 != 0) throw new FormatException("Index count is not a whole number of triangles.");
+            if (normals.Length != 0 && normals.Length != positions.Length) throw new FormatException("NORMAL count does not match POSITION.");
+            uint vertexCount = (uint)(positions.Length / 3);
+            for (int i = 0; i < indices.Length; i++)
+                if (indices[i] >= vertexCount) throw new FormatException("Index " + indices[i] + " is beyond the " + vertexCount + " vertices.");
         }
 
         private readonly struct Bin
@@ -121,16 +137,20 @@ namespace InventorXrSo.Core.Glb
         private static (int start, int count, int componentType) Locate(JObject gltf, Bin bin, int accessorIndex, int componentsPerElement)
         {
             var accessor = ResolveAccessor(gltf, accessorIndex);
+            if (accessor["bufferView"] == null) throw new FormatException("Accessor " + accessorIndex + " has no bufferView.");
             var view = ResolveBufferView(gltf, (int)accessor["bufferView"]);
             int componentType = (int)accessor["componentType"];
             int size = componentType == 5126 || componentType == 5125 ? 4 : componentType == 5123 ? 2 : componentType == 5121 ? 1 : 0;
             if (size == 0) throw new NotSupportedException("Accessor component type " + componentType + " is not supported.");
             if (view["byteStride"] != null && (int)view["byteStride"] != size * componentsPerElement)
                 throw new NotSupportedException("Interleaved buffer views are not supported.");
-            int count = (int)accessor["count"] * componentsPerElement;
-            int start = ((int?)view["byteOffset"] ?? 0) + ((int?)accessor["byteOffset"] ?? 0);
-            if (start < 0 || start + count * size > bin.Length) throw new FormatException("Accessor " + accessorIndex + " runs past the BIN chunk.");
-            return (bin.Offset + start, count, componentType);
+            long elements = (long?)accessor["count"] ?? -1;
+            long viewOffset = (long?)view["byteOffset"] ?? 0, accessorOffset = (long?)accessor["byteOffset"] ?? 0;
+            if (elements < 0 || viewOffset < 0 || accessorOffset < 0) throw new FormatException("Accessor " + accessorIndex + " has a negative count or offset.");
+            long start = viewOffset + accessorOffset, end = start + elements * componentsPerElement * size;
+            long viewEnd = view["byteLength"] == null ? bin.Length : viewOffset + (long)view["byteLength"];
+            if (end > bin.Length || end > viewEnd) throw new FormatException("Accessor " + accessorIndex + " runs past the BIN chunk or its buffer view.");
+            return (bin.Offset + (int)start, (int)(elements * componentsPerElement), componentType);
         }
 
         /// <summary>COLOR_0 is optional and cosmetic: anything but float VEC4/VEC3 of the right count is ignored, never fatal.</summary>

@@ -410,4 +410,39 @@ public sealed class AssetStoreTests : System.IDisposable
         Assert.Equal("https://pc:8787/assets/" + a.Id, (string?)a.ToJson("https://pc:8787/")["asset_url"]);
         Assert.Equal("inventor://assets/" + a.Id, (string?)a.ToJson(null)["resource_uri"]);
     }
+
+    [Fact]
+    public void SameBytesWithAnotherMimeTypeAreNotCountedTwice()
+    {
+        var store = Store();
+        store.Put(new byte[] { 1, 2, 3 }, "model/gltf-binary", "quest");
+        var again = store.Put(new byte[] { 1, 2, 3 }, "application/json", "viewer");
+        Assert.Equal(3, store.StoredBytes);
+        Assert.Equal("application/json", again.MimeType);
+        Assert.True(store.TryRead(again.Id, "quest", out _, out _));    // the first owner keeps access
+        Assert.True(store.TryRead(again.Id, "viewer", out _, out _));
+        Assert.Equal(3, store.StoredBytes);
+    }
+
+    [Fact]
+    public void ParallelPutAndReadWithEvictionStaysConsistent()
+    {
+        var store = Store(max: 100, total: 300);
+        var failures = new System.Collections.Concurrent.ConcurrentBag<System.Exception>();
+        System.Threading.Tasks.Parallel.For(0, 400, new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = 8 }, i =>
+        {
+            try
+            {
+                var payload = new byte[50];
+                payload[0] = (byte)(i % 23); payload[1] = (byte)(i % 7);
+                var record = store.Put(payload, "model/gltf-binary", "quest");
+                store.TryRead(record.Id, "quest", out _, out _);
+                store.TryRead("a_" + new string('0', 64), "quest", out _, out _);
+            }
+            catch (System.Exception ex) { failures.Add(ex); }
+        });
+        Assert.Empty(failures);
+        Assert.Equal(store.List("quest").Sum(r => r.Size), store.StoredBytes);
+        Assert.True(store.StoredBytes <= 300);
+    }
 }

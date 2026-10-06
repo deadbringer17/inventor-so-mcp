@@ -77,6 +77,11 @@ public sealed class ReleaseTools
                 File.Copy(source, Path.Combine(folder, fileName), overwrite: false);
                 included.Add(new JObject { ["artifact"] = fileName, ["format"] = format, ["source_artifact"] = source });
             }
+            catch (InventorGatewayException ex) when (key == "dxf" && IsNoFlatPattern(ex))
+            {
+                // A part that is not sheet metal (or has no flat pattern yet) refuses the DXF export: an exclusion, not a failure.
+                excluded.Add(new JObject { ["artifact"] = fileName, ["reason"] = "not a sheet-metal part with a flat pattern", ["error"] = ex.ToErrorJson()["error"] });
+            }
             catch (InventorGatewayException ex)
             {
                 complete = false;
@@ -92,10 +97,6 @@ public sealed class ReleaseTools
         await Export("step", "step", "model.step", kind is "part" or "assembly", "STEP applies to parts and assemblies");
         await Export("dxf", "dxf", "flat.dxf", kind == "part", "flat-pattern DXF applies to sheet-metal parts");
         await Export("pdf", "pdf", "drawing.pdf", kind == "drawing", "PDF applies to drawings (open and activate the drawing to release it)");
-        // A part that is not sheet metal refuses the DXF export: that is an exclusion, not a failure.
-        foreach (var entry in excluded.OfType<JObject>().Where(e => (string?)e["artifact"] == "flat.dxf" && (string?)e["reason"] == "export failed"))
-            entry["reason"] = "not a sheet-metal part with a flat pattern";
-        complete = !excluded.OfType<JObject>().Any(e => (string?)e["reason"] is "export failed" || ((string?)e["reason"])?.StartsWith("copy failed") == true);
 
         if (wanted.Contains("bom") && kind == "assembly")
         {
@@ -111,6 +112,11 @@ public sealed class ReleaseTools
             {
                 complete = false;
                 excluded.Add(new JObject { ["artifact"] = "bom.csv", ["reason"] = "export failed", ["error"] = ex.ToErrorJson()["error"] });
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                complete = false;
+                excluded.Add(new JObject { ["artifact"] = "bom.csv", ["reason"] = "write failed: " + ex.Message });
             }
         }
         else excluded.Add(new JObject { ["artifact"] = "bom.csv", ["reason"] = wanted.Contains("bom") ? "BOM applies to assemblies" : "not requested" });
@@ -145,6 +151,20 @@ public sealed class ReleaseTools
             ["metadata"] = metadata,
             ["validation"] = validation,
         }.ToString(Formatting.None);
+    }
+
+    /// <summary>
+    /// True when the add-in refused a DXF export because the document is not a sheet-metal part
+    /// (<c>WRONG_DOCUMENT_TYPE</c>) or has no flat pattern (<c>INVALID_ARGUMENT</c> tagged
+    /// <c>NO_FLAT_PATTERN</c>). Timeouts, stale revisions and anything else stay failures.
+    /// </summary>
+    internal static bool IsNoFlatPattern(InventorGatewayException ex)
+    {
+        if (ex.Code == InventorErrorCodes.WRONG_DOCUMENT_TYPE) return true;
+        if (ex.Code != InventorErrorCodes.INVALID_ARGUMENT) return false;
+        string? reason = (string?)ex.Details?["reason"];
+        return reason is "NO_FLAT_PATTERN" or "FLAT_PATTERN_MISSING"
+            || ex.Message.StartsWith("NO_FLAT_PATTERN", StringComparison.Ordinal);
     }
 
     /// <summary><c>sha256sum</c>-compatible listing of every file except the listing itself.</summary>

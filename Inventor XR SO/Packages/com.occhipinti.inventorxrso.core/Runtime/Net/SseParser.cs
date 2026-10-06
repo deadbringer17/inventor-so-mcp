@@ -15,7 +15,7 @@ namespace InventorXrSo.Core.Net
 
         public void Feed(string line)
         {
-            if (line.EndsWith("\r")) line = line.Substring(0, line.Length - 1);
+            if (line.Length > 0 && line[line.Length - 1] == '\r') line = line.Substring(0, line.Length - 1);
             if (line.Length == 0)
             {
                 Flush();
@@ -25,8 +25,8 @@ namespace InventorXrSo.Core.Net
             int colon = line.IndexOf(':');
             var field = colon < 0 ? line : line.Substring(0, colon);
             var value = colon < 0 ? "" : line.Substring(colon + 1);
-            if (value.StartsWith(" ")) value = value.Substring(1);
-            if (field != "data") return;
+            if (value.Length > 0 && value[0] == ' ') value = value.Substring(1);
+            if (!string.Equals(field, "data", StringComparison.Ordinal)) return;
             if (_hasData) _data.Append('\n');
             _data.Append(value);
             _hasData = true;

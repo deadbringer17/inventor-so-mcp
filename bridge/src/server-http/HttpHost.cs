@@ -113,12 +113,13 @@ public static class HttpHost
         app.MapMcp("/mcp").RequireAuthorization().RequireRateLimiting(RatePolicy);
         app.MapGet("/assets/{assetId}", (string assetId, HttpContext http, AssetStore store, ICallerIdentity caller) =>
             {
+                // A conditional request is answered from the record alone: no file read, no hash.
+                if (store.Describe(assetId, caller.Client, renew: true) is { } known && IfNoneMatchHits(http.Request.Headers.IfNoneMatch, known.Sha256))
+                    return Results.StatusCode(StatusCodes.Status304NotModified);
                 if (!store.TryRead(assetId, caller.Client, out var record, out var bytes))
                     return Results.Json(new { ok = false, error = new { code = "ASSET_NOT_FOUND", message = "Unknown, expired or foreign asset id." } },
                         statusCode: StatusCodes.Status404NotFound);
                 var etag = new EntityTagHeaderValue("\"" + record!.Sha256 + "\"");
-                if (http.Request.Headers.IfNoneMatch.Any(v => v == etag.ToString()))
-                    return Results.StatusCode(StatusCodes.Status304NotModified);
                 http.Response.Headers.CacheControl = "private, max-age=3600, immutable";
                 http.Response.Headers["X-Content-SHA256"] = record.Sha256;
                 return Results.Bytes(bytes!, record.MimeType, entityTag: etag);
@@ -128,6 +129,24 @@ public static class HttpHost
         VoiceEndpoint.Map(app);
         MapViewer(app);
         return app;
+    }
+
+    /// <summary>
+    /// RFC 9110 weak comparison of <c>If-None-Match</c> (comma lists, <c>W/</c> prefixes, <c>*</c>) against the asset's strong tag.
+    /// </summary>
+    internal static bool IfNoneMatchHits(IEnumerable<string?> headerValues, string sha)
+    {
+        foreach (var header in headerValues)
+        {
+            if (string.IsNullOrEmpty(header)) continue;
+            foreach (var part in header.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                if (part == "*") return true;
+                var tag = part.StartsWith("W/", StringComparison.Ordinal) ? part[2..] : part;
+                if (tag.Length >= 2 && tag[0] == '"' && tag[^1] == '"' && string.Equals(tag[1..^1], sha, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>

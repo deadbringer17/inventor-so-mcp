@@ -35,6 +35,16 @@ public class SceneLoaderTests
     }
 
     [Fact]
+    public async Task ACorruptMeshIsOmittedNotFatal()
+    {
+        var backend = Backend();
+        backend.Meshes["q"] = new byte[30];
+        var scene = await new SceneLoader(backend).LoadAsync(CancellationToken.None);
+        Assert.Equal(new[] { "p" }, scene.Models.Keys);
+        Assert.Equal(new[] { "q" }, scene.Omitted);
+    }
+
+    [Fact]
     public async Task OtherToolErrorsPropagate()
     {
         var backend = Backend();
