@@ -56,14 +56,46 @@ public sealed class PluginClient
 
     private readonly Action<string> _log;
 
+    /// <summary>
+    /// How long a non-empty registry listing is reused. Every tool call and every event poll resolves the
+    /// current target; enumerating and deserializing the descriptor folder (and probing each pid) each time is
+    /// wasted work. An empty listing is never cached, so a freshly started Inventor is seen at once.
+    /// </summary>
+    internal static readonly TimeSpan TargetCacheTtl = TimeSpan.FromSeconds(1);
+
+    private readonly Func<DateTimeOffset> _clock;
+    private readonly TimeSpan _cacheTtl;
+    private readonly object _cacheLock = new();
+    private IReadOnlyList<TargetDescriptor>? _cachedLive;
+    private DateTimeOffset _cachedAt;
+
     public PluginClient(InventorMcpConfig config, Action<string>? log = null)
+        : this(config, log, null, null) { }
+
+    internal PluginClient(InventorMcpConfig config, Action<string>? log, Func<DateTimeOffset>? clock, TimeSpan? cacheTtl)
     {
         _config = config;
         _log = log ?? (line => Console.Error.WriteLine(line)); // stderr only: stdio MCP owns stdout
         _registry = new TargetRegistry(config.DescriptorDirectory);
+        _clock = clock ?? (() => DateTimeOffset.UtcNow);
+        _cacheTtl = cacheTtl ?? TargetCacheTtl;
     }
 
-    public IReadOnlyList<TargetDescriptor> ListTargets() => _registry.List();
+    /// <summary>Always reads the registry (inventor_list_available_targets, pairing) and refreshes the cache.</summary>
+    public IReadOnlyList<TargetDescriptor> ListTargets() => LiveTargets(fresh: true);
+
+    private IReadOnlyList<TargetDescriptor> LiveTargets(bool fresh)
+    {
+        lock (_cacheLock)
+        {
+            var now = _clock();
+            if (!fresh && _cachedLive is { } cached && now - _cachedAt < _cacheTtl && now >= _cachedAt) return cached;
+            var live = _registry.List();
+            _cachedLive = live.Count == 0 ? null : live;
+            _cachedAt = now;
+            return live;
+        }
+    }
 
     /// <summary>
     /// The pinned target, refreshed from the registry on every read. An explicit pin (SwitchTarget, or a config
@@ -76,7 +108,9 @@ public sealed class PluginClient
     {
         get
         {
-            var live = _registry.List();
+            var live = LiveTargets(fresh: false);
+            // A pinned instance missing from the cached listing may just have appeared or been replaced: look again.
+            if (_selectedTargetId is { } pinned && !live.Any(t => t.TargetId == pinned)) live = LiveTargets(fresh: true);
             lock (_selectionLock)
             {
                 if (_selectedTargetId is { } selected)
@@ -114,7 +148,7 @@ public sealed class PluginClient
         var key = (targetId ?? "").Trim();
         if (string.IsNullOrWhiteSpace(key)) return false;
 
-        var live = _registry.List();
+        var live = LiveTargets(fresh: true);
         var match = ResolveUnique(live, key);
         if (match is null) return false;
         lock (_selectionLock)

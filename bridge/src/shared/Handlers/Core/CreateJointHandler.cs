@@ -91,7 +91,7 @@ public sealed class CreateJointHandler : HandlerBase, IInventorCommand
         }
         try
         {
-            if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired before joint creation.");
+            if (ctx.IsDeadlineExceeded?.Invoke() == true) throw CodedFailureException.Timeout("Expired before joint creation.");
             app.UserInterfaceManager.UserInteractionDisabled = true;
             transaction = app.TransactionManager.StartTransaction((Inventor._Document)doc, "Inventor SO create joint");
             if (transaction.HasParentTransaction) throw ConcurrencyFailure.TransactionBusy();
@@ -130,7 +130,7 @@ public sealed class CreateJointHandler : HandlerBase, IInventorCommand
             int checks = 0;
             for (int i = 0; i < components.Length; i++) for (int j = i + 1; j < components.Length; j++)
             {
-                if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired during assembly validation.");
+                if (ctx.IsDeadlineExceeded?.Invoke() == true) throw CodedFailureException.Timeout("Expired during assembly validation.");
                 var pair = app.TransientObjects.CreateObjectCollection();
                 pair.Add(components[i]); pair.Add(components[j]);
                 if (def.AnalyzeInterference(pair).Count > 0)
@@ -153,11 +153,12 @@ public sealed class CreateJointHandler : HandlerBase, IInventorCommand
                 ["motion_path_validated"] = false,
             };
             Owned();
-            if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired before commit.");
+            if (ctx.IsDeadlineExceeded?.Invoke() == true) throw CodedFailureException.Timeout("Expired before commit.");
             if (app.ActiveDocument == null || EntityReferences.DocumentId(app.ActiveDocument) != id)
                 throw ConcurrencyFailure.DocumentChanged(id, app.ActiveDocument == null ? null : EntityReferences.DocumentId(app.ActiveDocument), "the joint");
             if (preview) transaction.Abort(); else transaction.End();
             transaction = null;
+            if (preview) RevisionRestore.AfterAbort(ctx, id, (string?)p["expected_revision"]);
             result["status"] = preview ? "preview_rolled_back" : "committed";
             result["document_id"] = id;
             result["revision"] = ctx.Events.Revision(id);
@@ -176,6 +177,8 @@ public sealed class CreateJointHandler : HandlerBase, IInventorCommand
                         "Rollback failed; inspect the model before continuing. Failure: " + ex.Message +
                         "; rollback: " + rollback.Message, CodedFailureException.ReasonOf(ex), ex);
                 }
+                // Inventor raises change events on abort: the model is as read, so is the revision.
+                RevisionRestore.AfterAbort(ctx, id, (string?)p["expected_revision"]);
                 throw new CodedFailureException(InventorErrorCodes.ROLLED_BACK,
                     "Rolled back; nothing was changed. " + ex.Message, CodedFailureException.ReasonOf(ex), ex);
             }

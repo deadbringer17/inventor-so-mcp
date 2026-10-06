@@ -14,7 +14,7 @@ public sealed class AtomicCadBatchTests
         public string? RestoredRevision;
         public int Value;
         public int Begins, Commits, Rollbacks;
-        public bool FailValidation, FailRollback;
+        public bool FailValidation, FailRollback, TimeoutInValidation;
         private int _before;
         public void Begin(string name) { _before = Value; Begins++; Revision = "revision-after-edit"; }
         public void RestoreRevision(string revision) { RestoredRevision = revision; Revision = revision; }
@@ -25,7 +25,7 @@ public sealed class AtomicCadBatchTests
             if ((bool?)arguments["switch_document"] == true) DocumentId = "other";
             return new JObject { ["value"] = Value };
         }
-        public void Validate() { if (FailValidation) throw new InvalidOperationException("unhealthy feature"); }
+        public void Validate() { if (TimeoutInValidation) throw new TimeoutException("Expired during validation."); if (FailValidation) throw new InvalidOperationException("unhealthy feature"); }
         public void Commit() => Commits++;
         public void Rollback() { Rollbacks++; if (FailRollback) throw new InvalidOperationException("COM abort failed"); Value = _before; }
     }
@@ -263,6 +263,22 @@ public sealed class AtomicCadBatchTests
         Assert.Equal(0, backend.Value);
         Assert.Equal(0, backend.Commits);
     }
+    [Fact]
+    public void TimeoutInValidationIsRolledBackWithTimeoutStepCode()
+    {
+        var backend = new Backend { TimeoutInValidation = true, Value = 5 };
+        var error = Assert.Throws<CadBatchException>(() => AtomicCadBatch.Run(backend, "doc", "revision", Steps(), false));
+        Assert.Equal(InventorErrorCodes.ROLLED_BACK, error.Code);
+        Assert.Equal(InventorErrorCodes.TIMEOUT, error.StepCode);
+        Assert.Equal(InventorErrorCodes.TIMEOUT, (string?)error.Details()["step_code"]);
+        Assert.Equal(5, backend.Value);
+        Assert.Equal("revision", backend.RestoredRevision);
+    }
+
+    [Fact]
+    public void CodedTimeoutReportsTheSameStepCode()
+        => Assert.Equal(InventorErrorCodes.TIMEOUT, CodedFailureException.LiftCode(CodedFailureException.Timeout("Expired before commit.")));
+
     [Fact]
     public void LateForbiddenStepRejectsBeforeAnyModification()
     {

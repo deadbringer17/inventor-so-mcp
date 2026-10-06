@@ -29,9 +29,9 @@ public sealed class MeasureMinDistanceHandler : HandlerBase, IInventorCommand
         string aRefName = (string?)parameters["a_ref"] ?? "";
         if (string.IsNullOrEmpty(aRefName))
         {
-            if (!AssemblyRefResolver.TryFindOccurrence(def, aOccName, out var occ, out var err))
+            if (!AssemblyRefResolver.TryFindOccurrence(def, aOccName, out var occ, out var err, out var errDetails))
             {
-                return Fail(context, "INVALID_ARGUMENT", "Failed to resolve a: " + err);
+                return Fail(context, "INVALID_ARGUMENT", "Failed to resolve a: " + err, errDetails);
             }
             if (occ == null)
             {
@@ -41,9 +41,9 @@ public sealed class MeasureMinDistanceHandler : HandlerBase, IInventorCommand
         }
         else
         {
-            if (!AssemblyRefResolver.TryResolveInAssembly(def, aOccName, aRefName, out var entity, out var err))
+            if (!AssemblyRefResolver.TryResolveInAssembly(def, aOccName, aRefName, out var entity, out var err, out var errDetails))
             {
-                return Fail(context, "INVALID_ARGUMENT", "Failed to resolve a: " + err);
+                return Fail(context, "INVALID_ARGUMENT", "Failed to resolve a: " + err, errDetails);
             }
             entityA = entity!;
         }
@@ -53,9 +53,9 @@ public sealed class MeasureMinDistanceHandler : HandlerBase, IInventorCommand
         string bRefName = (string?)parameters["b_ref"] ?? "";
         if (string.IsNullOrEmpty(bRefName))
         {
-            if (!AssemblyRefResolver.TryFindOccurrence(def, bOccName, out var occ, out var err))
+            if (!AssemblyRefResolver.TryFindOccurrence(def, bOccName, out var occ, out var err, out var errDetails))
             {
-                return Fail(context, "INVALID_ARGUMENT", "Failed to resolve b: " + err);
+                return Fail(context, "INVALID_ARGUMENT", "Failed to resolve b: " + err, errDetails);
             }
             if (occ == null)
             {
@@ -65,9 +65,9 @@ public sealed class MeasureMinDistanceHandler : HandlerBase, IInventorCommand
         }
         else
         {
-            if (!AssemblyRefResolver.TryResolveInAssembly(def, bOccName, bRefName, out var entity, out var err))
+            if (!AssemblyRefResolver.TryResolveInAssembly(def, bOccName, bRefName, out var entity, out var err, out var errDetails))
             {
-                return Fail(context, "INVALID_ARGUMENT", "Failed to resolve b: " + err);
+                return Fail(context, "INVALID_ARGUMENT", "Failed to resolve b: " + err, errDetails);
             }
             entityB = entity!;
         }

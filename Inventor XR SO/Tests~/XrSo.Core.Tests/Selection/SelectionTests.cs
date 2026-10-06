@@ -38,7 +38,9 @@ public class SelectionTests
         Assert.Equal(SelectionKind.Face, service.Current.Kind);
         Assert.Equal("proxy:ent_1:f3", service.Current.EntityId);
         Assert.Equal(new[] { "highlight:ent_1", "clear", "pick:ent_1:f3", "highlight:proxy:ent_1:f3" }, backend.Calls);
-        Assert.Equal(2, seen.Count);
+        // Occurrence; face provisionally (local view); face again once Inventor resolved the proxy id.
+        Assert.Equal(3, seen.Count);
+        Assert.Equal("proxy:ent_1:f3", seen[^1].EntityId);
     }
 
     [Fact]

@@ -83,4 +83,23 @@ public class DesignBackendTests : IClassFixture<BackendFixture>
         var stale = await Assert.ThrowsAsync<McpToolException>(() => backend.CommitDesignAsync(plan, default));
         Assert.Equal("STALE_REVISION", stale.Code);
     }
+
+    [Fact]
+    public async Task PreviewAssetsNeverReachThePersistentCache()
+    {
+        var persistent = new RecordingCache();
+        var backend = new InventorBackend(_fixture.Transport(), _fixture.EditorServer, persistent);
+        await backend.ConnectAsync(default);
+        var before = await backend.GetDocumentStateAsync(default);
+        var plan = await backend.PreviewDesignAsync(before, new JArray(DesignOperations.Parameter("BoltLength", 21, "mm")), default);
+        Assert.NotEmpty(plan.Model.Primitives);
+        Assert.Equal(0, persistent.Puts);
+    }
+
+    private sealed class RecordingCache : IAssetCache
+    {
+        public int Puts;
+        public bool TryGet(string assetId, out byte[] bytes) { bytes = null; return false; }
+        public void Put(string assetId, byte[] bytes) => Puts++;
+    }
 }

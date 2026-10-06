@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json.Linq;
+using Bimwright.Ipt.Shared.Contracts;
 using Inv = global::Inventor;
 
 namespace Bimwright.Ipt.Shared.Handlers.Assembly;
@@ -18,18 +19,33 @@ public static class AssemblyRefResolver
     private const string CenterPoint = "Center Point";
 
     /// <summary>
-    /// Finds a top-level occurrence by name in the assembly. If name is null/empty,
-    /// sets occ=null representing the assembly itself. Returns true if successful.
-    /// On failure, returns false and lists all available occurrence names.
+    /// Finds an occurrence in the assembly. If name is null/empty, sets occ=null representing the
+    /// assembly itself. Returns true if successful. A top-level name wins; "SubA:1/Bolt:1" resolves
+    /// through the tree; a bare nested name resolves only when it is unique (see
+    /// <see cref="OccurrencePathMatcher"/>). On failure, returns false and lists the available
+    /// occurrence paths (capped).
     /// </summary>
     public static bool TryFindOccurrence(
         Inv.AssemblyComponentDefinition def,
         string? name,
         out Inv.ComponentOccurrence? occ,
         out string? error)
+        => TryFindOccurrence(def, name, out occ, out error, out _);
+
+    /// <summary>
+    /// As above, and <paramref name="details"/> carries <c>reason = AMBIGUOUS_OCCURRENCE</c> plus the
+    /// candidate paths when a bare name matches several occurrences, so a caller never parses the message.
+    /// </summary>
+    public static bool TryFindOccurrence(
+        Inv.AssemblyComponentDefinition def,
+        string? name,
+        out Inv.ComponentOccurrence? occ,
+        out string? error,
+        out JObject? details)
     {
         occ = null;
         error = null;
+        details = null;
 
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -37,48 +53,65 @@ public static class AssemblyRefResolver
         }
 
         string occurrenceName = name!.Trim();
-        occ = FindOccurrenceRecursive(def.Occurrences, occurrenceName);
-        if (occ != null)
+
+        // Cheap path first: an exact top-level name needs no walk of the sub-assemblies.
+        if (occurrenceName.IndexOf(OccurrencePathMatcher.PathSeparator) < 0)
         {
-            return true;
-        }
-
-        // Build recursive list of valid occurrence names to teach the client
-        var validNames = new List<string>();
-        CollectOccurrenceNames(def.Occurrences, validNames);
-
-        error = $"Occurrence '{occurrenceName}' not found. Available occurrences: {string.Join(", ", validNames)}";
-        return false;
-    }
-
-    private static Inv.ComponentOccurrence? FindOccurrenceRecursive(System.Collections.IEnumerable occurrences, string name)
-    {
-        foreach (Inv.ComponentOccurrence o in occurrences)
-        {
-            if (string.Equals(o.Name, name, StringComparison.OrdinalIgnoreCase)) return o;
-            try
+            var topLevel = new List<Inv.ComponentOccurrence>();
+            foreach (Inv.ComponentOccurrence o in def.Occurrences)
+                if (string.Equals(o.Name, occurrenceName, StringComparison.OrdinalIgnoreCase)) topLevel.Add(o);
+            if (topLevel.Count == 1)
             {
-                if (o.SubOccurrences != null && o.SubOccurrences.Count > 0)
-                {
-                    var found = FindOccurrenceRecursive(o.SubOccurrences, name);
-                    if (found != null) return found;
-                }
+                occ = topLevel[0];
+                return true;
             }
-            catch { }
         }
-        return null;
+
+        var entries = new List<(string Path, string Name)>();
+        var found = new List<Inv.ComponentOccurrence>();
+        CollectOccurrences(def.Occurrences, "", entries, found);
+
+        var match = OccurrencePathMatcher.Resolve(entries, occurrenceName);
+        switch (match.Kind)
+        {
+            case OccurrenceMatchKind.Found:
+                occ = found[match.Index];
+                return true;
+
+            case OccurrenceMatchKind.Ambiguous:
+            {
+                var paths = match.Candidates.Select(i => entries[i].Path).ToList();
+                error = $"Occurrence '{occurrenceName}' is ambiguous; use the full path (parent/child). " +
+                        $"Matches: {OccurrencePathMatcher.FormatList(paths)}";
+                details = new JObject
+                {
+                    ["reason"] = "AMBIGUOUS_OCCURRENCE",
+                    ["candidates"] = new JArray(paths.Take(OccurrencePathMatcher.ListCap).Cast<object>().ToArray()),
+                    ["candidate_count"] = paths.Count,
+                };
+                return false;
+            }
+
+            default:
+                error = $"Occurrence '{occurrenceName}' not found. Available occurrences: " +
+                        OccurrencePathMatcher.FormatList(entries.Select(e => e.Path).ToList());
+                return false;
+        }
     }
 
-    private static void CollectOccurrenceNames(System.Collections.IEnumerable occurrences, List<string> names)
+    private static void CollectOccurrences(System.Collections.IEnumerable occurrences, string parentPath,
+        List<(string Path, string Name)> entries, List<Inv.ComponentOccurrence> found)
     {
         foreach (Inv.ComponentOccurrence o in occurrences)
         {
-            names.Add(o.Name);
+            string path = OccurrencePathMatcher.Combine(parentPath, o.Name);
+            entries.Add((path, o.Name));
+            found.Add(o);
             try
             {
                 if (o.SubOccurrences != null && o.SubOccurrences.Count > 0)
                 {
-                    CollectOccurrenceNames(o.SubOccurrences, names);
+                    CollectOccurrences(o.SubOccurrences, path, entries, found);
                 }
             }
             catch { }
@@ -96,11 +129,21 @@ public static class AssemblyRefResolver
         string refName,
         out object? entity,
         out string? error)
+        => TryResolveInAssembly(def, occurrenceName, refName, out entity, out error, out _);
+
+    /// <summary>As above; <paramref name="details"/> carries the AMBIGUOUS_OCCURRENCE reason and candidates.</summary>
+    public static bool TryResolveInAssembly(
+        Inv.AssemblyComponentDefinition def,
+        string? occurrenceName,
+        string refName,
+        out object? entity,
+        out string? error,
+        out JObject? details)
     {
         entity = null;
         error = null;
 
-        if (!TryFindOccurrence(def, occurrenceName, out var occ, out var occErr))
+        if (!TryFindOccurrence(def, occurrenceName, out var occ, out var occErr, out details))
         {
             error = occErr;
             return false;

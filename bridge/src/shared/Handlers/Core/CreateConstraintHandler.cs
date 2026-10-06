@@ -51,7 +51,7 @@ public sealed class CreateConstraintHandler : HandlerBase, IInventorCommand
         }
         try
         {
-            if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired before constraint creation.");
+            if (ctx.IsDeadlineExceeded?.Invoke() == true) throw CodedFailureException.Timeout("Expired before constraint creation.");
             app.UserInterfaceManager.UserInteractionDisabled = true;
             transaction = app.TransactionManager.StartTransaction((Inventor._Document)doc, "Inventor SO create constraint");
             if (transaction.HasParentTransaction) throw ConcurrencyFailure.TransactionBusy();
@@ -78,7 +78,7 @@ public sealed class CreateConstraintHandler : HandlerBase, IInventorCommand
             int checks = 0;
             for (int i = 0; i < components.Length; i++) for (int j = i + 1; j < components.Length; j++)
             {
-                if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired during assembly validation.");
+                if (ctx.IsDeadlineExceeded?.Invoke() == true) throw CodedFailureException.Timeout("Expired during assembly validation.");
                 var pair = app.TransientObjects.CreateObjectCollection(); pair.Add(components[i]); pair.Add(components[j]);
                 if (def.AnalyzeInterference(pair).Count > 0)
                     throw new InvalidOperationException("INTERFERENCE: " + components[i].Name + "/" + components[j].Name);
@@ -95,11 +95,12 @@ public sealed class CreateConstraintHandler : HandlerBase, IInventorCommand
                 ["pairs_checked"] = checks,
                 ["constraint_id"] = request.Preview ? null : EntityReferences.Describe(doc, created)["id"] };
             Owned();
-            if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired before commit.");
+            if (ctx.IsDeadlineExceeded?.Invoke() == true) throw CodedFailureException.Timeout("Expired before commit.");
             if (app.ActiveDocument == null || EntityReferences.DocumentId(app.ActiveDocument) != id)
                 throw ConcurrencyFailure.DocumentChanged(id, app.ActiveDocument == null ? null : EntityReferences.DocumentId(app.ActiveDocument), "the constraint");
             if (request.Preview) transaction.Abort(); else transaction.End();
             transaction = null;
+            if (request.Preview) RevisionRestore.AfterAbort(ctx, id, (string?)p["expected_revision"]);
             result["status"] = request.Preview ? "preview_rolled_back" : "committed";
             result["revision"] = ctx.Events.Revision(id);
             return Ok(ctx, result);
@@ -117,6 +118,8 @@ public sealed class CreateConstraintHandler : HandlerBase, IInventorCommand
                         "Rollback failed; inspect the model before continuing. Failure: " + ex.Message +
                         "; rollback: " + rollback.Message, CodedFailureException.ReasonOf(ex), ex);
                 }
+                // Inventor raises change events on abort: the model is as read, so is the revision.
+                RevisionRestore.AfterAbort(ctx, id, (string?)p["expected_revision"]);
                 throw new CodedFailureException(InventorErrorCodes.ROLLED_BACK,
                     "Rolled back; nothing was changed. " + ex.Message, CodedFailureException.ReasonOf(ex), ex);
             }

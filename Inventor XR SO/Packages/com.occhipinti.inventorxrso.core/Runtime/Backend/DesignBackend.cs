@@ -49,6 +49,9 @@ namespace InventorXrSo.Core.Backend
 
     public sealed partial class InventorBackend : IDesignWorkspaceBackend, IDesignChecksBackend
     {
+        private const long TransientCacheMaxBytes = 64L * 1024 * 1024;
+        private readonly IAssetCache _previewCache = new MemoryAssetCache(maxEntries: 8, maxBytes: TransientCacheMaxBytes);
+
         public async Task<DesignContext> GetDesignContextAsync(DocumentState state, CancellationToken ct) =>
             DesignContext.Parse(await _mcp.CallToolAsync("inventor_get_design_context_xr", new JObject
             { ["document_id"] = state.DocumentId, ["expected_revision"] = state.Revision }, ct), state);
@@ -85,7 +88,8 @@ namespace InventorXrSo.Core.Backend
             // Fetch from the paired host only, never from a URL supplied by the response.
             var mesh = DefinitionMesh.FromJson(state.DocumentId, new JObject
             { ["asset"] = new JObject { ["asset_id"] = assetId, ["asset_url"] = "/assets/" + assetId } });
-            var model = GlbModel.Parse(await GetAssetAsync(mesh, ct));
+            // Tentative drafts: bounded in-memory cache only, never the persistent one (ids change on every draft).
+            var model = GlbModel.Parse(await DownloadAssetAsync(mesh, _previewCache, ct));
             return new DesignPreview((string)json["plan_id"], state.DocumentId, state.Revision, expires, model,
                 (preview["sketches"] as JArray ?? new JArray()).Select(SketchSnapshot.Parse), assembly);
         }

@@ -50,7 +50,7 @@ public sealed class EditConstraintHandler : HandlerBase, IInventorCommand
         }
         try
         {
-            if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired before constraint edit.");
+            if (ctx.IsDeadlineExceeded?.Invoke() == true) throw CodedFailureException.Timeout("Expired before constraint edit.");
             app.UserInterfaceManager.UserInteractionDisabled = true;
             transaction = app.TransactionManager.StartTransaction((Inventor._Document)doc, "Inventor SO constraint edit");
             if (transaction.HasParentTransaction) throw ConcurrencyFailure.TransactionBusy();
@@ -63,7 +63,7 @@ public sealed class EditConstraintHandler : HandlerBase, IInventorCommand
             int checks = 0;
             for (int i=0;i<components.Length;i++) for (int j=i+1;j<components.Length;j++)
             {
-                if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired during assembly validation.");
+                if (ctx.IsDeadlineExceeded?.Invoke() == true) throw CodedFailureException.Timeout("Expired during assembly validation.");
                 var pair = app.TransientObjects.CreateObjectCollection(); pair.Add(components[i]); pair.Add(components[j]);
                 if (def.AnalyzeInterference(pair).Count>0) throw new InvalidOperationException("INTERFERENCE: " + components[i].Name + "/" + components[j].Name);
                 double distance = app.MeasureTools.GetMinimumDistance(components[i], components[j])*10;
@@ -71,11 +71,12 @@ public sealed class EditConstraintHandler : HandlerBase, IInventorCommand
                 checks++;
             }
             Owned();
-            if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired before commit.");
+            if (ctx.IsDeadlineExceeded?.Invoke() == true) throw CodedFailureException.Timeout("Expired before commit.");
             if (app.ActiveDocument == null || EntityReferences.DocumentId(app.ActiveDocument)!=id)
                 throw ConcurrencyFailure.DocumentChanged(id, app.ActiveDocument == null ? null : EntityReferences.DocumentId(app.ActiveDocument), "the constraint edit");
             if (preview) transaction.Abort(); else transaction.End();
             transaction=null;
+            if (preview) RevisionRestore.AfterAbort(ctx, id, (string?)p["expected_revision"]);
             return Ok(ctx, new JObject { ["status"] = preview ? "preview_rolled_back" : "committed", ["constraint_id"] = p["constraint_id"],
                 ["value"] = value, ["units"] = unit, ["pairs_checked"] = checks, ["revision"] = ctx.Events.Revision(id) });
         }
@@ -92,6 +93,8 @@ public sealed class EditConstraintHandler : HandlerBase, IInventorCommand
                         "Rollback failed; inspect the model before continuing. Failure: " + ex.Message +
                         "; rollback: " + rollback.Message, CodedFailureException.ReasonOf(ex), ex);
                 }
+                // Inventor raises change events on abort: the model is as read, so is the revision.
+                RevisionRestore.AfterAbort(ctx, id, (string?)p["expected_revision"]);
                 throw new CodedFailureException(InventorErrorCodes.ROLLED_BACK,
                     "Rolled back; nothing was changed. " + ex.Message, CodedFailureException.ReasonOf(ex), ex);
             }

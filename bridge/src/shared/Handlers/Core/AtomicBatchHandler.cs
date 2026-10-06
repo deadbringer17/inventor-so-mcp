@@ -205,7 +205,7 @@ internal sealed class InventorBatchBackend : ICadBatchBackend, ICadBatchValidati
         EnsureOwned();
         foreach (var rule in spec.Rules)
         {
-            if (_ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired during validation.");
+            if (_ctx.IsDeadlineExceeded?.Invoke() == true) throw CodedFailureException.Timeout("Expired during validation.");
             switch (rule.Name)
             {
                 case ValidationSpec.Rebuild:
@@ -242,7 +242,7 @@ internal sealed class InventorBatchBackend : ICadBatchBackend, ICadBatchValidati
         for (int i = 0; i < components.Length; i++)
             for (int j = i + 1; j < components.Length; j++)
             {
-                if (_ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired during assembly validation.");
+                if (_ctx.IsDeadlineExceeded?.Invoke() == true) throw CodedFailureException.Timeout("Expired during assembly validation.");
                 var pair = _app.TransientObjects.CreateObjectCollection();
                 pair.Add(components[i]);
                 pair.Add(components[j]);
@@ -253,7 +253,7 @@ internal sealed class InventorBatchBackend : ICadBatchBackend, ICadBatchValidati
                 {
                     double distance = UnitConvert.CmToMm(_app.MeasureTools.GetMinimumDistance(components[i], components[j]));
                     if (double.IsNaN(distance) || double.IsInfinity(distance) || distance < required)
-                        throw Failed(ValidationSpec.MinClearance, "Clearance " + distance.ToString("0.###") + " mm < " + required + " mm: " +
+                        throw Failed(ValidationSpec.MinClearance, "Clearance " + distance.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + " mm < " + required.ToString(System.Globalization.CultureInfo.InvariantCulture) + " mm: " +
                             components[i].Name + "/" + components[j].Name,
                             new JObject { ["pair"] = new JArray(components[i].Name, components[j].Name), ["distance_mm"] = distance, ["required_mm"] = required });
                 }

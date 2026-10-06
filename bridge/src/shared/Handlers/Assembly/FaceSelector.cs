@@ -48,6 +48,14 @@ public static class FaceSelector
             candidates = FilterCylindrical(candidates, spec);
         }
 
+        // Each centroid costs several COM reads; the tie-break and the candidate list share one read.
+        var centroids = new Dictionary<Inv.Face, double[]>();
+        double[] CentroidOf(Inv.Face face)
+        {
+            if (!centroids.TryGetValue(face, out var value)) centroids[face] = value = GetCentroidMm(face);
+            return value;
+        }
+
         // Apply near_mm tie-break if more than one remains and near_mm is provided
         if (candidates.Count > 1 && spec.NearMm != null)
         {
@@ -56,7 +64,7 @@ public static class FaceSelector
 
             foreach (var f in candidates)
             {
-                var centroid = GetCentroidMm(f);
+                var centroid = CentroidOf(f);
                 double dx = centroid[0] - spec.NearMm[0];
                 double dy = centroid[1] - spec.NearMm[1];
                 double dz = centroid[2] - spec.NearMm[2];
@@ -80,7 +88,7 @@ public static class FaceSelector
         {
             foreach (var f in candidates)
             {
-                var centroid = GetCentroidMm(f);
+                var centroid = CentroidOf(f);
                 double area = UnitConvert.Cm2ToMm2(f.Evaluator.Area);
                 var item = new JObject
                 {
@@ -91,14 +99,15 @@ public static class FaceSelector
 
                 if (spec.Kind == "planar")
                 {
-                    var normal = GetPlanarNormal(f);
+                    var normal = GetPlanarNormal(f, (Inv.Plane)f.Geometry);
                     item["normal"] = new JArray(normal.x, normal.y, normal.z);
                 }
                 else
                 {
                     var cyl = (Inv.Cylinder)f.Geometry;
+                    var axis = cyl.AxisVector;
                     item["radius_mm"] = UnitConvert.CmToMm(cyl.Radius);
-                    item["axis"] = new JArray(cyl.AxisVector.X, cyl.AxisVector.Y, cyl.AxisVector.Z);
+                    item["axis"] = new JArray(axis.X, axis.Y, axis.Z);
                 }
 
                 candidatesJson.Add(item);
@@ -117,14 +126,14 @@ public static class FaceSelector
         // 1. Filter by Normal within tolerance
         foreach (var f in faces)
         {
-            var normal = GetPlanarNormal(f);
+            var plane = (Inv.Plane)f.Geometry;
+            var normal = GetPlanarNormal(f, plane);
             double dot = normal.x * targetDir.x + normal.y * targetDir.y + normal.z * targetDir.z;
             double angleRad = Math.Acos(Math.Max(-1.0, Math.Min(1.0, dot)));
             double angleDeg = UnitConvert.RadToDeg(angleRad);
 
             if (angleDeg <= spec.ToleranceDeg)
             {
-                var plane = (Inv.Plane)f.Geometry;
                 var basePt = plane.RootPoint;
                 double posCm = basePt.X * targetDir.x + basePt.Y * targetDir.y + basePt.Z * targetDir.z;
                 matchedNormals.Add((f, UnitConvert.CmToMm(posCm)));
@@ -159,7 +168,8 @@ public static class FaceSelector
                 if (spec.Direction != null)
                 {
                     var targetDir = Directions[spec.Direction];
-                    double dot = Math.Abs(cyl.AxisVector.X * targetDir.x + cyl.AxisVector.Y * targetDir.y + cyl.AxisVector.Z * targetDir.z);
+                    var axis = cyl.AxisVector;
+                    double dot = Math.Abs(axis.X * targetDir.x + axis.Y * targetDir.y + axis.Z * targetDir.z);
                     double angleRad = Math.Acos(Math.Max(0.0, Math.Min(1.0, dot)));
                     double angleDeg = UnitConvert.RadToDeg(angleRad);
 
@@ -178,12 +188,12 @@ public static class FaceSelector
         return matched;
     }
 
-    private static (double x, double y, double z) GetPlanarNormal(Inv.Face f)
+    private static (double x, double y, double z) GetPlanarNormal(Inv.Face f, Inv.Plane plane)
     {
-        var plane = (Inv.Plane)f.Geometry;
-        double nx = plane.Normal.X;
-        double ny = plane.Normal.Y;
-        double nz = plane.Normal.Z;
+        var normalVector = plane.Normal;
+        double nx = normalVector.X;
+        double ny = normalVector.Y;
+        double nz = normalVector.Z;
 
         if (f.IsParamReversed)
         {

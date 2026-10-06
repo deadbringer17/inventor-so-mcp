@@ -65,10 +65,23 @@ namespace InventorXrSo.Core.Verify
             int ticket = ++_ticket;
             _gate.Busy = true;
             Status = VerifyStatus.Running; Result = null; Revision = null; ErrorCode = null; ErrorMessage = null;
+            bool keepBusy = false;
             try
             {
                 Changed?.Invoke();
-                var result = await run(ct);
+                var request = run(ct);
+                var cancelled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                using (ct.Register(() => cancelled.TrySetResult(true)))
+                    await Task.WhenAny(request, cancelled.Task);
+                if (!request.IsCompleted)
+                {
+                    // The caller gave up, Inventor did not: it stays busy until the request itself finishes, like Ignore().
+                    keepBusy = true;
+                    if (ticket == _ticket) Status = VerifyStatus.Idle;
+                    ReleaseWhenDone(request);
+                    return true;
+                }
+                var result = await request;
                 if (ticket == _ticket) { Result = result; Revision = result?.Revision; Status = VerifyStatus.Done; }
             }
             catch (OperationCanceledException) { if (ticket == _ticket) Status = VerifyStatus.Idle; }
@@ -84,10 +97,22 @@ namespace InventorXrSo.Core.Verify
             }
             finally
             {
-                _gate.Busy = false;
+                if (!keepBusy) _gate.Busy = false;
                 Changed?.Invoke();
             }
             return true;
+        }
+
+        private void ReleaseWhenDone(Task request)
+        {
+            var scheduler = SynchronizationContext.Current != null ? TaskScheduler.FromCurrentSynchronizationContext() : TaskScheduler.Default;
+            request.ContinueWith(t =>
+            {
+                var ex = t.IsFaulted ? t.Exception.GetBaseException() : null;   // also observes the exception
+                if ((ex is McpException mcp && mcp.Code == "TIMEOUT") || ex is TransportTimeoutException) _gate.MarkTimeout();
+                _gate.Busy = false;
+                Changed?.Invoke();
+            }, CancellationToken.None, TaskContinuationOptions.None, scheduler);
         }
 
         public void Ignore()

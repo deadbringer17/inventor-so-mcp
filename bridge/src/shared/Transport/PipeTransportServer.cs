@@ -28,8 +28,11 @@ public sealed class PipeTransportServer : ITransportServer
     private volatile bool _running;
     private Action<string, TaskCompletionSource<string>>? _onRequest;
     private volatile bool _clientConnected;
+    private readonly TimeSpan _idleTimeout;
+    private readonly CancellationTokenSource _stopCts = new CancellationTokenSource();
+    private volatile NamedPipeServerStream? _activePipe;
 
-    private const int MaxLineBytes = 1024 * 1024; // 1 MiB
+    private const int MaxLineBytes = TransportLimits.MaxLineBytes;
 
     /// <param name="pipeName">The pipe name the add-in wrote into its TargetDescriptor.</param>
     /// <param name="authToken">
@@ -37,7 +40,18 @@ public sealed class PipeTransportServer : ITransportServer
     /// <c>auth_token</c> must match this value.
     /// </param>
     public PipeTransportServer(string pipeName, string authToken)
+        : this(pipeName, authToken, TimeSpan.FromMilliseconds(TransportLimits.IdleReadTimeoutMs))
     {
+    }
+
+    /// <param name="idleReadTimeout">
+    /// Longest a client may take to deliver one complete line (idle or partial line); the connection is then dropped.
+    /// Injectable for tests.
+    /// </param>
+    internal PipeTransportServer(string pipeName, string authToken, TimeSpan idleReadTimeout)
+    {
+        if (idleReadTimeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(idleReadTimeout));
+        _idleTimeout = idleReadTimeout;
         _pipeName = pipeName ?? throw new ArgumentNullException(nameof(pipeName));
         _authToken = authToken ?? throw new ArgumentNullException(nameof(authToken));
     }
@@ -59,16 +73,15 @@ public sealed class PipeTransportServer : ITransportServer
     public void Stop()
     {
         _running = false;
-        // Wake a blocked WaitForConnection by connecting briefly.
-        try
-        {
-            using var dummy = new NamedPipeClientStream(".", _pipeName, PipeDirection.Out);
-            dummy.Connect(100);
-        }
-        catch { }
+        // Cancel a pending WaitForConnectionAsync and drop an idle-connected client so the listener thread exits.
+        try { _stopCts.Cancel(); } catch { }
+        try { _activePipe?.Dispose(); } catch { }
     }
 
-    public void Dispose() => Stop();
+    public void Dispose()
+    {
+        Stop();
+    }
 
     private void ListenLoop()
     {
@@ -83,17 +96,17 @@ public sealed class PipeTransportServer : ITransportServer
                     PipeDirection.InOut,
                     1, // maxNumberOfServerInstances
                     PipeTransmissionMode.Byte,
-                    PipeOptions.None);
+                    PipeOptions.Asynchronous);
 
-                pipe.WaitForConnection();
+                pipe.WaitForConnectionAsync(_stopCts.Token).Wait();
                 if (!_running) break;
 
                 backoff.Reset();
                 HandleClient(pipe);
             }
-            catch (IOException) when (!_running)
+            catch when (!_running)
             {
-                break; // clean shutdown
+                break; // clean shutdown (Stop cancelled the wait or closed the pipe)
             }
             catch
             {
@@ -111,9 +124,12 @@ public sealed class PipeTransportServer : ITransportServer
     private void HandleClient(NamedPipeServerStream pipe)
     {
         _clientConnected = true;
+        _activePipe = pipe;
+        if (!_running) { _activePipe = null; _clientConnected = false; return; }
         try
         {
             var reader = new StreamReader(pipe, Encoding.UTF8);
+            var lines = new NdjsonLineBuffer(reader);
             var writer = new StreamWriter(pipe, new UTF8Encoding(false)) { AutoFlush = true };
 
             var requestTimestamps = new Queue<DateTime>();
@@ -125,7 +141,17 @@ public sealed class PipeTransportServer : ITransportServer
                 string? line;
                 try
                 {
-                    line = NdjsonLineReader.ReadLineBounded(reader, MaxLineBytes, out bool overflow);
+                    var readTask = lines.ReadLineAsync(MaxLineBytes);
+                    if (!readTask.Wait(_idleTimeout))
+                    {
+                        // Idle or partial line: free the single pipe instance. Closing the pipe aborts the pending read.
+                        try { pipe.Dispose(); } catch { }
+                        _ = readTask.ContinueWith(x => _ = x.Exception, TaskContinuationOptions.OnlyOnFaulted);
+                        break;
+                    }
+                    var read = readTask.Result;
+                    bool overflow = read.Overflow;
+                    line = read.Line;
                     if (overflow)
                     {
                         TryWrite(writer, ErrorJson(Guid.Empty, InventorErrorCodes.INVALID_ARGUMENT, "Request exceeded 1 MiB size limit."));
@@ -189,6 +215,7 @@ public sealed class PipeTransportServer : ITransportServer
         }
         finally
         {
+            _activePipe = null;
             _clientConnected = false;
         }
     }

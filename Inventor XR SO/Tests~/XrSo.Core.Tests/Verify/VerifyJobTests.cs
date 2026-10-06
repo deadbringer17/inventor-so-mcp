@@ -123,4 +123,36 @@ public class VerifyJobTests
         Assert.Equal(VerifyMessages.Timeout, session.Health.ErrorMessage);
         Assert.False(session.Gate.CanStart);
     }
+
+    [Fact]
+    public async Task CallerCancellationKeepsTheGateBusyUntilTheRequestItselfFinishes()
+    {
+        var session = new VerifySession();
+        var pending = new TaskCompletionSource<DistanceReport>();
+        using var cts = new CancellationTokenSource();
+        var run = session.Distance.RunAsync(_ => pending.Task, cts.Token);   // a request that does not observe the token
+        cts.Cancel();
+        Assert.True(await run);
+        Assert.Equal(VerifyStatus.Idle, session.Distance.Status);
+        Assert.True(session.Gate.Busy, "Inventor is still computing");
+        Assert.False(session.Gate.CanStart);
+        Assert.False(await session.Health.RunAsync(_ => throw new InvalidOperationException("must not start"), default));
+        pending.SetResult(Report("r1"));
+        for (int i = 0; i < 200 && session.Gate.Busy; i++) await Task.Delay(10);
+        Assert.False(session.Gate.Busy);
+        Assert.Equal(VerifyStatus.Idle, session.Distance.Status);
+        Assert.Null(session.Distance.Result);
+        Assert.True(session.Gate.CanStart);
+    }
+
+    [Fact]
+    public async Task ACancelledRequestThatAlreadyFinishedReleasesTheGateAtOnce()
+    {
+        var session = new VerifySession();
+        using var cts = new CancellationTokenSource();
+        var run = session.Distance.RunAsync(ct => Task.FromCanceled<DistanceReport>(new CancellationToken(true)), cts.Token);
+        Assert.True(await run);
+        Assert.Equal(VerifyStatus.Idle, session.Distance.Status);
+        Assert.False(session.Gate.Busy);
+    }
 }

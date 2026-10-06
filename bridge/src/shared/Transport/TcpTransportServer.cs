@@ -31,7 +31,7 @@ public sealed class TcpTransportServer : ITransportServer
     private int _port;
     private volatile bool _clientConnected;
 
-    private const int MaxLineBytes = 1024 * 1024; // 1 MiB
+    private const int MaxLineBytes = TransportLimits.MaxLineBytes;
 
     /// <param name="authToken">
     /// The token the add-in wrote into its TargetDescriptor. Every incoming envelope's
@@ -99,12 +99,13 @@ public sealed class TcpTransportServer : ITransportServer
 
     private void HandleClient(TcpClient client)
     {
-        client.ReceiveTimeout = 120000;
+        client.ReceiveTimeout = TransportLimits.IdleReadTimeoutMs;
         _clientConnected = true;
         try
         {
             var stream = client.GetStream();
             var reader = new StreamReader(stream, Encoding.UTF8);
+            var lines = new NdjsonLineBuffer(reader);
             var writer = new StreamWriter(stream, new UTF8Encoding(false)) { AutoFlush = true };
 
             var requestTimestamps = new Queue<DateTime>();
@@ -116,7 +117,7 @@ public sealed class TcpTransportServer : ITransportServer
                 string? line;
                 try
                 {
-                    line = NdjsonLineReader.ReadLineBounded(reader, MaxLineBytes, out bool overflow);
+                    line = lines.ReadLine(MaxLineBytes, out bool overflow);
                     if (overflow)
                     {
                         TryWrite(writer, ErrorJson(Guid.Empty, InventorErrorCodes.INVALID_ARGUMENT, "Request exceeded 1 MiB size limit."));

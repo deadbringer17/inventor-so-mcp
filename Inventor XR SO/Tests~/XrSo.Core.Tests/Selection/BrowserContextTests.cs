@@ -40,4 +40,45 @@ public class BrowserContextTests
         context.SetGraph(Graph("b")); Assert.Single(context.Path);
         context.SetGraph(null); Assert.Empty(context.Path);
     }
+
+    [Fact]
+    public void DeepTreeTargetsTheTopLevelChildAndHonoursSuppressionAndFirstMatch()
+    {
+        // Root -> [top0 (suppressed, holds "dup"), top1 -> chain of 60 sub-assemblies ending in "deep", top2 (holds "dup")]
+        JObject Chain(int depth)
+        {
+            var node = new JObject { ["occurrence_id"] = "deep", ["definition_kind"] = "part" };
+            for (int i = depth - 1; i >= 0; i--)
+                node = new JObject { ["occurrence_id"] = "n" + i, ["definition_kind"] = "assembly", ["children"] = new JArray(node) };
+            return node;
+        }
+        var top1 = Chain(60); top1["occurrence_id"] = "top1";
+        var graph = SceneGraph.FromJson(new JObject
+        {
+            ["document_id"] = "a", ["kind"] = "assembly", ["root"] = new JObject
+            {
+                ["name"] = "Root", ["definition_kind"] = "assembly", ["children"] = new JArray(
+                    new JObject { ["occurrence_id"] = "top0", ["suppressed"] = true, ["definition_kind"] = "assembly",
+                        ["children"] = new JArray(new JObject { ["occurrence_id"] = "dup", ["definition_kind"] = "part" }) },
+                    top1,
+                    new JObject { ["occurrence_id"] = "top2", ["definition_kind"] = "assembly",
+                        ["children"] = new JArray(new JObject { ["occurrence_id"] = "dup", ["definition_kind"] = "part" }) })
+            }
+        });
+        var context = new BrowserContext(); context.SetGraph(graph);
+        Assert.Equal("top1", context.SelectionTarget("deep").OccurrenceId);
+        Assert.Equal("top1", context.SelectionTarget("n59").OccurrenceId);
+        Assert.Equal("top2", context.SelectionTarget("dup").OccurrenceId);   // top0 is suppressed
+        Assert.Null(context.SelectionTarget("top0"));
+        Assert.Null(context.SelectionTarget("missing"));
+        Assert.Equal("top2", context.SelectionTarget("top2").OccurrenceId);
+
+        // Entering a sub-assembly changes the context: the cached map must follow it.
+        Assert.True(context.Enter(context.Current.Children[1]));
+        Assert.Equal("n1", context.SelectionTarget("deep").OccurrenceId);
+        Assert.Null(context.SelectionTarget("dup"));
+        // A new graph drops the cached map.
+        context.SetGraph(graph);
+        Assert.Equal("n1", context.SelectionTarget("deep").OccurrenceId);
+    }
 }

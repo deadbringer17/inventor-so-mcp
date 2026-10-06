@@ -79,7 +79,7 @@ public sealed class CommandDispatcher
             Normalize(env, ctx, result, started);
             SanitizeResult(result);
             var serialized = JsonConvert.SerializeObject(result.Data);
-            if (!ResponseSizeGuard.Check(serialized, _maxResponseBytes, out var sizeError))
+            if (!ResponseSizeGuard.Check(serialized, ResponseSizeGuard.DataLimit(_maxResponseBytes), out var sizeError))
                 return InventorCommandResult.Fail(env.Id, sizeError!.Code, sizeError.Message, result.Meta);
             return result;
         }

@@ -83,6 +83,44 @@ public sealed class XrTools
     /// <summary>A composed scene fetches at most this many distinct definitions.</summary>
     public const int MaxSceneDefinitions = 200;
 
+    /// <summary>
+    /// LOWER bound of the wire cost of one triangle: its three uint32 indices alone, base64 (12 x 4/3 = 16 bytes).
+    /// A mesh above the resulting limit can never fit the response cap, while one below it still may: the clamp
+    /// must never refuse a mesh that would have shipped (real CAD meshes cost ~40-60 bytes per triangle, and a
+    /// tighter estimate here would turn today's working meshes into MESH_TOO_LARGE).
+    /// </summary>
+    internal const int MeshMinBytesPerTriangle = 16;
+    /// <summary>Fixed JSON around the bodies (names, revisions, identity, flat-pattern data).</summary>
+    internal const int MeshResponseOverheadBytes = 64 * 1024;
+
+    /// <summary>
+    /// The triangle limit actually sent to the add-in: the requested one, clamped to what fits the response cap, so a
+    /// mesh that cannot be shipped is refused as MESH_TOO_LARGE by the add-in instead of failing as RESPONSE_TOO_LARGE
+    /// after tessellating and encoding it.
+    /// </summary>
+    internal static int EffectiveMaxTriangles(int requested, int maxResponseBytes)
+    {
+        long fit = Math.Max(1L, ((long)maxResponseBytes - MeshResponseOverheadBytes) / MeshMinBytesPerTriangle);
+        return (int)Math.Min(requested, fit);
+    }
+
+    /// <summary>Sends a tessellation command; a size refusal always surfaces as MESH_TOO_LARGE with the effective limit.</summary>
+    private async Task<JToken> SendMesh(string command, JObject arguments, int requested, int effective, CancellationToken ct)
+    {
+        try { return await _client.SendAsync(command, arguments, ct); }
+        catch (InventorGatewayException ex) when (ex.Code == InventorErrorCodes.RESPONSE_TOO_LARGE
+            || (ex.Code == InventorErrorCodes.MESH_TOO_LARGE && effective < requested))
+        {
+            var details = ex.Details != null ? (JObject)ex.Details.DeepClone() : new JObject();
+            details["max_triangles_requested"] = requested;
+            details["max_triangles_effective"] = effective;
+            details["max_response_bytes"] = _config.MaxResponseBytes;
+            throw new InventorGatewayException(InventorErrorCodes.MESH_TOO_LARGE,
+                "The mesh does not fit the " + _config.MaxResponseBytes + "-byte response limit (at most " + effective +
+                " triangles are accepted); raise tolerance_mm to tessellate more coarsely, or raise max_response_bytes.", details);
+        }
+    }
+
     private readonly PluginClient _client;
     private readonly AssetStore _assets;
     private readonly InventorMcpConfig _config;
@@ -102,7 +140,8 @@ public sealed class XrTools
         {
             if (!(tolerance_mm >= 0.01 && tolerance_mm <= 5)) return Error(InventorErrorCodes.INVALID_ARGUMENT, "tolerance_mm must be between 0.01 and 5.");
             if (max_triangles < 1 || max_triangles > 5_000_000) return Error(InventorErrorCodes.INVALID_ARGUMENT, "max_triangles must be between 1 and 5000000.");
-            var (data, source) = await FetchMesh(document_id, tolerance_mm, max_triangles, include_face_ids, ct);
+            var effective = EffectiveMaxTriangles(max_triangles, _config.MaxResponseBytes);
+            var (data, source) = await FetchMesh(document_id, tolerance_mm, max_triangles, effective, include_face_ids, ct);
             var bytes = GlbBuilder.BuildDefinition(source);
             var record = _assets.Put(bytes, "model/gltf-binary", _caller.Client, new JObject
             {
@@ -118,6 +157,7 @@ public sealed class XrTools
                 ["visual_revision"] = data["visual_revision"]?.DeepClone(),
                 ["units"] = "m",
                 ["tolerance_mm"] = tolerance_mm,
+                ["max_triangles_effective"] = effective,
                 ["face_ids_complete"] = data["face_ids_complete"]?.DeepClone(),
                 ["bodies"] = new JArray(source.Bodies.Select(b => new JObject
                 {
@@ -139,10 +179,11 @@ public sealed class XrTools
         {
             if (!(tolerance_mm >= 0.01 && tolerance_mm <= 5)) return Error(InventorErrorCodes.INVALID_ARGUMENT, "tolerance_mm must be between 0.01 and 5.");
             if (max_triangles < 1 || max_triangles > 5_000_000) return Error(InventorErrorCodes.INVALID_ARGUMENT, "max_triangles must be between 1 and 5000000.");
-            var data = (JObject)await _client.SendAsync("get_flat_pattern_mesh", new JObject
+            var effective = EffectiveMaxTriangles(max_triangles, _config.MaxResponseBytes);
+            var data = (JObject)await SendMesh("get_flat_pattern_mesh", new JObject
             {
-                ["document_id"] = document_id, ["tolerance_mm"] = tolerance_mm, ["max_triangles"] = max_triangles,
-            }, ct);
+                ["document_id"] = document_id, ["tolerance_mm"] = tolerance_mm, ["max_triangles"] = effective,
+            }, max_triangles, effective, ct);
             var bodies = (data["bodies"] as JArray ?? new JArray()).OfType<JObject>().Select(MeshPayload.FromJson).ToArray();
             var source = new GlbBuilder.MeshSource
             {
@@ -166,6 +207,7 @@ public sealed class XrTools
                 ["visual_revision"] = data["visual_revision"]?.DeepClone(),
                 ["units"] = "m",
                 ["tolerance_mm"] = tolerance_mm,
+                ["max_triangles_effective"] = effective,
                 ["source"] = data["source"]?.DeepClone(),
                 ["thickness_mm"] = data["thickness_mm"]?.DeepClone(),
                 ["triangle_count"] = source.Bodies.Sum(b => b.Indices.Length / 3),
@@ -207,7 +249,7 @@ public sealed class XrTools
                 var table = new JArray();
                 foreach (var definition in definitions)
                 {
-                    var (data, source) = await FetchMesh(definition, tolerance_mm, 2_000_000, true, ct);
+                    var (data, source) = await FetchMesh(definition, tolerance_mm, 2_000_000, EffectiveMaxTriangles(2_000_000, _config.MaxResponseBytes), true, ct);
                     meshes[definition] = source;
                     var record = _assets.Put(GlbBuilder.BuildDefinition(source), "model/gltf-binary", _caller.Client, new JObject
                     {
@@ -295,8 +337,8 @@ public sealed class XrTools
     public Task<string> Pick(string occurrence_id, string face_id, CancellationToken ct = default)
         => Call("pick_entity", new JObject { ["occurrence_id"] = occurrence_id, ["face_id"] = face_id }, ct);
 
-    private async Task<(JObject data, GlbBuilder.MeshSource source)> FetchMesh(string? documentId, double toleranceMm, int maxTriangles,
-        bool includeFaceIds, CancellationToken ct)
+    private async Task<(JObject data, GlbBuilder.MeshSource source)> FetchMesh(string? documentId, double toleranceMm, int requestedTriangles,
+        int maxTriangles, bool includeFaceIds, CancellationToken ct)
     {
         // Unchanged geometry must keep its asset id: reuse the tessellation of this visual revision.
         var revision = (JObject)await _client.SendAsync("get_visual_revision", new JObject { ["document_id"] = documentId }, ct);
@@ -308,10 +350,10 @@ public sealed class XrTools
             return (cached, cachedSource);
         }
 
-        var data = (JObject)await _client.SendAsync("get_display_mesh", new JObject
+        var data = (JObject)await SendMesh("get_display_mesh", new JObject
         {
             ["document_id"] = documentId, ["tolerance_mm"] = toleranceMm, ["max_triangles"] = maxTriangles, ["include_face_ids"] = includeFaceIds,
-        }, ct);
+        }, requestedTriangles, maxTriangles, ct);
         var bodies = (data["bodies"] as JArray ?? new JArray()).OfType<JObject>().Select(MeshPayload.FromJson).ToArray();
         var source = new GlbBuilder.MeshSource
         {
@@ -319,6 +361,8 @@ public sealed class XrTools
             DocumentId = (string?)data["document_id"],
             Bodies = bodies,
         };
+        // The decoded source holds the geometry; no caller reads the base64 bodies again, so do not keep them alive.
+        data.Remove("bodies");
         if ((string?)data["document_id"] is { } fetchedDocument && (string?)data["visual_revision"] is { } fetchedVisual)
             _meshes.Put(MeshCache.Key(fetchedDocument, fetchedVisual, toleranceMm, includeFaceIds), data, source);
         return (data, source);

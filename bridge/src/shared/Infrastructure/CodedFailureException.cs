@@ -26,6 +26,13 @@ public sealed class CodedFailureException : Exception
         Details = details;
     }
 
+    /// <summary>
+    /// A deadline that expired inside a handler, reported as <c>TIMEOUT</c> instead of surfacing as an
+    /// <c>API_ERROR</c> or as a <c>ROLLED_BACK</c> with no reason a caller can branch on.
+    /// </summary>
+    public static CodedFailureException Timeout(string message)
+        => new CodedFailureException(InventorErrorCodes.TIMEOUT, message);
+
     /// <summary>Canonical <see cref="InventorErrorCodes"/> member for this failure.</summary>
     public string Code { get; }
 
@@ -41,6 +48,8 @@ public sealed class CodedFailureException : Exception
         if (error == null) return null;
         if (error is CodedFailureException coded) return coded.Code;
         if (error is CadBatchException batch) return batch.StepCode ?? batch.Code;
+        // A deadline that expired inside a step is a TIMEOUT even when the handler threw it uncoded.
+        if (error is TimeoutException) return InventorErrorCodes.TIMEOUT;
         string message = error.Message ?? "";
         int colon = message.IndexOf(':');
         if (colon <= 0) return null;

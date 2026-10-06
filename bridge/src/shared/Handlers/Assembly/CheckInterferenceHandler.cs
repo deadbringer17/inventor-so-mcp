@@ -38,9 +38,9 @@ public sealed class CheckInterferenceHandler : HandlerBase, IInventorCommand
             foreach (var tok in occurrencesParam)
             {
                 string name = (string?)tok ?? "";
-                if (!AssemblyRefResolver.TryFindOccurrence(def, name, out var occ, out var err))
+                if (!AssemblyRefResolver.TryFindOccurrence(def, name, out var occ, out var err, out var errDetails))
                 {
-                    return Fail(context, "INVALID_ARGUMENT", err!);
+                    return Fail(context, "INVALID_ARGUMENT", err!, errDetails);
                 }
                 if (occ != null)
                 {

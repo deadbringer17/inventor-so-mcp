@@ -171,6 +171,12 @@ public sealed class InventorMcpConfig
     }
 
     // --- precedence layer 3: CLI flags (highest) ---
+    // Every boolean flag has a negative form so the CLI can override an environment variable or JSON value that
+    // enabled it: --no-<flag> for each --<flag> (--no-full-access, --no-enable-send-code, --no-enable-experimental,
+    // --no-enable-adaptive-bake, --no-http-self-signed, --no-http-allow-insecure-lan, --no-http-allow-dangerous,
+    // --no-voice-diagnostics, --no-pair-control, --no-read-only). --read-only also accepts "true"/"false" as its next
+    // argument. Flags that switch a default-on feature off already existed (--disable-toolbaker, --no-audit);
+    // --enable-toolbaker and --audit are their positive counterparts. When a flag repeats, the last one wins.
     private static void ApplyCli(InventorMcpConfig c, string[] args)
     {
         for (var i = 0; i < args.Length; i++)
@@ -178,27 +184,39 @@ public sealed class InventorMcpConfig
             switch (args[i])
             {
                 case "--read-only":            c.ReadOnly = NextBool(args, ref i, true); break;
+                case "--no-read-only":         c.ReadOnly = false; break;
                 case "--enable-send-code":     c.EnableSendCode = true; break;
+                case "--no-enable-send-code":  c.EnableSendCode = false; break;
                 case "--disable-toolbaker":    c.EnableToolBaker = false; break;
+                case "--enable-toolbaker":     c.EnableToolBaker = true; break;
                 case "--enable-adaptive-bake": c.EnableAdaptiveBake = true; break;
+                case "--no-enable-adaptive-bake": c.EnableAdaptiveBake = false; break;
                 case "--full-access":          c.FullAccess = true; break;
+                case "--no-full-access":       c.FullAccess = false; break;
                 case "--enable-experimental":  c.EnableExperimental = true; break;
+                case "--no-enable-experimental": c.EnableExperimental = false; break;
                 case "--http-urls":            c.HttpUrls = SplitCsv(Next(args, ref i)); break;
                 case "--http-cert":            c.HttpCertificatePath = Next(args, ref i); break;
                 case "--http-self-signed":     c.HttpSelfSignedCertificate = true; break;
+                case "--no-http-self-signed":  c.HttpSelfSignedCertificate = false; break;
                 case "--pair":                 c.PairClientName = Next(args, ref i); break;
                 case "--pair-host":            c.PairHost = Next(args, ref i); break;
                 case "--pair-control":         c.PairControl = true; break;
+                case "--no-pair-control":      c.PairControl = false; break;
                 case "--http-token-file":      c.HttpTokenFile = Next(args, ref i); break;
                 case "--http-allow-insecure-lan": c.HttpAllowInsecureLan = true; break;
+                case "--no-http-allow-insecure-lan": c.HttpAllowInsecureLan = false; break;
                 case "--http-allow-dangerous": c.HttpAllowDangerous = true; break;
+                case "--no-http-allow-dangerous": c.HttpAllowDangerous = false; break;
                 case "--http-origins":         c.HttpAllowedOrigins = SplitCsv(Next(args, ref i)); break;
                 case "--http-rate-limit":      if (int.TryParse(Next(args, ref i), out var r)) c.HttpRateLimitPerMinute = r; break;
                 case "--voice-command":        c.VoiceCommand = Next(args, ref i); break;
                 case "--voice-timeout-ms":     if (int.TryParse(Next(args, ref i), out var vt)) c.VoiceTimeoutMs = vt; break;
                 case "--voice-diagnostics":    c.VoiceDiagnostics = true; break;
+                case "--no-voice-diagnostics": c.VoiceDiagnostics = false; break;
                 case "--public-url":           c.PublicBaseUrl = Next(args, ref i); break;
                 case "--no-audit":             c.AuditEnabled = false; break;
+                case "--audit":                c.AuditEnabled = true; break;
                 case "--toolsets":             c.Toolsets = SplitCsv(Next(args, ref i)); break;
                 case "--target":               c.TargetId = Next(args, ref i); break;
                 case "--timeout-ms":           if (int.TryParse(Next(args, ref i), out var t)) c.TimeoutMs = t; break;
@@ -225,7 +243,15 @@ public sealed class InventorMcpConfig
     {
         var v = Environment.GetEnvironmentVariable(name);
         if (string.IsNullOrWhiteSpace(v)) return null;
-        return v.Trim().ToLowerInvariant() is "1" or "true" or "yes" or "on";
+        switch (v.Trim().ToLowerInvariant())
+        {
+            case "1": case "true": case "yes": case "on": return true;
+            case "0": case "false": case "no": case "off": return false;
+            default:
+                // An unrecognised value must not silently switch a (possibly security-relevant) flag off: keep the previous layer's value.
+                Console.Error.WriteLine($"inventor-so-mcp: ignoring {name}='{v.Trim()}': not a boolean (use 1/true/yes/on or 0/false/no/off); keeping the previous value.");
+                return null;
+        }
     }
     private static int? Int(string name)
         => int.TryParse(Environment.GetEnvironmentVariable(name), out var v) ? v : null;

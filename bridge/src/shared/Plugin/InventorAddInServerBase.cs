@@ -6,6 +6,7 @@ using InvApi = global::Inventor;      // Autodesk.Inventor.Interop (aliased to a
 using Newtonsoft.Json;
 using Bimwright.Ipt.Shared.Contracts;
 using Bimwright.Ipt.Shared.Infrastructure;
+using Bimwright.Ipt.Shared.Security;
 using Bimwright.Ipt.Shared.Transport;
 
 namespace Bimwright.Ipt.Shared.Plugin;
@@ -100,9 +101,12 @@ public abstract class InventorAddInServerBase : InvApi.ApplicationAddInServer
         TargetDescriptor descriptor,
         TaskCompletionSource<string> tcs)
     {
+        // Kept outside the try so a failure after parsing still answers under the caller's id.
+        Guid requestId = Guid.Empty;
         try
         {
             var env = JsonConvert.DeserializeObject<InventorCommandEnvelope>(line)!;
+            requestId = env.Id;
             if (!AuthToken.Verify(descriptor.AuthToken, env.AuthToken))
             {
                 tcs.TrySetResult(Err(env.Id, InventorErrorCodes.UNAUTHORIZED, "Invalid or missing authorization token."));
@@ -138,7 +142,7 @@ public abstract class InventorAddInServerBase : InvApi.ApplicationAddInServer
         }
         catch (Exception ex)
         {
-            tcs.TrySetResult(Err(Guid.Empty, InventorErrorCodes.API_ERROR, ex.Message));
+            tcs.TrySetResult(Err(requestId, InventorErrorCodes.API_ERROR, ErrorSanitizer.Sanitize(ex)));
         }
     }
 

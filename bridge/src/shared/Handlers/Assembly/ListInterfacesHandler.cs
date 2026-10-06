@@ -31,9 +31,9 @@ public sealed class ListInterfacesHandler : HandlerBase, IInventorCommand
         if (activeDoc is Inv.AssemblyDocument assemblyDoc)
         {
             var def = assemblyDoc.ComponentDefinition;
-            if (!AssemblyRefResolver.TryFindOccurrence(def, occurrenceName, out occurrence, out var err))
+            if (!AssemblyRefResolver.TryFindOccurrence(def, occurrenceName, out occurrence, out var err, out var errDetails))
             {
-                return Fail(context, "INVALID_ARGUMENT", err!);
+                return Fail(context, "INVALID_ARGUMENT", err!, errDetails);
             }
             targetDef = occurrence != null ? (Inv.ComponentDefinition)occurrence.Definition : (Inv.ComponentDefinition)def;
         }

@@ -47,9 +47,11 @@ namespace InventorXrSo.Core.Selection
                     var entityId = await _backend.PickFaceAsync(occurrenceId, faceId, ct);
                     ct.ThrowIfCancellationRequested();
                     if (generation != _generation) return;
-                    Current = new Selection(kind, occurrenceId, faceId, entityId);
+                    Set(new Selection(kind, occurrenceId, faceId, entityId));
                 }
                 await _backend.HighlightAsync(new[] { Current.EntityId }, ct);
+                // A newer selection or a clear overtook this highlight: it may have reached Inventor after theirs.
+                if (generation != _generation) await ReconcileAsync(ct);
             }
             catch
             {
@@ -66,6 +68,20 @@ namespace InventorXrSo.Core.Selection
             if (Current.Kind == SelectionKind.None) return;
             ResetLocal();
             await _backend.ClearHighlightAsync(ct);
+        }
+
+        /// <summary>Re-asserts the current selection on Inventor after a stale highlight may have landed late.</summary>
+        private async Task ReconcileAsync(CancellationToken ct)
+        {
+            int seen;
+            do
+            {
+                seen = _generation;
+                var current = Current;
+                await _backend.ClearHighlightAsync(ct);
+                if (current.Kind != SelectionKind.None && current.EntityId != null)
+                    await _backend.HighlightAsync(new[] { current.EntityId }, ct);
+            } while (seen != _generation);
         }
 
         private void Set(Selection selection)

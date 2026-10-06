@@ -74,7 +74,7 @@ public sealed class DrawingTemplateManifest
         double declaredWidthMm = declaredWidthCm * 10, declaredHeightMm = declaredHeightCm * 10;
         if (xMax > declaredWidthMm + SheetToleranceMm || yMax > declaredHeightMm + SheetToleranceMm)
             throw new ArgumentException("usable_area_mm falls outside the declared " + sheetSize + " " + orientation
-                + " sheet (" + declaredWidthMm.ToString("F0") + " x " + declaredHeightMm.ToString("F0") + " mm).");
+                + " sheet (" + declaredWidthMm.ToString("F0", System.Globalization.CultureInfo.InvariantCulture) + " x " + declaredHeightMm.ToString("F0", System.Globalization.CultureInfo.InvariantCulture) + " mm).");
         return new DrawingTemplateManifest(sheetSize, orientation, xMin, yMin, xMax, yMax);
     }
 
@@ -102,9 +102,9 @@ public sealed class DrawingTemplateManifest
         if (Math.Abs(actualWidthCm - declaredWidthCm) > toleranceCm ||
             Math.Abs(actualHeightCm - declaredHeightCm) > toleranceCm)
             throw new ArgumentException("The manifest declares a " + SheetSize + " " + Orientation + " sheet ("
-                + (declaredWidthCm * 10).ToString("F0") + " x " + (declaredHeightCm * 10).ToString("F0")
+                + (declaredWidthCm * 10).ToString("F0", System.Globalization.CultureInfo.InvariantCulture) + " x " + (declaredHeightCm * 10).ToString("F0", System.Globalization.CultureInfo.InvariantCulture)
                 + " mm) but the template's sheet measures "
-                + (actualWidthCm * 10).ToString("F0") + " x " + (actualHeightCm * 10).ToString("F0")
+                + (actualWidthCm * 10).ToString("F0", System.Globalization.CultureInfo.InvariantCulture) + " x " + (actualHeightCm * 10).ToString("F0", System.Globalization.CultureInfo.InvariantCulture)
                 + " mm. Fix sheet_size/orientation, or point at the manifest that belongs to this template.");
         return new UsableArea(actualWidthCm, actualHeightCm,
             UnitConvertMm(XMinMm), UnitConvertMm(YMinMm), UnitConvertMm(XMaxMm), UnitConvertMm(YMaxMm));

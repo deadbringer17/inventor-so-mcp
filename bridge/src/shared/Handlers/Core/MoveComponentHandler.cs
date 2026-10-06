@@ -55,7 +55,7 @@ public sealed class MoveComponentHandler : HandlerBase, IInventorCommand
         }
         try
         {
-            if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired before movement");
+            if (ctx.IsDeadlineExceeded?.Invoke() == true) throw CodedFailureException.Timeout("Expired before movement");
             app.UserInterfaceManager.UserInteractionDisabled = true;
             transaction = app.TransactionManager.StartTransaction((Inventor._Document)doc, "Inventor SO component translation");
             if (transaction.HasParentTransaction) throw ConcurrencyFailure.TransactionBusy();
@@ -81,7 +81,7 @@ public sealed class MoveComponentHandler : HandlerBase, IInventorCommand
             foreach (ComponentOccurrence other in def.Occurrences)
             {
                 if (ReferenceEquals(other, occurrence) || other.Suppressed) continue;
-                if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Deadline during clearance checks.");
+                if (ctx.IsDeadlineExceeded?.Invoke() == true) throw CodedFailureException.Timeout("Deadline during clearance checks.");
                 var pair = app.TransientObjects.CreateObjectCollection(); pair.Add(occurrence); pair.Add(other);
                 if (def.AnalyzeInterference(pair).Count > 0) throw new InvalidOperationException("INTERFERENCE: " + other.Name);
                 double distance = app.MeasureTools.GetMinimumDistance(occurrence, other) * 10;
@@ -92,12 +92,13 @@ public sealed class MoveComponentHandler : HandlerBase, IInventorCommand
             EnsureOwned();
             if (_insert && (source!.Dirty || source.FullFileName != sourcePath))
                 throw new InvalidOperationException("SOURCE_CHANGED: the source part was modified or moved during insertion.");
-            if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired before commit.");
+            if (ctx.IsDeadlineExceeded?.Invoke() == true) throw CodedFailureException.Timeout("Expired before commit.");
             if (app.ActiveDocument == null || EntityReferences.DocumentId(app.ActiveDocument) != id)
                 throw ConcurrencyFailure.DocumentChanged(id, app.ActiveDocument == null ? null : EntityReferences.DocumentId(app.ActiveDocument), "the move");
             JToken? resultId = _insert ? (move.Preview ? null : EntityReferences.Describe(doc, occurrence)["id"]) : p["component_id"];
             if (move.Preview) transaction.Abort(); else transaction.End();
             transaction = null;
+            if (move.Preview) RevisionRestore.AfterAbort(ctx, id, (string?)p["expected_revision"]);
             return Ok(ctx, new JObject { ["status"] = move.Preview ? "preview_rolled_back" : "committed",
                 ["document_id"] = id, ["revision"] = ctx.Events.Revision(id), ["component_id"] = resultId,
                 ["translation_mm"] = new JArray(move.X, move.Y, move.Z), ["minimum_clearance_mm"] = move.Clearance,
@@ -118,6 +119,8 @@ public sealed class MoveComponentHandler : HandlerBase, IInventorCommand
                         "Rollback failed; inspect the model before continuing. Failure: " + ex.Message +
                         "; rollback: " + rollback.Message, CodedFailureException.ReasonOf(ex), ex);
                 }
+                // Inventor raises change events on abort: the model is as read, so is the revision.
+                RevisionRestore.AfterAbort(ctx, id, (string?)p["expected_revision"]);
                 throw new CodedFailureException(InventorErrorCodes.ROLLED_BACK,
                     "Rolled back; nothing was changed. " + ex.Message, CodedFailureException.ReasonOf(ex), ex);
             }

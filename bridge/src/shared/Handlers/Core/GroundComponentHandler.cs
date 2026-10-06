@@ -55,7 +55,7 @@ public sealed class GroundComponentHandler : HandlerBase, IInventorCommand
         }
         try
         {
-            if (ctx.IsDeadlineExceeded?.Invoke() == true) throw new TimeoutException("Expired before grounding.");
+            if (ctx.IsDeadlineExceeded?.Invoke() == true) throw CodedFailureException.Timeout("Expired before grounding.");
             transaction = app.TransactionManager.StartTransaction((Inventor._Document)doc, "Inventor SO ground component");
             if (transaction.HasParentTransaction) throw ConcurrencyFailure.TransactionBusy();
             occurrence.Grounded = grounded;
@@ -97,6 +97,8 @@ public sealed class GroundComponentHandler : HandlerBase, IInventorCommand
                         "Rollback failed; inspect the model before continuing. Failure: " + ex.Message +
                         "; rollback: " + rollback.Message, CodedFailureException.ReasonOf(ex), ex);
                 }
+                // Inventor raises change events on abort: the model is as read, so is the revision.
+                RevisionRestore.AfterAbort(ctx, id, (string?)p["expected_revision"]);
                 throw new CodedFailureException(InventorErrorCodes.ROLLED_BACK,
                     "Rolled back; nothing was changed. " + ex.Message, CodedFailureException.ReasonOf(ex), ex);
             }

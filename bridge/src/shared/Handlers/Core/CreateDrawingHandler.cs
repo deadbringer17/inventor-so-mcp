@@ -206,7 +206,7 @@ public sealed class CreateDrawingHandler : HandlerBase, IInventorCommand
             {
                 double neededWidthMm = UnitConvert.CmToMm(plan.RequiredWidthCm);
                 double neededHeightMm = UnitConvert.CmToMm(plan.RequiredHeightCm);
-                string needed = neededWidthMm.ToString("F0") + " x " + neededHeightMm.ToString("F0") + " mm";
+                string needed = neededWidthMm.ToString("F0", System.Globalization.CultureInfo.InvariantCulture) + " x " + neededHeightMm.ToString("F0", System.Globalization.CultureInfo.InvariantCulture) + " mm";
                 var details = new JObject { ["required_width_mm"] = neededWidthMm, ["required_height_mm"] = neededHeightMm };
                 if (requestedScale.HasValue)
                     throw new CodedFailureException(InventorErrorCodes.VIEW_OUTSIDE_LAYOUT,

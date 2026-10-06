@@ -24,6 +24,21 @@ public sealed class FakeBackend : IInventorBackend
     public Action RaiseChanged { get; private set; }
     public bool CloseEventsImmediately { get; set; }
 
+    /// <summary>Awaited inside every mesh/asset call (after it is counted in flight): lets a test hold calls open.</summary>
+    public Func<string, CancellationToken, Task> MeshGate { get; set; }
+    private int _inFlight, _maxInFlight;
+    /// <summary>Highest number of mesh/asset calls that were running at the same moment.</summary>
+    public int MaxConcurrentMeshCalls => Volatile.Read(ref _maxInFlight);
+
+    private async Task Gated(string id, CancellationToken ct)
+    {
+        int now = Interlocked.Increment(ref _inFlight);
+        int seen;
+        while ((seen = Volatile.Read(ref _maxInFlight)) < now && Interlocked.CompareExchange(ref _maxInFlight, now, seen) != seen) { }
+        try { if (MeshGate != null) await MeshGate(id, ct); }
+        finally { Interlocked.Decrement(ref _inFlight); }
+    }
+
     private Task Step(string call)
     {
         lock (_callsLock) { _calls.Add(call); }
@@ -39,11 +54,12 @@ public sealed class FakeBackend : IInventorBackend
     public async Task<DefinitionMesh> GetDefinitionMeshAsync(string id, CancellationToken ct)
     {
         await Step("mesh:" + id);
+        await Gated(id, ct);
         if (TooLarge.Contains(id)) throw new McpToolException("inventor_get_display_mesh", "MESH_TOO_LARGE", "too large", null);
         return DefinitionMesh.FromJson(id, new JObject { ["asset"] = new JObject { ["asset_id"] = "a_" + id, ["asset_url"] = "/assets/a_" + id } });
     }
 
-    public async Task<byte[]> GetAssetAsync(DefinitionMesh mesh, CancellationToken ct) { await Step("asset:" + mesh.DefinitionDocumentId); return Meshes[mesh.DefinitionDocumentId]; }
+    public async Task<byte[]> GetAssetAsync(DefinitionMesh mesh, CancellationToken ct) { await Step("asset:" + mesh.DefinitionDocumentId); await Gated(mesh.DefinitionDocumentId, ct); return Meshes[mesh.DefinitionDocumentId]; }
     public async Task<string> PickFaceAsync(string occ, string face, CancellationToken ct) { await Step("pick:" + occ + ":" + face); return Pick(occ, face); }
     public async Task HighlightAsync(IReadOnlyList<string> ids, CancellationToken ct) => await Step("highlight:" + string.Join(",", ids));
     public async Task ClearHighlightAsync(CancellationToken ct) => await Step("clear");

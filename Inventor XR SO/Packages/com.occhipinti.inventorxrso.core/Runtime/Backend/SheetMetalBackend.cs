@@ -70,7 +70,7 @@ namespace InventorXrSo.Core.Backend
     public sealed partial class InventorBackend : ISheetMetalBackend
     {
         // Separate from the folded-part cache and from tentative Design preview assets.
-        private readonly IAssetCache _flatPatternCache = new MemoryAssetCache();
+        private readonly IAssetCache _flatPatternCache = new MemoryAssetCache(maxEntries: 4, maxBytes: 64L * 1024 * 1024);
 
         public async Task<SheetMetalContext> GetSheetMetalContextAsync(DocumentState state, CancellationToken ct)
         {

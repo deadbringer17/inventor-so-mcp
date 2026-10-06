@@ -2,6 +2,7 @@
 using System;
 using Newtonsoft.Json.Linq;
 using Inventor;
+using Bimwright.Ipt.Shared.Contracts;
 
 namespace Bimwright.Ipt.Shared.Handlers.Parameters;
 
@@ -52,47 +53,33 @@ internal static class ParameterValueDto
 
     private static void AddConvertedValue(JObject o, double internalValue, string? unit)
     {
-        var u = (unit ?? "").Trim().ToLowerInvariant();
-        if (IsAngle(u))
+        // Explicit unit table: only exact length/area/volume/angle tokens are converted. Anything else
+        // (compound units, densities, stresses, time, mass) keeps its internal value, next to the
+        // "unit" string already on the DTO, so it is never scaled as if it were millimetres.
+        switch (ParameterUnitClassifier.Classify(unit))
         {
-            o["value_deg"] = UnitConvert.RadToDeg(internalValue);
-            return;
+            case ParameterUnitKind.Angle:
+                o["value_deg"] = UnitConvert.RadToDeg(internalValue);
+                break;
+            case ParameterUnitKind.Volume:
+                o["value_mm3"] = UnitConvert.Cm3ToMm3(internalValue);
+                break;
+            case ParameterUnitKind.Area:
+                o["value_mm2"] = UnitConvert.Cm2ToMm2(internalValue);
+                break;
+            case ParameterUnitKind.Length:
+                o["value_mm"] = UnitConvert.CmToMm(internalValue);
+                break;
+            case ParameterUnitKind.Unitless:
+                o["value_unitless"] = internalValue;
+                break;
+            default:
+                o["value_internal"] = internalValue;
+                // Compatibility: before the unit table these landed in value_unitless, which XR clients read
+                // (value_mm ?? value_deg ?? value_unitless); keep it so they do not fall back to 0.
+                o["value_unitless"] = internalValue;
+                break;
         }
-
-        if (IsVolume(u))
-        {
-            o["value_mm3"] = UnitConvert.Cm3ToMm3(internalValue);
-            return;
-        }
-
-        if (IsArea(u))
-        {
-            o["value_mm2"] = UnitConvert.Cm2ToMm2(internalValue);
-            return;
-        }
-
-        if (IsLength(u))
-        {
-            o["value_mm"] = UnitConvert.CmToMm(internalValue);
-            return;
-        }
-
-        o["value_unitless"] = internalValue;
-    }
-
-    private static bool IsAngle(string u) => u.Contains("deg") || u.Contains("rad");
-
-    private static bool IsArea(string u) =>
-        u.Contains("^2") || u.Contains("**2") || u.Contains("area");
-
-    private static bool IsVolume(string u) =>
-        u.Contains("^3") || u.Contains("**3") || u.Contains("volume");
-
-    private static bool IsLength(string u)
-    {
-        if (string.IsNullOrWhiteSpace(u) || u == "ul") return false;
-        return u.Contains("mm") || u.Contains("cm") || u.Contains("meter") || u == "m" ||
-               u.Contains("in") || u.Contains("ft") || u.Contains("mil");
     }
 }
 #endif

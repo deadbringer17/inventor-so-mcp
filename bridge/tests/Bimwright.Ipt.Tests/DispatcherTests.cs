@@ -106,6 +106,41 @@ public sealed class DispatcherTests
         Assert.Equal(expected, r.Ok);
     }
 
+    private static CommandDispatcher MakeWithLimit(int limit, int dataChars)
+        => new(new Dictionary<string, IInventorCommand>
+        {
+            ["big"] = new FakeCmd { Name = "big", IsReadOnly = true,
+                Body = () => InventorCommandResult.Success(Guid.Empty, new JObject { ["s"] = new string('x', dataChars) }, new InventorResponseMeta()) },
+        }, limit);
+
+    [Fact]
+    public void ResponseThatFitsOnlyWithoutTheEnvelopeIsRefused()
+    {
+        // Data alone is under the client limit, but the envelope around it would push the line over.
+        const int limit = 200_000;
+        var d = MakeWithLimit(limit, limit - 10_000);
+        var r = d.Dispatch(new InventorCommandContext(), new InventorCommandEnvelope { Command = "big" });
+        Assert.False(r.Ok);
+        Assert.Equal(InventorErrorCodes.RESPONSE_TOO_LARGE, r.Error!.Code);
+    }
+
+    [Fact]
+    public void AcceptedResponseAlwaysFitsTheClientLimit()
+    {
+        const int limit = 200_000;
+        var d = MakeWithLimit(limit, limit - ResponseSizeGuard.EnvelopeMarginBytes - 1_000);
+        var r = d.Dispatch(new InventorCommandContext(), new InventorCommandEnvelope { Command = "big" });
+        Assert.True(r.Ok);
+        Assert.True(System.Text.Encoding.UTF8.GetByteCount(Newtonsoft.Json.JsonConvert.SerializeObject(r)) <= limit);
+    }
+
+    [Theory]
+    [InlineData(5_000_000, 5_000_000 - 64 * 1024)]
+    [InlineData(150_000, 150_000 - 64 * 1024)]
+    [InlineData(100, 50)]   // too small to spare the margin: keep half
+    public void DataLimitLeavesRoomForTheEnvelope(int clientLimit, int expected)
+        => Assert.Equal(expected, ResponseSizeGuard.DataLimit(clientLimit));
+
     [Fact]
     public void WriteCommandBlockedInReadOnly()
     {
