@@ -103,6 +103,19 @@ con codice e testo originale nel dettaglio (`ActivationErrors`). Fixture `m9h` e
 runner sul Quest, ricarica dell'add-in e prova sull'assieme reale (che il `Documents.Open(.., true)` su un documento
 gia caricato restituisca lo stesso documento senza ricaricarlo e senza sporcarlo non e verificato senza Inventor).
 
+## Runner definizioni senza finestra M9H — 6 ottobre 2026 (input sintetico, fixture `m9h`, Inventor 2027 reale)
+
+Riproduce il caso dell'assieme reale dell'utente: solo l'assieme principale ha una finestra,
+tutte le definizioni sono caricate **senza finestra** (`Documents.VisibleDocuments` = 1; ispezione
+nativa prima del run: `has_window=false` per AsmFixed e le altre). Prima della correzione
+`inventor_activate_open_document_xr` falliva con `API_ERROR` (E_FAIL 0x80004005) subito
+(3–5 ms) perché `Document.Activate()` non attiva un documento senza finestra. Dopo la
+correzione (`Documents.Open(FullFileName, visible)` come ripiego) esito **`PASS COMPLETE`**
+(`artifacts/m9h-verification/device/quest-acceptance-run-20261006-105640.json`): ingresso in
+AsmFlex, AsmFlexInner, PartX, AsmFixed e AsmInner e ritorno con Torna ×3.
+Resta non provato: sull'assieme reale (APE-A-0001, 103 documenti) e il vincolo su un
+sottoassieme flessibile; l'effetto «mostra la finestra» sui documenti entrati è voluto.
+
 ## Sonda live `face_feature` — 5 ottobre 2026
 
 `dotnet run --project bridge/tests/M3LiveProbe -- --face-feature` contro Inventor

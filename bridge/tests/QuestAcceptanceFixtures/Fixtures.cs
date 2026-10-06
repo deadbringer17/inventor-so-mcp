@@ -416,8 +416,8 @@ internal static class Fixtures
         };
         return new JObject
         {
-            ["assembly"] = robotPath, ["asm_fixed"] = asmFixed.FullFileName, ["asm_inner"] = asmInner.FullFileName,
-            ["asm_flex"] = asmFlex.FullFileName, ["asm_flex_inner"] = asmFlexInner.FullFileName,
+            ["assembly"] = robotPath, ["asm_fixed"] = (string)documents[1]!, ["asm_inner"] = (string)documents[2]!,
+            ["asm_flex"] = (string)documents[3]!, ["asm_flex_inner"] = (string)documents[4]!,   // the Document objects may be closed (m9h): use the saved paths
             ["part_l1"] = partL1, ["part_i"] = partI, ["part_f"] = partF, ["part_x"] = partX, ["part_y"] = partY, ["part_g"] = partG,
             ["documents"] = documents, ["expected"] = expected,
         };
