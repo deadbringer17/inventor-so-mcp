@@ -236,6 +236,21 @@ namespace InventorXrSo.Tests
         }
 
         [Test]
+        public async Task BackRestoresTheVerifyViewWhenTheAssemblyWorkspaceOwnsTheView()
+        {
+            var backend = Online();
+            _workspace.AuthoringOwnsView = () => true;   // M9: the document opens the Assieme workspace, which owns the view
+            Do(InspectWorkspace.IdInterference);
+            backend.Interference.SetResult(PairWithOnlyBoltOne());
+            var overlay = Field<VerifyOverlay>("_overlay"); var visibility = Field<ComponentVisibility>("_visibility");
+            await Until(() => overlay.BoxCount > 0);
+            Assert.True(visibility.AnyChanged);
+            _workspace.Back();
+            Assert.False(visibility.AnyChanged, "X restores the visibility also while the authoring workspace owns the view");
+            Assert.AreEqual(0, overlay.BoxCount); Assert.AreEqual(0, overlay.TintedBodies); Assert.False(overlay.Pulsing);
+        }
+
+        [Test]
         public async Task ZeroInterferencesApplyNoView()
         {
             var backend = Online();

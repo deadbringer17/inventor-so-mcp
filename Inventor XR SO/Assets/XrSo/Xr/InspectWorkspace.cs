@@ -526,6 +526,8 @@ namespace InventorXrSo.Xr
                 // The authoring workspace owns the Back chain (keypad, group, ring, draft); only Inspect's own list and measurement here.
                 if (_picker != null) { ClosePicker(); return; }
                 if (_shell != null && _shell.Palette.InTabGroup) return;
+                // The verification view (X-Ray, red tint, boxes) is Inspect's own state: X restores it here too.
+                if (ClearFocus()) { SetNotice(""); Refresh(); return; }
                 if (_distanceA != null) { CancelDistance(); SetNotice("Distanza annullata."); Refresh(); return; }
                 if (Measuring) { _measure.Cancel(); SetNotice("Misura annullata."); Refresh(); }
                 return;

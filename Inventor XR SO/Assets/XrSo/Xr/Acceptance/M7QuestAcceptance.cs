@@ -224,8 +224,12 @@ namespace InventorXrSo.Xr
         {
             await WaitUntil(() => !ReadBoolean(assembly, "_busy") && Catalog.Find(AssemblyWorkspace.IdComponents)?.Enabled == true, ct);
             RunAction(AssemblyWorkspace.IdComponents);
-            var action = assembly.Actions.FirstOrDefault(a => a.Id.StartsWith(AssemblyWorkspace.IdPickPrefix, StringComparison.Ordinal) && a.Label.Contains(name));
-            Check(action != null && action.Enabled && action.TryInvoke(), "Assieme lists " + name);
+            XrAction Find() => assembly.Actions.FirstOrDefault(a => a.Id.StartsWith(AssemblyWorkspace.IdPickPrefix, StringComparison.Ordinal) && a.Label.Contains(name));
+            // The list is filled by an asynchronous backend read: wait for the entry instead of reading it on the same frame.
+            for (int i = 0; i < 150 && Find() == null; i++) await Task.Delay(200, ct);
+            var action = Find();
+            Check(action != null && action.Enabled && action.TryInvoke(), "Assieme lists " + name + " (entries: "
+                + string.Join(" | ", assembly.Actions.Where(a => a.Id.StartsWith(AssemblyWorkspace.IdPickPrefix, StringComparison.Ordinal)).Select(a => a.Label + (a.Enabled ? "" : " [off]"))) + ")");
             await WaitUntil(() => Read<AssemblyOccurrence>(assembly, "_occurrence")?.Name?.Contains(name) == true && !ReadBoolean(assembly, "_busy"), ct);
             await WaitUntil(() => Catalog.Find(InspectWorkspace.IdHide)?.Enabled == true, ct);
         }
