@@ -39,7 +39,7 @@ namespace InventorXrSo.Xr
             _overlay = new GameObject("Verifiche").AddComponent<VerifyOverlay>();
             _overlay.transform.SetParent(_view.transform, false);
             _overlay.Initialize(lineMaterial, _head);
-            _verifySession.Interference.Changed += () => OnFindingsJob(_verifySession.Interference, VerifyFindings.FromInterference, VerifyFindings.Summary);
+            _verifySession.Interference.Changed += () => OnFindingsJob(_verifySession.Interference, VerifyFindings.FromInterference, VerifyFindings.Summary, ShowAllInterferences);
             _verifySession.Health.Changed += () => OnFindingsJob(_verifySession.Health, VerifyFindings.FromHealth, VerifyFindings.Summary);
             _verifySession.Distance.Changed += OnDistanceChanged;
         }
@@ -185,7 +185,7 @@ namespace InventorXrSo.Xr
             Refresh();
         }
 
-        private void OnFindingsJob<T>(VerifyJob<T> job, Func<T, IReadOnlyList<VerifyFinding>> rows, Func<T, string> summary) where T : class, IVerifyResult
+        private void OnFindingsJob<T>(VerifyJob<T> job, Func<T, IReadOnlyList<VerifyFinding>> rows, Func<T, string> summary, Func<bool> showAll = null) where T : class, IVerifyResult
         {
             if (!Active)
             {
@@ -204,7 +204,10 @@ namespace InventorXrSo.Xr
                     _findings = rows(job.Result); _findingsJob = job; _findingsStale = false;
                     // Computed on a revision the document has already left (it moved while this ran): never shown as fresh.
                     if (Outdated(job.Revision)) { job.OnDocumentState(_documentState); return; }
-                    SetNotice(summary(job.Result) + (_findings.Count > 0 ? "\nApri Risultati per vederli uno a uno." : ""));
+                    // Interference only (showAll != null): X-Ray view of every finding, red and pulsing, when there is at least one.
+                    bool globalView = _findings.Count > 0 && showAll != null && showAll();
+                    SetNotice(summary(job.Result) + (_findings.Count > 0 ? "\nApri Risultati per vederli uno a uno." : "")
+                        + (globalView ? "\nVista X-Ray con le interferenze in rosso. Indietro per tornare alla vista." : ""));
                     break;
                 case VerifyStatus.Failed: SetNotice(job.ErrorMessage); break;
                 case VerifyStatus.Stale:
@@ -292,8 +295,30 @@ namespace InventorXrSo.Xr
                 if (bounds.HasValue) FocusOn(bounds.Value);
             }
             _overlay.ShowBoxes(finding.Boxes);
+            _overlay.StartPulse();
             SetNotice(finding.Title + "\n" + finding.Detail + (_findingsStale ? "\nRisultato obsoleto: rilancia la verifica." : "") + "\nIndietro per tornare alla vista.");
             Refresh();
+        }
+
+        /// <summary>
+        /// After an interference run with findings: every non-involved part goes X-Ray, every involved part is tinted red and every
+        /// interference box is drawn, all pulsing for 5 s. The model is not moved. Returns whether the view was applied.
+        /// Back / Mostra tutto restore it through ClearFocus (same snapshot as a single-row focus).
+        /// </summary>
+        private bool ShowAllInterferences()
+        {
+            if (!Active || _findings.Count == 0) return false;
+            if (_focusSnapshot == null) _focusSnapshot = _visibility.Snapshot();
+            _overlay.Clear();
+            var leaves = _findings.SelectMany(f => f.OccurrenceIds).SelectMany(LeafIds).Distinct().ToArray();
+            if (leaves.Length > 0)
+            {
+                _visibility.Isolate(leaves);
+                _overlay.Tint(Instances(leaves).ToArray());
+            }
+            _overlay.ShowBoxes(_findings.SelectMany(f => f.Boxes ?? Enumerable.Empty<VerifyBox>()));
+            _overlay.StartPulse();
+            return true;
         }
 
         /// <summary>True when a row was in focus and the view went back to its previous state.</summary>

@@ -28,10 +28,72 @@ namespace InventorXrSo.Unity.Scene
         public bool HasDistance => _distance != null;
         public string DistanceLabel { get; private set; }
 
+        /// <summary>Red pulse after a verification view opens: length, frequency and alpha depth (0..1) of the dip.</summary>
+        public const float PulseSeconds = 5f;
+        public const float PulseHz = 1.2f;
+        public const float PulseDepth = 0.6f;
+        private const float BoxWidth = 0.0015f;
+        private static readonly int PulseWaveId = Shader.PropertyToID("_PulseWave");
+        private static readonly int PulseDepthId = Shader.PropertyToID("_PulseDepth");
+
+        private float _pulseStart;
+
+        /// <summary>True while the red tint and boxes are pulsing (first 5 s after StartPulse).</summary>
+        public bool Pulsing { get; private set; }
+        /// <summary>The shared red tint material (exposed for tests).</summary>
+        public Material TintMaterial => _tint;
+
         public void Initialize(Material lineMaterial, Transform head)
         {
             _line = lineMaterial; _head = head;
             _tint = GhostBodies.CreateMaterial("Verify red", new Color(Red.r, Red.g, Red.b, 0.45f));
+        }
+
+        /// <summary>Starts the 5 s pulse on the tint and the boxes now.</summary>
+        public void StartPulse() => StartPulse(Time.unscaledTime);
+
+        /// <summary>Starts the pulse at the given clock value (Time.unscaledTime in play; injectable for tests).</summary>
+        public void StartPulse(float now)
+        {
+            Pulsing = true; _pulseStart = now;
+            if (_tint != null) _tint.SetFloat(PulseDepthId, PulseDepth);
+            TickPulse(now);
+        }
+
+        /// <summary>Advances the pulse to the given clock value; after PulseSeconds it stops and everything goes back to fixed values.</summary>
+        public void TickPulse(float now)
+        {
+            if (!Pulsing) return;
+            float elapsed = now - _pulseStart;
+            if (elapsed >= PulseSeconds) { StopPulse(); return; }
+            float wave = 0.5f - 0.5f * Mathf.Cos(2f * Mathf.PI * PulseHz * Mathf.Max(0f, elapsed));
+            if (_tint != null) _tint.SetFloat(PulseWaveId, wave);
+            ApplyBoxPulse(BoxWidth * (1f + wave), 1f - PulseDepth * wave);
+        }
+
+        private void StopPulse()
+        {
+            Pulsing = false;
+            if (_tint != null) { _tint.SetFloat(PulseWaveId, 0f); _tint.SetFloat(PulseDepthId, 0f); }
+            ApplyBoxPulse(BoxWidth, 1f);
+        }
+
+        private void ApplyBoxPulse(float width, float alpha)
+        {
+            var color = new Color(Red.r, Red.g, Red.b, alpha);
+            foreach (var go in _boxes)
+            {
+                if (go == null) continue;
+                var line = go.GetComponent<LineRenderer>();
+                if (line == null) continue;
+                line.widthMultiplier = width;
+                line.startColor = line.endColor = color;
+            }
+        }
+
+        private void Update()
+        {
+            if (Pulsing) TickPulse(Time.unscaledTime);
         }
 
         /// <summary>Assembly millimetres (Inventor axes, as the GLB) to model metres in Unity: X mirrored like every mesh.</summary>
@@ -65,7 +127,7 @@ namespace InventorXrSo.Unity.Scene
                 var go = new GameObject("InterferenceBox");
                 go.transform.SetParent(transform, false);
                 var line = go.AddComponent<LineRenderer>();
-                line.sharedMaterial = _line; line.useWorldSpace = false; line.widthMultiplier = 0.0015f;
+                line.sharedMaterial = _line; line.useWorldSpace = false; line.widthMultiplier = BoxWidth;
                 line.startColor = line.endColor = Red;
                 line.positionCount = BoxPath.Length;
                 for (int i = 0; i < BoxPath.Length; i++) line.SetPosition(i, corners[BoxPath[i]]);
@@ -97,6 +159,7 @@ namespace InventorXrSo.Unity.Scene
 
         public void Clear()
         {
+            if (Pulsing) StopPulse();
             foreach (var go in _boxes) Release(go);
             foreach (var go in _tints) Release(go);
             _boxes.Clear(); _tints.Clear();

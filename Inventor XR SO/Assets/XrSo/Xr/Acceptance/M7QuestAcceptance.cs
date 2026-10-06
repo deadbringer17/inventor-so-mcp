@@ -103,6 +103,14 @@ namespace InventorXrSo.Xr
             var pair = interference.Pairs[0];
             Check(new[] { pair.AName, pair.BName }.OrderBy(n => n).SequenceEqual(new[] { "M7_A", "M7_B" }), "the pair is M7_A / M7_B: " + pair.AName + " / " + pair.BName);
             Check(Math.Abs(pair.VolumeMm3 - VolumeMm3) <= VolumeMm3 * 0.01, "volume 2000 mm3 +/- 1%, found " + F(pair.VolumeMm3));
+            // Global review view right after the result: X-Ray on the uninvolved cubes, red tint, boxes, 5 s pulse (synthetic check of state, not of the look).
+            await WaitUntil(() => overlay.Pulsing, ct, 5);
+            Check(overlay.Pulsing, "the global interference view is pulsing");
+            Check(view.Instances.Count(i => visibility.Get(i.OccurrenceId) == OccurrenceVisibility.Ghost) == 2, "global view: the two uninvolved cubes are X-Ray");
+            Check(overlay.TintedBodies > 0, "global view: the involved cubes are tinted red");
+            Check(overlay.BoxCount == pair.Boxes.Count, "global view: one box per interference body");
+            Pass("M7-xray-pulse", "synthetic: global X-Ray view with red tint, " + overlay.BoxCount + " box(es) and the " + F(VerifyOverlay.PulseSeconds) + " s pulse started after the interference result");
+            NotCovered("M7-xray-pulse-visual", "resa visiva, ritmo e leggibilità della pulsazione sul Quest richiedono prova fisica");
             RunAction(InspectWorkspace.IdResults);
             PickRow("M7_A");
             Check(view.Instances.Count(i => visibility.Get(i.OccurrenceId) == OccurrenceVisibility.Ghost) == 2, "the row focuses the pair and ghosts the other two cubes");
