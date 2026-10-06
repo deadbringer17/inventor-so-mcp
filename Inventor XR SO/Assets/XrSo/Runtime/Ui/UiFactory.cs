@@ -1,4 +1,5 @@
 using System;
+using InventorXrSo.Core.Ui;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -114,6 +115,33 @@ namespace InventorXrSo.Unity.Ui
             label.margin = new Vector4(2, 0, 2, 0);
             label.color = button.Primary ? UiTheme.Ink : UiTheme.Text;
             button.Label = label;
+            return button;
+        }
+
+        /// <summary>Same catalog action and hit area, with a local icon or complete text fallback.</summary>
+        public static Button ActionButton(Transform parent, XrAction action, float textMm, float iconMm, Action onClick)
+        {
+            var button = (ThemedButton)TextButton(parent, action.Label, action.IsOn ? Accent : Key, textMm, onClick);
+            if (InventorIcons.TryGet(action.Icon, out var sprite))
+            {
+                button.Label.gameObject.SetActive(false);
+                // Dark-theme Inventor glyphs keep their contrast when a selected toggle turns yellow.
+                var iconSurface = Panel(button.transform, "Fondo icona", UiTheme.Navy);
+                iconSurface.anchorMin = iconSurface.anchorMax = iconSurface.pivot = new Vector2(0.5f, 0.5f);
+                iconSurface.sizeDelta = Vector2.one * (iconMm + 2f);
+                var iconObject = new GameObject("Icona", typeof(RectTransform), typeof(Image));
+                iconObject.transform.SetParent(iconSurface, false);
+                var rect = (RectTransform)iconObject.transform;
+                rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
+                rect.sizeDelta = Vector2.one * iconMm;
+                var image = iconObject.GetComponent<Image>();
+                image.sprite = sprite;
+                image.preserveAspect = true;
+                image.raycastTarget = false;
+                button.Icon = image;
+            }
+            button.gameObject.AddComponent<ActionTooltip>().Initialize(action, textMm);
+            button.interactable = action.Enabled;
             return button;
         }
 

@@ -25,6 +25,7 @@ namespace InventorXrSo.Tests
             "M6QuestAcceptance",
             "M7QuestAcceptance",
             "M8QuestAcceptance",
+            "M10QuestAcceptance",
             "M9QuestAcceptance",
             "M9NestedQuestAcceptance",
             "M9FlexQuestAcceptance",
@@ -70,6 +71,7 @@ namespace InventorXrSo.Tests
         [TestCase("M6QuestAcceptance")]
         [TestCase("M7QuestAcceptance")]
         [TestCase("M8QuestAcceptance")]
+        [TestCase("M10QuestAcceptance")]
         [TestCase("M9QuestAcceptance")]
         [TestCase("M9NestedQuestAcceptance")]
         [TestCase("M9FlexQuestAcceptance")]
@@ -111,6 +113,7 @@ namespace InventorXrSo.Tests
         [TestCase("M6QuestAcceptance")]
         [TestCase("M7QuestAcceptance")]
         [TestCase("M8QuestAcceptance")]
+        [TestCase("M10QuestAcceptance")]
         [TestCase("M9QuestAcceptance")]
         [TestCase("M9NestedQuestAcceptance")]
         [TestCase("M9FlexQuestAcceptance")]
@@ -261,6 +264,7 @@ namespace InventorXrSo.Tests
         [TestCase("M6QuestAcceptance")]
         [TestCase("M7QuestAcceptance")]
         [TestCase("M8QuestAcceptance")]
+        [TestCase("M10QuestAcceptance")]
         [TestCase("M9QuestAcceptance")]
         [TestCase("M9NestedQuestAcceptance")]
         [TestCase("M9FlexQuestAcceptance")]
@@ -296,6 +300,22 @@ namespace InventorXrSo.Tests
         }
 
         // ---- M9 nested: runner dei sottoassiemi (fixture m9n)
+
+        [Test]
+        public void M10HasFixtureGuardSyntheticCoverageAndRestorationWrapper()
+        {
+            var source = ReadSource("M10QuestAcceptance");
+            StringAssert.Contains("protected override string FixtureMilestone => \"m6\"", source);
+            StringAssert.Contains("StartIfRequested<M10QuestAcceptance>(\"xr_m10_acceptance\")", source);
+            StringAssert.Contains("await base.Run(ct)", source);
+            Assert.That(source.IndexOf("RequireFixture();", StringComparison.Ordinal), Is.LessThan(source.IndexOf("CheckIconStates();", StringComparison.Ordinal)));
+            foreach (var gate in new[] { "M10-02", "M10-03/04/06", "M10-04-states", "M10-05/07-native", "M10-08-rebuild", "M10-09" })
+                StringAssert.Contains(gate, source);
+            StringAssert.Contains("'m10'", RepoRootFile("scripts/run-quest-acceptance.ps1"));
+            var wrapper = RepoRootFile("scripts/run-m10-acceptance.ps1");
+            foreach (var item in new[] { "--prepare-quest m6", "--restore-quest m6", "--inspect-quest m6", "-Milestone m10", "finally", "Ordinary APK", "Get-FileHash" })
+                StringAssert.Contains(item, wrapper);
+        }
 
         [Test]
         public void M9NestedRunnerHasItsOwnFixtureAndGuardAndCoversTheUserScenario()

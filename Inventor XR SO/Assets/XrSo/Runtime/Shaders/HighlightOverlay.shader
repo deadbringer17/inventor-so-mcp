@@ -8,6 +8,9 @@ Shader "XrSo/HighlightOverlay"
         // distance), so the rim keeps the same apparent thickness near and far. Defaults (Cull Back, 0) leave every other user unchanged.
         [Enum(UnityEngine.Rendering.CullMode)] _Cull ("Cull", Float) = 2
         _Expand ("Rim width (m per m of distance)", Float) = 0
+        // Pulse (M7 interference view): alpha is modulated between 1 and 1 - _PulseDepth following _PulseWave (0..1, driven from C# so tint and boxes stay in phase). Depth 0 (default) disables it.
+        _PulseWave ("Pulse wave (0..1)", Range(0, 1)) = 0
+        _PulseDepth ("Pulse depth (0..1)", Range(0, 1)) = 0
     }
     SubShader
     {
@@ -32,6 +35,8 @@ Shader "XrSo/HighlightOverlay"
             CBUFFER_START(UnityPerMaterial)
                 half4 _Color;
                 float _Expand;
+                float _PulseWave;
+                float _PulseDepth;
             CBUFFER_END
 
             Varyings vert (Attributes input)
@@ -55,7 +60,15 @@ Shader "XrSo/HighlightOverlay"
             {
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
                 if (_XrSectionEnabled > 0.5) clip(-dot(float4(input.positionWS,1), _XrSectionPlane));
-                return _Color;
+                half4 color = _Color;
+                if (_PulseDepth > 0)
+                {
+                    // 0 = full alpha, 1 = deepest dip: alpha dips by _PulseDepth, colour brightens a little at the dip.
+                    float wave = _PulseWave;
+                    color.a *= 1.0 - _PulseDepth * wave;
+                    color.rgb = saturate(color.rgb + 0.25 * _PulseDepth * wave);
+                }
+                return color;
             }
             ENDHLSL
         }

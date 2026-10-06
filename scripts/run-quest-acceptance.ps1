@@ -7,7 +7,7 @@ This script never touches Quest test properties (proximity, guardian).
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9', 'm9n', 'm9f', 'm9h')][string]$Milestone,
+    [Parameter(Mandatory)][ValidateSet('m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9', 'm9n', 'm9f', 'm9h', 'm10')][string]$Milestone,
     [Parameter(Mandatory)][string]$Apk,
     [string]$Serial,
     [int]$TimeoutSeconds = 240,
@@ -21,7 +21,7 @@ Set-StrictMode -Version Latest
 
 # The M6 runner crosses four workspaces and two documents: it needs more than the default of the single-workspace runners.
 if ($Milestone -eq 'm6' -and -not $PSBoundParameters.ContainsKey('TimeoutSeconds')) { $TimeoutSeconds = 780 }
-if ($Milestone -eq 'm8' -and -not $PSBoundParameters.ContainsKey('TimeoutSeconds')) { $TimeoutSeconds = 900 }
+if (($Milestone -eq 'm8' -or $Milestone -eq 'm10') -and -not $PSBoundParameters.ContainsKey('TimeoutSeconds')) { $TimeoutSeconds = 900 }
 # The M9 runner enters and leaves the fixture documents several times (double Trigger, Torna, desktop change, voice) and applies one feature edit.
 if (($Milestone -eq 'm9' -or $Milestone -eq 'm9n' -or $Milestone -eq 'm9f' -or $Milestone -eq 'm9h') -and -not $PSBoundParameters.ContainsKey('TimeoutSeconds')) { $TimeoutSeconds = 960 }
 # The M7 runner waits for three Inventor computations on the fixture.
@@ -143,6 +143,13 @@ if ($ls.Code -eq 0) {
 }
 
 $ordinary = $null
+if ($Milestone -eq 'm10') {
+    $remotePerformance = "$remoteDir/m10-acceptance-performance.json"
+    $performanceTarget = Join-Path $OutDir ($prefix + 'm10-acceptance-performance.json')
+    $profilePull = Invoke-Adb pull $remotePerformance $performanceTarget
+    if ($profilePull.Code -eq 0) { $pulled.Add($performanceTarget) }
+    else { Write-Warning "M10 performance report unavailable: $($profilePull.Text)" }
+}
 if ($OrdinaryApk) {
     $ordinary = Install-Verified (Resolve-Path -LiteralPath $OrdinaryApk).Path 'ordinary APK'
     Write-Host "Ordinary APK reinstalled, sha256: $($ordinary.Local)"

@@ -179,8 +179,8 @@ namespace InventorXrSo.Xr
             var list = new List<XrAction>
             {
                 // Lamiera
-                new XrAction(IdRule, "Regola / Spessore", TabLamiera, () => IsEnabled(CommandIds.SheetMetalRule), OpenRule, CommandReason),
-                new XrAction(IdFlange, "Flangia", TabLamiera, () => IsEnabled(CommandIds.Flange), StartFlange, CommandReason),
+                new XrAction(IdRule, "Regola / Spessore", TabLamiera, () => IsEnabled(CommandIds.SheetMetalRule), OpenRule, CommandReason, icon: "sheetmetal-rule"),
+                new XrAction(IdFlange, "Flangia", TabLamiera, () => IsEnabled(CommandIds.Flange), StartFlange, CommandReason, icon: "flange"),
                 new XrAction(IdFlangeHeight, "Altezza: " + Fmt(_flange.HeightMm) + " mm", TabLamiera,
                     () => _mode.Armed == SheetMetalCommand.Flange && Idle, () => AskNumber(FieldFlangeHeight), NeedFlange, kind: XrActionKind.Numeric),
                 new XrAction(IdFlangeAngle, "Angolo: " + Fmt(_flange.AngleDegrees) + " °", TabLamiera,
@@ -191,18 +191,18 @@ namespace InventorXrSo.Xr
                     () => _screen == "flange" && OptionsOn && _flange.EdgeIds.Count > 0, () => { _flange.Clear(); Refresh(); },
                     () => _screen == "flange" && OptionsOn ? "Nessun bordo selezionato." : NeedFlange()),
                 new XrAction(IdUndo, "Annulla modifica XR", TabLamiera, () => IsEnabled(CommandIds.Undo), () => ApplyHistory(false),
-                    () => historyReason("Nessuna modifica XR da annullare."), new[] { "annulla ultima modifica" }),
+                    () => historyReason("Nessuna modifica XR da annullare."), new[] { "annulla ultima modifica" }, icon: "undo"),
                 new XrAction(IdRedo, "Ripeti modifica XR", TabLamiera, () => IsEnabled(CommandIds.Redo), () => ApplyHistory(true),
-                    () => historyReason("Nessuna modifica XR da ripetere."), new[] { "ripeti ultima modifica" }),
+                    () => historyReason("Nessuna modifica XR da ripetere."), new[] { "ripeti ultima modifica" }, icon: "redo"),
 
                 // Schizzo
                 new XrAction(IdFace, "Faccia da schizzo", TabSketch, () => IsEnabled(CommandIds.SheetMetalFace), () => OpenSketchPick(SheetMetalCommand.Face),
-                    SketchReason, new[] { "crea faccia da schizzo" }),
+                    SketchReason, new[] { "crea faccia da schizzo" }, icon: "sheetmetal-face"),
                 new XrAction(IdCut, "Taglio da schizzo", TabSketch, () => IsEnabled(CommandIds.SheetMetalCut), () => OpenSketchPick(SheetMetalCommand.Cut),
-                    SketchReason, new[] { "taglia da schizzo" }),
+                    SketchReason, new[] { "taglia da schizzo" }, icon: "sheetmetal-cut"),
                 new XrAction(IdSketchChange, "Cambia schizzo", TabSketch,
                     () => OptionsOn && (_mode.Armed == SheetMetalCommand.Face || _mode.Armed == SheetMetalCommand.Cut), () => { SetScreen("sketches"); OpenSketchPicker(); },
-                    () => OptionsOn ? "Scegli prima Faccia o Taglio da schizzo." : CommandReason()),
+                    () => OptionsOn ? "Scegli prima Faccia o Taglio da schizzo." : CommandReason(), icon: "select-sketch"),
                 new XrAction(IdCutExtent, "Estensione: " + (_extent == "thickness" ? "spessore" : "passante"), TabSketch,
                     () => _screen == "cut" && OptionsOn, () =>
                     { _extent = _extent == "thickness" ? "through_all" : "thickness"; if (_extent == "through_all") _acrossBends = false; Preview(); }, NeedCut),
@@ -214,11 +214,11 @@ namespace InventorXrSo.Xr
                     () => _screen == "cut" && OptionsOn ? "Solo con estensione spessore." : NeedCut(), kind: XrActionKind.Toggle, isOn: () => _acrossBends),
 
                 // Sviluppo
-                new XrAction(IdFlatCreate, "Crea sviluppo", TabFlat, () => IsEnabled(CommandIds.FlatPatternCreate), StartFlatPattern, FlatReason, new[] { "sviluppa" }),
+                new XrAction(IdFlatCreate, "Crea sviluppo", TabFlat, () => IsEnabled(CommandIds.FlatPatternCreate), StartFlatPattern, FlatReason, new[] { "sviluppa" }, icon: "flatpattern"),
                 new XrAction(IdFlatShow, "Mostra sviluppo", TabFlat,
                     () => Interactive && !FlatVisible && _mode.Context?.FlatPattern.Exists == true && _flat != null && _flat.State != FlatPatternState.Loading,
                     ShowFlat, () => FlatVisible ? "Lo sviluppo è già visibile." : _mode.Context?.FlatPattern.Exists == true ? CommandReason() : "Lo sviluppo piano non esiste: usa Crea sviluppo.",
-                    new[] { "visualizza sviluppo" }),
+                    new[] { "visualizza sviluppo" }, icon: "flatpattern"),
                 new XrAction(IdFlatHide, "Nascondi sviluppo", TabFlat, () => Active && FlatVisible, () => _flat.Hide(), () => "Lo sviluppo non è visibile."),
                 new XrAction(IdFlatDetach, "Stacca sviluppo", TabFlat, () => Active && FlatVisible && !_flat.Detached, () => _flat.Detach(),
                     () => FlatVisible ? "Lo sviluppo è già staccato." : "Mostra prima lo sviluppo."),
@@ -231,10 +231,10 @@ namespace InventorXrSo.Xr
                 new XrAction(IdViewFlat, "Vista: sviluppo", TabView,
                     () => Active && FlatPatternExists && !FlatViewShown && (FlatVisible || (Interactive && _flat != null && _flat.State != FlatPatternState.Loading)),
                     ShowFlat, () => !FlatPatternExists ? "Lo sviluppo piano non esiste: usa Crea sviluppo." : FlatViewShown ? "La vista Sviluppo è già attiva." : CommandReason(),
-                    new[] { "vista sviluppo" }),
+                    new[] { "vista sviluppo" }, icon: "flatpattern"),
                 new XrAction(IdRefresh, "Aggiorna", TabView,
                     () => Active && _online && _kind == "part" && !_busy && !Locked && _session != null && _session.Status != DesignStatus.RefreshRequired, LoadContext,
-                    () => !_online ? "Offline." : _busy ? "Lettura del contesto lamiera in corso." : CommandReason()),
+                    () => !_online ? "Offline." : _busy ? "Lettura del contesto lamiera in corso." : CommandReason(), icon: "refresh"),
 
                 // Barra di conferma: l'unico percorso verso il CAD
                 new XrAction(CommitIds.Preview, "Anteprima", ActionCatalog.CommitTab,

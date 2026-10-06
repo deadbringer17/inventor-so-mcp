@@ -115,6 +115,18 @@ Windows: spec `docs/superpowers/specs/2026-10-04-m8-grapics-design.md`, piano
 Software implementato, verifica dispositivo/performance e prova fisica aperte.
 Il runner M8 usa la fixture dedicata **M6** (guardia esplicita), con log M8.
 
+M10 **icone Inventor**: migrazione software dei sei provider XR, **34 immagini
+native/46 azioni**, tooltip e fallback, pack completo con provenienza. Runner
+M10 su fixture M6, wrapper con ripristino, APK QA Development per il profilo
+A/B/A testo M8/icone M10 e APK ordinario senza runner. Spec:
+`docs/superpowers/specs/2026-10-06-m10-icone-inventor-design.md`; piano:
+`docs/superpowers/plans/2026-10-06-m10-icone-inventor.md`; inventario:
+`docs/xr-m10-action-inventory.md`; risultati e gate performance aperto:
+`docs/xr-m10-verification.md`. Run Quest del 6 ottobre 2026: **PASS COMPLETE
+sintetico** con Inventor reale; fixture ripristinata e APK ordinario verificato.
+Prova fisica MR/VR confermata dall'utente il 6 ottobre; resta aperto il budget
+GPU (plugin senza campioni).
+
 ## Regole trasversali
 
 - Per ogni gate XR, porta nel runner automatico sul Quest tutti i passaggi

@@ -81,7 +81,7 @@ namespace InventorXrSo.Editor
                 "\nActual world-space components; fixture UI; no headset or physical readability evidence.\n");
         }
 
-        private static void Render(Canvas canvas, string output, string name)
+        internal static void Render(Canvas canvas, string output, string name)
         {
             canvas.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
             canvas.transform.localScale = Vector3.one * 0.001f;

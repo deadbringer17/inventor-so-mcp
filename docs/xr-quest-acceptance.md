@@ -220,6 +220,22 @@ modificata (estrusione, flangia, sviluppo): va sempre eseguito
 
 ## Stato
 
+Runner **M10 icone Inventor** (6 ottobre 2026): eseguito sul Quest 3 con
+Inventor reale, **PASS COMPLETE sintetico**. 34 sprite/46 azioni, presentazione
+dei sei provider, tooltip/fallback/toggle/disabled, regressione nativa M6 e
+100 rebuild senza crescita di materiali/texture/sprite. Profilo A/B/A raccolto;
+GPU non disponibile e prova fisica MR/VR **NOT COVERED dal runner**; l'utente
+ha successivamente confermato la prova fisica M10 il 6 ottobre. Dettagli e hash:
+[verbale M10](xr-m10-verification.md). Non certifica tutti i runner M1–M9.
+
+```powershell
+./scripts/run-m10-acceptance.ps1 -Serial 2G0YC1ZFB407P1 -Apk artifacts/m10-verification/InventorXrSo-m10-acceptance.apk -OrdinaryApk artifacts/m10-verification/InventorXrSo-m10-ordinary.apk
+```
+
+Il wrapper verifica Quest acceso, prepara/ispeziona/ripristina la fixture M6
+e reinstalla l'APK ordinario verificando l'hash. Manifest/log/screenshot/profilo:
+`artifacts/m10-verification/device/`, run `20261006-184204`.
+
 Runner, fixture, script e test di contratto sono stati scritti il 29 settembre
 2026 in ambiente Linux. I punti dell'API Inventor previsti da verificare dal
 vivo sono elencati nel README delle fixture. Gli esiti sono registrati nei

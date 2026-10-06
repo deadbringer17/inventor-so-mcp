@@ -1,0 +1,583 @@
+{
+  "schemaVersion": 1,
+  "product": "Autodesk Inventor 2027",
+  "sources": [
+    {
+      "variant": "color",
+      "file": "InvAIRLookColorImages.dll",
+      "version": "31.0.19200.0000",
+      "sha256": "16a0acf69501c5a02179db163079401b0f477ce8e0c7f0b28cce3b563da95bb4"
+    },
+    {
+      "variant": "light",
+      "file": "InvAIRLookImages.dll",
+      "version": "31.0.19200.0000",
+      "sha256": "89bee3d25e0a7d6b64f6a1e82f688bd82566d8980e0465739a16b30acc5bfa29"
+    },
+    {
+      "variant": "dark",
+      "file": "InvAIRLookImagesDark.dll",
+      "version": "31.0.19200.0000",
+      "sha256": "026afda187696e110d1e52a86eef0c5b9f9e84a216ab9f8144d99dcfad50ed9d"
+    }
+  ],
+  "notice": "Autodesk proprietary resources from a local installation. No redistribution license has been verified. Not covered by repository MIT/Apache licenses.",
+  "icons": [
+    {
+      "key": "sketch",
+      "action": "design.sketch.create",
+      "actions": [
+        "design.sketch.create"
+      ],
+      "label": "Crea schizzo",
+      "resource": "resources/dark/icons/ribbon/inv_2dsketch_sketch2d_cmd_wrapper_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "accdbef976c269bfe941770ff29af0944015fb965f361405649708f87d0326b4",
+      "pngSha256": "be8448ca5d89a1d30a3a970c275a3e56b93180c591c6c9ab02329eaacbd744c2",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_2dsketch_sketch2d_cmd_wrapper_32x32.png"
+    },
+    {
+      "key": "line",
+      "action": "design.shape.line",
+      "actions": [
+        "design.shape.line"
+      ],
+      "label": "Linea",
+      "resource": "resources/dark/icons/ribbon/inv_sketch_line_cmd_wrapper_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "13a759424ff2a7937f593e7af3b2417f32075709ce501779b4c01a160b53a7c3",
+      "pngSha256": "8a34952f9ee94f0917a2741faad2237296d6c252cec91cb57d48f962d9bd7ba9",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_sketch_line_cmd_wrapper_32x32.png"
+    },
+    {
+      "key": "rectangle",
+      "action": "design.shape.rectangle",
+      "actions": [
+        "design.shape.rectangle"
+      ],
+      "label": "Rettangolo",
+      "resource": "resources/dark/icons/ribbon/inv_2dsketch_twopointrectangle_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "32a1bbdbe90493ef9a3eed7580d163600dfe27e14ecd6d6c03bad3334f557592",
+      "pngSha256": "dd63538d2b4190349656cdb9dbb8b0f8b78e9b2c23b7d744046269be51b73fd5",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_2dsketch_twopointrectangle_cmd_32x32.png"
+    },
+    {
+      "key": "circle",
+      "action": "design.shape.circle",
+      "actions": [
+        "design.shape.circle"
+      ],
+      "label": "Cerchio",
+      "resource": "resources/dark/icons/ribbon/inv_2dsketch_centerpointcircle_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "1e92ef17cf84a05bf48ff13419930b188abb4e64a48e4897c803cc1ed148b059",
+      "pngSha256": "874100460660a88121a4ed018acf99024d800c93d35cfcfca0faeee756d4a0d9",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_2dsketch_centerpointcircle_cmd_32x32.png"
+    },
+    {
+      "key": "extrude",
+      "action": "design.extrude",
+      "actions": [
+        "design.extrude"
+      ],
+      "label": "Estrusione",
+      "resource": "resources/dark/icons/ribbon/inv_model_extrude_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "8c8f6aedd5b4f5dcdd8a5e61dff9931443935c9fb6f0bc66bf8e218c457ef90b",
+      "pngSha256": "70f12282d8688d4f0e3704a6a7807198eb5b71996888349765e76b24d3806210",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_model_extrude_cmd_32x32.png"
+    },
+    {
+      "key": "hole",
+      "action": "design.hole",
+      "actions": [
+        "design.hole"
+      ],
+      "label": "Foro",
+      "resource": "resources/dark/icons/ribbon/inv_model_hole_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "d0812a5923832163953a276a9bc62bc3c2f8950802266c5283b1e503a9e878bc",
+      "pngSha256": "b0b3cd3d355e1f255d06d56e07ccfb336456ba2eb2b5a5d8de5ba57849553977",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_model_hole_cmd_32x32.png"
+    },
+    {
+      "key": "fillet",
+      "action": "design.fillet",
+      "actions": [
+        "design.fillet"
+      ],
+      "label": "Raccordo",
+      "resource": "resources/dark/icons/ribbon/inv_model_roundfillet_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "7f37448a6bf41b4e0785242642fb2cd176585986fef9e74248835cd23d105a23",
+      "pngSha256": "a511cdb1d5bf71ab7a215fb53bee2036dcbf9821f2da3f84d52ce70ef38dc3ed",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_model_roundfillet_cmd_32x32.png"
+    },
+    {
+      "key": "chamfer",
+      "action": "design.chamfer",
+      "actions": [
+        "design.chamfer"
+      ],
+      "label": "Smusso",
+      "resource": "resources/dark/icons/ribbon/inv_model_chamfer_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "044f623aa8c553db96be9ab1273ceb485a7c5b52ce34b810de0b8c8f6710ddd1",
+      "pngSha256": "c88dd5043606b0c5daea0bf514ed632b312a917c7bd987af6eba5c92aa8cc814",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_model_chamfer_cmd_32x32.png"
+    },
+    {
+      "key": "parameters",
+      "action": "design.parameters",
+      "actions": [
+        "design.parameters"
+      ],
+      "label": "Parametri",
+      "resource": "resources/dark/icons/ribbon/inv_tools_parameters_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "7f85222cf3f0002f0d963b8a77feca912dd6394552d36c48ca7e42f97a522629",
+      "pngSha256": "ab2940c6852d6b403b6481f734ee99ef24258052cc890d73fad4babcb32d7ac4",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_tools_parameters_cmd_32x32.png"
+    },
+    {
+      "key": "undo",
+      "action": "design.history.undo",
+      "actions": [
+        "design.history.undo",
+        "lamiera.history.undo",
+        "assembly.history.undo"
+      ],
+      "label": "Annulla modifica XR",
+      "resource": "resources/dark/icons/ribbon/inv_edit_undo_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "f3d7135c86a8831a6775648733a43bd504c04a7b75752797b01fe5553b329349",
+      "pngSha256": "798ab8d99b632c043d6155065d55fb0845b1fc7f6d2ed1e5676f43cb69bc955c",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_edit_undo_cmd_32x32.png"
+    },
+    {
+      "key": "redo",
+      "action": "design.history.redo",
+      "actions": [
+        "design.history.redo",
+        "lamiera.history.redo",
+        "assembly.history.redo"
+      ],
+      "label": "Ripeti modifica XR",
+      "resource": "resources/dark/icons/ribbon/inv_edit_redo_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "99ab6151ea627fb737be7cbb3983e257cabd172b55c86755786ad949cfaa9e58",
+      "pngSha256": "7a7d14267dd307f3b5013e5d7506e08a16857685847eff7c87575e0c2feea9fc",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_edit_redo_cmd_32x32.png"
+    },
+    {
+      "key": "sheetmetal-rule",
+      "action": "lamiera.rule",
+      "actions": [
+        "lamiera.rule"
+      ],
+      "label": "Regola / Spessore",
+      "resource": "resources/dark/icons/ribbon/inv_sheetmetal_styles_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "1d3ea5701e746eccc85842e6afe2f97347071829442ce65df63173924aa36cd4",
+      "pngSha256": "ab4ff38e9711ef436dde276a33fef1d562a306e54c12840359e33aee55d5b394",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_sheetmetal_styles_cmd_32x32.png"
+    },
+    {
+      "key": "flange",
+      "action": "lamiera.flange",
+      "actions": [
+        "lamiera.flange"
+      ],
+      "label": "Flangia",
+      "resource": "resources/dark/icons/ribbon/inv_sheetmetal_flange_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "aea49686c848c4c0c99b784bc291a60511681af73429afdc3970e6790dcb0ea1",
+      "pngSha256": "4a323d8a00716f48b444adedd62de3b06e7a169947b95a0ec200f65d73934cc7",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_sheetmetal_flange_cmd_32x32.png"
+    },
+    {
+      "key": "sheetmetal-face",
+      "action": "lamiera.face",
+      "actions": [
+        "lamiera.face"
+      ],
+      "label": "Faccia da schizzo",
+      "resource": "resources/dark/icons/ribbon/inv_sheetmetal_face_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "249fab7b670f2fb00ca10d3e41ad12b0950c4eb6009fbf37294c585c834e9ba7",
+      "pngSha256": "203bd8bd411923dd347ef2533deb4637558fc9f7c3a4dcf5174b19a53b5dc2eb",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_sheetmetal_face_cmd_32x32.png"
+    },
+    {
+      "key": "sheetmetal-cut",
+      "action": "lamiera.cut",
+      "actions": [
+        "lamiera.cut"
+      ],
+      "label": "Taglio da schizzo",
+      "resource": "resources/dark/icons/ribbon/inv_sheetmetal_cut_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "d43776ade7e164f80ded4a0fa9803773ef72835733de9283f0be6aa7241607c3",
+      "pngSha256": "0f3637cc339d2c67d14b1f320c59f8b6e3b8632f8f6efbfb189b0a06a5891594",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_sheetmetal_cut_cmd_32x32.png"
+    },
+    {
+      "key": "select-sketch",
+      "action": "lamiera.sketch.change",
+      "actions": [
+        "lamiera.sketch.change"
+      ],
+      "label": "Cambia schizzo",
+      "resource": "resources/dark/icons/ribbon/inv_assembly_selectsketch_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "f7e1dd9ed203ead9c8cc472a3d424e11045c85b6884927ff0fb5bf3ae9db4017",
+      "pngSha256": "97772cf234c87f0c0c1276f4223aca7d01f262b6978624a5710860d17ee2b9aa",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_assembly_selectsketch_cmd_32x32.png"
+    },
+    {
+      "key": "flatpattern",
+      "action": "lamiera.flat.create",
+      "actions": [
+        "lamiera.flat.create",
+        "lamiera.flat.show",
+        "lamiera.view.flat"
+      ],
+      "label": "Crea sviluppo",
+      "resource": "resources/dark/icons/ribbon/inv_sheetmetal_flatpattern_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "c278afe80e3dc43fb4bf3f130cb5d74b40fd43b0717a391aa013a0417c6ad095",
+      "pngSha256": "290a930dbffb65e1067b20b8c8a160d639cccfe4caf77e81aa334ae1d9881caa",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_sheetmetal_flatpattern_cmd_32x32.png"
+    },
+    {
+      "key": "refresh",
+      "action": "lamiera.refresh",
+      "actions": [
+        "lamiera.refresh",
+        "assembly.refresh",
+        "design.refresh"
+      ],
+      "label": "Aggiorna",
+      "resource": "resources/dark/icons/ribbon/inv_app_refresh_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "522a6d3d946d2bdd8d3781d405c7c26325d3710f1a617c30fbd4c6321e396f6e",
+      "pngSha256": "d58fecc16e9150258c6786cb237323fd4373482aa7f463cce0ad747940ab84a5",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_app_refresh_cmd_32x32.png"
+    },
+    {
+      "key": "isolate",
+      "action": "assembly.isolate",
+      "actions": [
+        "assembly.isolate",
+        "inspect.visibility.isolate"
+      ],
+      "label": "Isola",
+      "resource": "resources/dark/icons/ribbon/isolate_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "4405c53ee6b45f50c19c2e6969ef6785b4b593969dbe952f6458b59f80bb57ba",
+      "pngSha256": "97b2156bb65f10a7c110e2c20882237706cd7deb419e5fce4a80d3ec2cb2e160",
+      "packPng": "dark/png/resources/dark/icons/ribbon/isolate_32x32.png"
+    },
+    {
+      "key": "release-isolation",
+      "action": "assembly.release",
+      "actions": [
+        "assembly.release"
+      ],
+      "label": "Rilascia",
+      "resource": "resources/dark/icons/ribbon/inv_assembly_isolateundo_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "0c38c826b82d6b639efaaab2aab15ff58e55d5a67b5e57ad0edcfdbb28726654",
+      "pngSha256": "c78515f4e34b03b9989df8a4c0d1d6f2353beee26d24cd68b0cf5fd9001ae97d",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_assembly_isolateundo_cmd_32x32.png"
+    },
+    {
+      "key": "move",
+      "action": "assembly.move",
+      "actions": [
+        "assembly.move"
+      ],
+      "label": "Sposta",
+      "resource": "resources/dark/icons/ribbon/inv_assembly_movecomponent_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "289f9288bcf195c59bc5b2a4a731df02232e5a8c1995ee969b3bad1a83a3a125",
+      "pngSha256": "150ca0f26c2f16339bb80483926eb58f34f3cab3e7e0f05e928f91164e20a655",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_assembly_movecomponent_cmd_32x32.png"
+    },
+    {
+      "key": "open-component",
+      "action": "assembly.open",
+      "actions": [
+        "assembly.open"
+      ],
+      "label": "Apri",
+      "resource": "resources/dark/icons/ribbon/inv_opencomponent_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "d2e9d57bf8c4845b3da2e96cdb308b8086449dcd9d9649dbc235108e18d12ffa",
+      "pngSha256": "76f5808c176acb931af42bb274248860fe56cdfd7f2d385a656b6e746dbbccbb",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_opencomponent_32x32.png"
+    },
+    {
+      "key": "joint",
+      "action": "assembly.joint",
+      "actions": [
+        "assembly.joint"
+      ],
+      "label": "Giunto",
+      "resource": "resources/dark/icons/ribbon/inv_assembly_joint_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "a2d90fa41de76e47ce827c2dbe5ef7e5816990b54c87313c87179e84f1790699",
+      "pngSha256": "88da1f1fcfd9ae3435512dbca86001f5bc8cf4bc8259933b5a06b58efc834b31",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_assembly_joint_cmd_32x32.png"
+    },
+    {
+      "key": "measure",
+      "action": "inspect.measure",
+      "actions": [
+        "inspect.measure",
+        "inspect.verify.distance"
+      ],
+      "label": "Punto-punto (locale)",
+      "resource": "resources/dark/icons/ribbon/inv_tools_measuredistance_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "0cd435851e07aa6336ae5d0f9a67b38535d9b032165100214325ece3a463e98f",
+      "pngSha256": "a73bd107ddffa9e80cc82a4db2b1b8424a4b9611f56bf78234ece5b0db06da2a",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_tools_measuredistance_cmd_32x32.png"
+    },
+    {
+      "key": "section",
+      "action": "inspect.section",
+      "actions": [
+        "inspect.section"
+      ],
+      "label": "Sezione",
+      "resource": "resources/dark/icons/ribbon/inv_tools_crosssection_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "d05ce7d27ae5617d7dcbd3623befb77880ff84c189ddb8e57b5aa5d435db8687",
+      "pngSha256": "a2bb059f57c7c477f0bf84d0e47235e6fadcc46441c96aae60ec95c21870eee8",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_tools_crosssection_cmd_32x32.png"
+    },
+    {
+      "key": "properties",
+      "action": "inspect.properties",
+      "actions": [
+        "inspect.properties"
+      ],
+      "label": "Proprietà",
+      "resource": "resources/dark/icons/ribbon/inv_file_iproperties_cmd_wrapper_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "969cdef0ff1084ad80aeeddb12c9b1616abcf858b677e8a49263b2b346db41e1",
+      "pngSha256": "c1376908bf112a42a7a7ab5a960999a0da4cf014436059770dfd2e396bfc0eb9",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_file_iproperties_cmd_wrapper_32x32.png"
+    },
+    {
+      "key": "documents",
+      "action": "inspect.documents",
+      "actions": [
+        "inspect.documents",
+        "doc.documents"
+      ],
+      "label": "Elenco documenti",
+      "resource": "resources/dark/icons/ribbon/switch_windows_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "7b4630afe0a786985a9e2b8baaca4e6a4d0fd4c83cc7f0e3d5be101366fdffd7",
+      "pngSha256": "f8272b169419608cdfcdc755f7630d74dd095bca60b9be73e0619c48ef334c51",
+      "packPng": "dark/png/resources/dark/icons/ribbon/switch_windows_32x32.png"
+    },
+    {
+      "key": "back",
+      "action": "inspect.context.back",
+      "actions": [
+        "inspect.context.back",
+        "doc.back"
+      ],
+      "label": "Livello superiore",
+      "resource": "resources/dark/icons/ribbon/inv_quickaccess_returnparent_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "a3312bd6461f649b5caf99415b0dfc3e7e0b26a91276405bc836ca51435a8334",
+      "pngSha256": "f728ba588aa70c37b1de04a5b4ed9dd065d196832b658602a42381d7683baca8",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_quickaccess_returnparent_cmd_32x32.png"
+    },
+    {
+      "key": "assembly-health",
+      "action": "inspect.verify.health",
+      "actions": [
+        "inspect.verify.health"
+      ],
+      "label": "Salute assieme",
+      "resource": "resources/dark/icons/ribbon/inv_assembly_showsick_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "5455cad8f856cef4a6def83b83a74bde942a9791acf76afaafb2e0fb6613df17",
+      "pngSha256": "f5e2c2fccfd224c9e1ae491a677b9ffcc63577b36ba8f08551817aae967385d6",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_assembly_showsick_cmd_32x32.png"
+    },
+    {
+      "key": "interference",
+      "action": "inspect.verify.interference",
+      "actions": [
+        "inspect.verify.interference"
+      ],
+      "label": "Interferenze",
+      "resource": "resources/dark/icons/ribbon/inv_tools_assemblyanalyzeinterference_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "2b07a919fbe8c1ee2eaebfd7a89ef1acce2e149a52070f462d64b01da0487efe",
+      "pngSha256": "197ccd2c14e5130e9884183cf8e7db26a7ba8625a4164c066306a3dacce982f0",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_tools_assemblyanalyzeinterference_cmd_32x32.png"
+    },
+    {
+      "key": "save",
+      "action": "doc.save",
+      "actions": [
+        "doc.save"
+      ],
+      "label": "Salva",
+      "resource": "resources/dark/icons/ribbon/inv_file_save_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "3e92d05dcbb559105f79eea684533c04054dec015ebd7d5ed542f0b1a1423aee",
+      "pngSha256": "dcddd045ef13be0a28168b96f1f60f2b7f50896b2b7dbf1435029f4ef5301289",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_file_save_cmd_32x32.png"
+    },
+    {
+      "key": "fit",
+      "action": "view.fit",
+      "actions": [
+        "view.fit"
+      ],
+      "label": "Adatta",
+      "resource": "resources/dark/icons/ribbon/inv_view_zoomall_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "3482f555469401257811d2f25ed10c45933885c36acd0beefbb4e834daad863b",
+      "pngSha256": "808f6d14c7c59efd0aeda931f08b992e79543ef76c5a6078a5e51ac9bb63754d",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_view_zoomall_cmd_32x32.png"
+    },
+    {
+      "key": "dimension",
+      "action": "design.sketch.dimension",
+      "actions": [
+        "design.sketch.dimension"
+      ],
+      "label": "Quota geometria",
+      "resource": "resources/dark/icons/ribbon/inv_sketch_dimension_cmd_wrapper_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "5a5e4a3b6d9b360a27cddb13abb2e0158dfccf56e0f0a81959f71311f6951439",
+      "pngSha256": "22cba3af6a3ed3c42ff8544b0382f236a0018ac9cc1928045553a5227d6ea0de",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_sketch_dimension_cmd_wrapper_32x32.png"
+    },
+    {
+      "key": "constrain",
+      "action": "assembly.constrain",
+      "actions": [
+        "assembly.constrain"
+      ],
+      "label": "Vincola",
+      "resource": "resources/dark/icons/ribbon/inv_assembly_insertconstraint_cmd_32x32.ico",
+      "source": "InvAIRLookImagesDark.dll",
+      "variant": "dark",
+      "width": 32,
+      "height": 32,
+      "originalSha256": "5f5eab03cdba60382d7a91d35066db71c7067fbb5ed8d6070a6c8467ea9bc3ef",
+      "pngSha256": "6b9eea6676918c8bd723b6ea32c92cd78d84556415f74fbc3be1933acd9caf80",
+      "packPng": "dark/png/resources/dark/icons/ribbon/inv_assembly_insertconstraint_cmd_32x32.png"
+    }
+  ]
+}

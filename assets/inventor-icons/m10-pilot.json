@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "variant": "dark",
+  "icons": [
+    {
+      "key": "sketch",
+      "action": "design.sketch.create",
+      "label": "Crea schizzo",
+      "resource": "resources/dark/icons/ribbon/inv_2dsketch_sketch2d_cmd_wrapper_32x32.ico"
+    },
+    {
+      "key": "line",
+      "action": "design.shape.line",
+      "label": "Linea",
+      "resource": "resources/dark/icons/ribbon/inv_sketch_line_cmd_wrapper_32x32.ico"
+    },
+    {
+      "key": "rectangle",
+      "action": "design.shape.rectangle",
+      "label": "Rettangolo",
+      "resource": "resources/dark/icons/ribbon/inv_2dsketch_twopointrectangle_cmd_32x32.ico"
+    },
+    {
+      "key": "circle",
+      "action": "design.shape.circle",
+      "label": "Cerchio",
+      "resource": "resources/dark/icons/ribbon/inv_2dsketch_centerpointcircle_cmd_32x32.ico"
+    },
+    {
+      "key": "extrude",
+      "action": "design.extrude",
+      "label": "Estrusione",
+      "resource": "resources/dark/icons/ribbon/inv_model_extrude_cmd_32x32.ico"
+    },
+    {
+      "key": "hole",
+      "action": "design.hole",
+      "label": "Foro",
+      "resource": "resources/dark/icons/ribbon/inv_model_hole_cmd_32x32.ico"
+    },
+    {
+      "key": "fillet",
+      "action": "design.fillet",
+      "label": "Raccordo",
+      "resource": "resources/dark/icons/ribbon/inv_model_roundfillet_cmd_32x32.ico"
+    },
+    {
+      "key": "chamfer",
+      "action": "design.chamfer",
+      "label": "Smusso",
+      "resource": "resources/dark/icons/ribbon/inv_model_chamfer_cmd_32x32.ico"
+    },
+    {
+      "key": "parameters",
+      "action": "design.parameters",
+      "label": "Parametri",
+      "resource": "resources/dark/icons/ribbon/inv_tools_parameters_cmd_32x32.ico"
+    },
+    {
+      "key": "undo",
+      "action": "design.history.undo",
+      "label": "Annulla modifica XR",
+      "resource": "resources/dark/icons/ribbon/inv_edit_undo_cmd_32x32.ico"
+    },
+    {
+      "key": "redo",
+      "action": "design.history.redo",
+      "label": "Ripeti modifica XR",
+      "resource": "resources/dark/icons/ribbon/inv_edit_redo_cmd_32x32.ico"
+    }
+  ]
+}

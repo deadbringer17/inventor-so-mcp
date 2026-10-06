@@ -142,3 +142,15 @@ parte vuoto con il nome del file: su file reali `PART_NUMBER_MISSING` non puo' c
 descrizione vuota) e il runner controlla `DESCRIPTION_MISSING` (avviso: `BomValid` resta vero). La fixture va rigenerata
 (`prepare m7`) prima del prossimo run sul Quest: i documenti preparati prima di questa modifica hanno ancora la Description.
 Il runner apre inoltre la riga `M7_Sick` di Risultati e controlla visibilita' (M7_B e M7_C normali, gli altri due fantasma).
+
+### Vista di revisione interferenze: X-Ray globale e pulsazione (2026-10-06)
+
+Al termine di **Interferenze** (con almeno un risultato) il visore applica da solo la vista di revisione: tutto l'assieme in
+X-Ray, le parti in interferenza rosse e i box rossi, con pulsazione per 5 s (1,2 Hz, profondita' 0,6), poi rosso fisso.
+Salute non la applica; la riga di Risultati restringe il focus come prima e riavvia la pulsazione. Indietro / Mostra tutto
+ripristinano la vista (stesso snapshot di `ClearFocus`). La fase e' calcolata in C# (`_PulseWave`) cosi' tinta e box restano
+sincroni.
+
+- `PASS` test EditMode (636/636 su Unity 6000.6.3f1): vista globale applicata e ripristinata, 0 interferenze senza vista, Salute senza vista, pulsazione spenta dopo 5 s, materiale ghost invariato.
+- `PASS [M7-xray-pulse]` nel runner Quest: da eseguire al prossimo run (controllo sintetico aggiunto, non ancora girato sul dispositivo).
+- `NOT COVERED [M7-xray-pulse-visual]`: resa visiva, ritmo e leggibilita' della pulsazione sul Quest richiedono prova fisica. **Aperta.**

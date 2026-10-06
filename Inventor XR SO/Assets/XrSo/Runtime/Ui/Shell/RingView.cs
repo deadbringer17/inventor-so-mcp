@@ -35,14 +35,14 @@ namespace InventorXrSo.Unity.Ui
             {
                 var action = actions[i];
                 double angle = (90 - 360.0 * i / actions.Count) * Math.PI / 180;
-                var b = UiFactory.TextButton(Canvas.transform, action.Label, action.IsOn ? UiFactory.Accent : UiFactory.Key, TextMm,
+                var b = UiFactory.ActionButton(Canvas.transform, action, TextMm, 32f,
                     () => { action.TryInvoke(); Hide(); });
                 var rect = (RectTransform)b.transform;
                 rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
                 rect.sizeDelta = ButtonMm;
                 rect.anchoredPosition = new Vector2((float)Math.Cos(angle), (float)Math.Sin(angle)) * RadiusMm;
                 b.interactable = action.Enabled;
-                var t = b.GetComponentInChildren<TextMeshProUGUI>();
+                var t = b.GetComponentInChildren<TextMeshProUGUI>(true);
                 t.overflowMode = TextOverflowModes.Overflow;
                 t.margin = new Vector4(2, 0, 2, 0);
                 t.lineSpacing = PaletteView.LineSpacing;

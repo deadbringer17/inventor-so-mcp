@@ -126,13 +126,13 @@ namespace InventorXrSo.Xr
             var list = new List<XrAction>
             {
                 // Schizzo
-                new XrAction("design.sketch.create", "Crea schizzo", TabSketch, () => EditableNow, CreateSketch, EditReason, new[] { "nuovo schizzo" }),
+                new XrAction("design.sketch.create", "Crea schizzo", TabSketch, () => EditableNow, CreateSketch, EditReason, new[] { "nuovo schizzo" }, icon: "sketch"),
                 Shape("design.shape.line", "Linea", SketchShape.Line),
                 Shape("design.shape.rectangle", "Rettangolo", SketchShape.Rectangle),
                 Shape("design.shape.circle", "Cerchio", SketchShape.Circle),
                 new XrAction("design.sketch.numeric", "Coordinate numeriche", TabSketch, () => SketchOn, NumericShape, NeedSketch),
                 new XrAction("design.sketch.dimension", "Quota geometria", TabSketch, () => SketchOn, () =>
-                    { _dimensionStep = 1; _dimensionIndex = -1; _first = null; SetNotice("Quota: seleziona una linea, un rettangolo o un cerchio con la penna."); Refresh(); }, NeedSketch),
+                    { _dimensionStep = 1; _dimensionIndex = -1; _first = null; SetNotice("Quota: seleziona una linea, un rettangolo o un cerchio con la penna."); Refresh(); }, NeedSketch, icon: "dimension"),
                 new XrAction("design.sketch.removelast", "Rimuovi ultimo", TabSketch, () => SketchOn, () =>
                     { _dimensionStep = 0; _sketch.RemoveLast(); UpdateDraft(); Refresh(); }, NeedSketch),
 
@@ -155,14 +155,14 @@ namespace InventorXrSo.Xr
 
                 // Feature
                 new XrAction("design.extrude", "Estrusione", TabFeature, () => EditableNow, PickExtrusionSketch, EditReason,
-                    new[] { "estrudi", "estrudi schizzo", "crea estrusione", "fai estrusione" }),
-                new XrAction("design.hole", "Foro", TabFeature, () => EditableNow, () => Feature("hole"), EditReason, new[] { "fora", "crea foro" }),
-                new XrAction("design.fillet", "Raccordo", TabFeature, () => EditableNow, () => EdgeFeature("fillet"), EditReason, new[] { "raccorda" }),
-                new XrAction("design.chamfer", "Smusso", TabFeature, () => EditableNow, () => EdgeFeature("chamfer"), EditReason, new[] { "smussa" }),
+                    new[] { "estrudi", "estrudi schizzo", "crea estrusione", "fai estrusione" }, icon: "extrude"),
+                new XrAction("design.hole", "Foro", TabFeature, () => EditableNow, () => Feature("hole"), EditReason, new[] { "fora", "crea foro" }, icon: "hole"),
+                new XrAction("design.fillet", "Raccordo", TabFeature, () => EditableNow, () => EdgeFeature("fillet"), EditReason, new[] { "raccorda" }, icon: "fillet"),
+                new XrAction("design.chamfer", "Smusso", TabFeature, () => EditableNow, () => EdgeFeature("chamfer"), EditReason, new[] { "smussa" }, icon: "chamfer"),
                 new XrAction("design.history.undo", "Annulla modifica XR", TabFeature, () => EditableNow && _session.Status == DesignStatus.Empty && _history?.CanUndo == true,
-                    () => ApplyHistory(false), undoReason, new[] { "annulla ultima modifica" }),
+                    () => ApplyHistory(false), undoReason, new[] { "annulla ultima modifica" }, icon: "undo"),
                 new XrAction("design.history.redo", "Ripeti modifica XR", TabFeature, () => EditableNow && _session.Status == DesignStatus.Empty && _history?.CanRedo == true,
-                    () => ApplyHistory(true), redoReason, new[] { "ripeti ultima modifica" }),
+                    () => ApplyHistory(true), redoReason, new[] { "ripeti ultima modifica" }, icon: "redo"),
 
                 // Opzioni feature
                 new XrAction("design.dimension", "Dimensione numerica", TabOptions, () => FeatureOn, OpenDimensionKeypad, NeedFeature, kind: XrActionKind.Numeric),
@@ -179,10 +179,10 @@ namespace InventorXrSo.Xr
                     { if (_symmetric) { _symmetric = false; _negative = false; } else if (_negative) _symmetric = true; else _negative = true; UpdateDraft(); Refresh(); }, NeedExtrude),
 
                 // Parametri
-                new XrAction("design.parameters", "Parametri", TabParameters, () => EditableNow, OpenParameters, EditReason),
+                new XrAction("design.parameters", "Parametri", TabParameters, () => EditableNow, OpenParameters, EditReason, icon: "parameters"),
                 new XrAction("design.refresh", "Aggiorna riferimenti", TabParameters,
                     () => Active && _online && _kind == "part" && !_busy && CommitReady && _session.Status != DesignStatus.Previewing, LoadContext,
-                    () => !_online ? "Offline." : _busy ? "Lettura del contesto CAD in corso." : EditReason()),
+                    () => !_online ? "Offline." : _busy ? "Lettura del contesto CAD in corso." : EditReason(), icon: "refresh"),
 
                 // Vista
                 new XrAction("design.view.model", "Vista modello", TabView, () => _sheet != null && _sheet.State == InventorXrSo.Unity.Scene.SketchSheetState.Sheet, ShowModelView,
@@ -224,7 +224,8 @@ namespace InventorXrSo.Xr
 
         private XrAction Shape(string id, string label, SketchShape shape) => new XrAction(id, label, TabSketch, () => SketchOn, () =>
             { _shape = shape; _first = null; _dimensionStep = 0; _geometry.ShowDraft(_sketch); Refresh(); }, NeedSketch,
-            isOn: () => _screen == "sketch" && _sketch != null && _shape == shape, kind: XrActionKind.Toggle);
+            isOn: () => _screen == "sketch" && _sketch != null && _shape == shape, kind: XrActionKind.Toggle,
+            icon: shape == SketchShape.Line ? "line" : shape == SketchShape.Rectangle ? "rectangle" : "circle");
 
         private void EdgeFeature(string feature)
         {

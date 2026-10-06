@@ -57,7 +57,7 @@ namespace InventorXrSo.Xr
 
         public IEnumerable<XrAction> Actions => new[]
         {
-            new XrAction(IdFit, "Adatta", TabView, _canFit, _fit, () => "Postazione non disponibile.", new[] { "adatta alla postazione" }),
+            new XrAction(IdFit, "Adatta", TabView, _canFit, _fit, () => "Postazione non disponibile.", new[] { "adatta alla postazione" }, icon: "fit"),
             new XrAction(IdLegend, "Legenda tasti: " + (LegendOn ? "sì" : "no"), TabView, () => true, () => SetLegend(!LegendOn),
                 null, new[] { "legenda", "legenda tasti" }, XrActionKind.Toggle, isOn: () => LegendOn),
         };

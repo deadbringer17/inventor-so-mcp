@@ -206,6 +206,110 @@ namespace InventorXrSo.Tests
             Assert.False(Field<ComponentVisibility>("_visibility").AnyChanged);
         }
 
+        /// <summary>One pair where only Bolt:1 is a known occurrence, so Bolt:2 is not involved.</summary>
+        private static InterferenceReport PairWithOnlyBoltOne() => InterferenceReport.FromJson(new JObject
+        {
+            ["revision"] = "r", ["analyzed"] = 2, ["count"] = 1, ["total_volume_mm3"] = 2000.0,
+            ["pairs"] = new JArray(new JObject { ["a_occurrence_id"] = "ent_occ_1", ["b_occurrence_id"] = "ent_occ_other", ["a_name"] = "Bolt:1", ["b_name"] = "Other:1",
+                ["volume_mm3"] = 2000.0, ["boxes"] = new JArray(new JObject { ["min_mm"] = new JArray(0, 0, 0), ["max_mm"] = new JArray(5, 5, 5) }) }),
+        });
+
+        [Test]
+        public async Task AnInterferenceResultAppliesTheGlobalXRayPulsingViewAndBackRestores()
+        {
+            var backend = Online();
+            Do(InspectWorkspace.IdInterference);
+            backend.Interference.SetResult(PairWithOnlyBoltOne());
+            var overlay = Field<VerifyOverlay>("_overlay"); var visibility = Field<ComponentVisibility>("_visibility");
+            await Until(() => overlay.BoxCount > 0);
+            Assert.AreEqual(OccurrenceVisibility.Normal, visibility.Get("ent_occ_1"), "involved part stays solid");
+            Assert.AreEqual(OccurrenceVisibility.Ghost, visibility.Get("ent_occ_2"), "uninvolved part goes X-Ray");
+            Assert.Greater(overlay.TintedBodies, 0, "involved part is tinted red");
+            Assert.AreEqual(1, overlay.BoxCount);
+            Assert.True(overlay.Pulsing);
+            Assert.That(_hud.Last(), Does.Contain("Vista X-Ray con le interferenze in rosso. Indietro per tornare alla vista."));
+            _workspace.Back();
+            Assert.False(visibility.AnyChanged, "Back restores the visibility");
+            Assert.AreEqual(0, overlay.BoxCount);
+            Assert.AreEqual(0, overlay.TintedBodies);
+            Assert.False(overlay.Pulsing);
+        }
+
+        [Test]
+        public async Task BackRestoresTheVerifyViewWhenTheAssemblyWorkspaceOwnsTheView()
+        {
+            var backend = Online();
+            _workspace.AuthoringOwnsView = () => true;   // M9: the document opens the Assieme workspace, which owns the view
+            Do(InspectWorkspace.IdInterference);
+            backend.Interference.SetResult(PairWithOnlyBoltOne());
+            var overlay = Field<VerifyOverlay>("_overlay"); var visibility = Field<ComponentVisibility>("_visibility");
+            await Until(() => overlay.BoxCount > 0);
+            Assert.True(visibility.AnyChanged);
+            _workspace.Back();
+            Assert.False(visibility.AnyChanged, "X restores the visibility also while the authoring workspace owns the view");
+            Assert.AreEqual(0, overlay.BoxCount); Assert.AreEqual(0, overlay.TintedBodies); Assert.False(overlay.Pulsing);
+        }
+
+        [Test]
+        public async Task ZeroInterferencesApplyNoView()
+        {
+            var backend = Online();
+            Do(InspectWorkspace.IdInterference);
+            backend.Interference.SetResult(InterferenceReport.FromJson(new JObject { ["revision"] = "r", ["analyzed"] = 2, ["count"] = 0, ["total_volume_mm3"] = 0.0, ["pairs"] = new JArray() }));
+            await Until(() => Field<VerifySession>("_verifySession").Gate.CanStart);
+            var overlay = Field<VerifyOverlay>("_overlay");
+            Assert.False(Field<ComponentVisibility>("_visibility").AnyChanged);
+            Assert.AreEqual(0, overlay.BoxCount); Assert.AreEqual(0, overlay.TintedBodies); Assert.False(overlay.Pulsing);
+            Assert.That(_hud.Last(), Does.Not.Contain("Vista X-Ray"));
+        }
+
+        [Test]
+        public async Task HealthDoesNotApplyTheGlobalInterferenceView()
+        {
+            Online();
+            Do(InspectWorkspace.IdHealth);
+            await Until(() => Field<IReadOnlyList<VerifyFinding>>("_findings").Count > 0);
+            Assert.Greater(Field<IReadOnlyList<VerifyFinding>>("_findings").Count, 0);
+            var overlay = Field<VerifyOverlay>("_overlay");
+            Assert.False(Field<ComponentVisibility>("_visibility").AnyChanged);
+            Assert.AreEqual(0, overlay.TintedBodies); Assert.AreEqual(0, overlay.BoxCount); Assert.False(overlay.Pulsing);
+        }
+
+        [Test]
+        public void ThePulseStopsAfterFiveSecondsAndLeavesFixedValues()
+        {
+            Online();
+            var overlay = Field<VerifyOverlay>("_overlay");
+            overlay.ShowBoxes(new[] { new VerifyBox(new double[] { 0, 0, 0 }, new double[] { 5, 5, 5 }) });
+            var material = overlay.TintMaterial;
+            Assert.AreEqual(0f, material.GetFloat("_PulseDepth"), "no pulse before StartPulse");
+            overlay.StartPulse(100f);
+            Assert.True(overlay.Pulsing);
+            Assert.AreEqual(VerifyOverlay.PulseDepth, material.GetFloat("_PulseDepth"), 1e-4);
+            Assert.AreEqual(0f, material.GetFloat("_PulseWave"), 1e-4, "cycle starts at full alpha");
+            overlay.TickPulse(102.4f);
+            Assert.True(overlay.Pulsing, "still pulsing at 2.4 s");
+            overlay.TickPulse(100f + 0.5f / VerifyOverlay.PulseHz);
+            Assert.AreEqual(1f, material.GetFloat("_PulseWave"), 1e-3, "mid-cycle is the deepest dip, tint and boxes share the wave");
+            overlay.TickPulse(100f + VerifyOverlay.PulseSeconds);
+            Assert.False(overlay.Pulsing);
+            Assert.AreEqual(0f, material.GetFloat("_PulseDepth"));
+            Assert.AreEqual(0f, material.GetFloat("_PulseWave"));
+            overlay.Clear();
+        }
+
+        [Test]
+        public void TheGhostMaterialKeepsThePulseOff()
+        {
+            var ghost = GhostBodies.CreateMaterial("ghost test", ComponentVisibility.GhostColor);
+            try
+            {
+                Assert.AreEqual(0f, ghost.GetFloat("_PulseDepth"));
+                Assert.AreEqual(0f, ghost.GetFloat("_PulseWave"));
+            }
+            finally { Object.DestroyImmediate(ghost); }
+        }
+
         [Test]
         public async Task ScopeSelectionSendsTheSelectedOccurrence()
         {
