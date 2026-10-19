@@ -110,7 +110,7 @@ internal static class EntityReferences
         var doc = matches[0];
         var manager = doc.ReferenceKeyManager;
         var bytes = reference.Context;
-        int context = manager.LoadContextFromArray(ref bytes);
+        int context = bytes.Length==0 ? 0 : manager.LoadContextFromArray(ref bytes);
         try
         {
             var key = reference.Key;
@@ -134,7 +134,7 @@ internal static class EntityReferences
             }
             return result;
         }
-        finally { manager.ReleaseKeyContext(context); }
+        finally { if(bytes.Length>0) manager.ReleaseKeyContext(context); }
     }
 
     public static Edge ResolvePartEdge(global::Inventor.Document document, string id)

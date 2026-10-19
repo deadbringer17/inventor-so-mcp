@@ -25,7 +25,7 @@ namespace InventorXrSo.Xr
     /// Wires M1 together: pairing, session, Home, scene, selection. Everything runs on the main thread
     /// (awaits resume on Unity's synchronization context).
     /// </summary>
-    public sealed class AppController : MonoBehaviour
+    public sealed partial class AppController : MonoBehaviour
     {
         [SerializeField] private CadSceneView sceneView;
         [SerializeField] private SelectionVisuals selectionVisuals;
@@ -145,6 +145,7 @@ namespace InventorXrSo.Xr
             _sheet = gameObject.AddComponent<SketchSheetView>();
             _sheet.Bind(sceneView.transform);
             _input = gameObject.AddComponent<InventorXrSo.Xr.Input.XrInput>();
+            _shell.BindTracking(() => _input.PaletteTracked, head, () => _workbench.Frame, () => _input.PenHeld);
             _design.Attach(_shell, _workbench, _sheet, _input);
             // M9: X at rest is tap (hint) / hold 1 s (Torna); away from rest it stays the Back chain.
             _input.RestingProbe = AtRest;
@@ -224,6 +225,9 @@ namespace InventorXrSo.Xr
             ray.PickedNothing += OnPickedNothing;
             ray.CanPick = false;
             sceneView.gameObject.SetActive(false);
+#if XR_SO_ACCEPTANCE
+            if(TryStartAcceptanceBootstrap()) return;
+#endif
             _store = CredentialStores.Create();
             _server = _store.Load();
             ShowHome();
@@ -233,6 +237,9 @@ namespace InventorXrSo.Xr
 
         private void Update()
         {
+#if XR_SO_ACCEPTANCE
+            TickAcceptanceBootstrap();
+#endif
             if (_inSession && OVRInput.GetDown(OVRInput.Button.Start)) LeaveSession();
             if (_legend != null) _legend.SetState(_input.Dispatcher.State);
             SyncAssemblyHighlight();
@@ -394,6 +401,9 @@ namespace InventorXrSo.Xr
 
         private void ShowPairing(string title, string body)
         {
+#if XR_SO_ACCEPTANCE
+            if(_acceptanceBootstrapRequested){BlockAcceptanceBootstrap();return;}
+#endif
             ShowHome();
             _home.ShowMessage(title, body);
             _home.SetActions((UiText.PairWithQr, StartQr), (UiText.PairWithCode, AskAddress));
@@ -446,6 +456,9 @@ namespace InventorXrSo.Xr
 
         private async void Complete(Task<PairedServer> pairing)
         {
+#if XR_SO_ACCEPTANCE
+            if(_acceptanceBootstrapRequested){BlockAcceptanceBootstrap();return;}
+#endif
             _home.ShowMessage(UiText.Pairing, "");
             _home.SetActions();
             try
@@ -461,6 +474,9 @@ namespace InventorXrSo.Xr
 
         private void Forget()
         {
+#if XR_SO_ACCEPTANCE
+            if(_acceptanceBootstrapRequested){BlockAcceptanceBootstrap();return;}
+#endif
             StopSession();
             _store.Clear();
             _server = null;
@@ -472,6 +488,10 @@ namespace InventorXrSo.Xr
 
         private void StartSession()
         {
+#if XR_SO_ACCEPTANCE
+            if(_acceptanceBootstrapRequested && (_acceptanceBootstrapBlocked || AcceptanceBootstrap==null
+                || AcceptanceBootstrap.ExpiresUtc<=DateTimeOffset.UtcNow)){BlockAcceptanceBootstrap();return;}
+#endif
             StopSession();
             _run = new CancellationTokenSource();
             var transport = new UnityHttpTransport(ServerTrust.Pinned(_server.CertSha256));
@@ -717,7 +737,7 @@ namespace InventorXrSo.Xr
             bool keypad = false, armed = false, sketch = false, component = false;
             if (_design.Active) { keypad = _design.KeypadOpen; armed = _design.InputArmed; sketch = _design.SketchOpen; }
             else if (_assembly.Active) { keypad = _assembly.KeypadOpen; armed = _assembly.InputArmed; component = _assembly.ComponentSelected; }
-            else if (_lamiera.Active) { keypad = _lamiera.KeypadOpen; armed = _lamiera.InputArmed; }
+            else if (_lamiera.Active) { keypad = _lamiera.KeypadOpen; armed = _lamiera.InputArmed; sketch = _lamiera.SketchOpen; }
             else if (_inspect.Active) keypad = _inspect.KeypadOpen;
             return InventorXrSo.Core.Input.InputMap.Resolve(keypad, armed, sketch, component);
         }

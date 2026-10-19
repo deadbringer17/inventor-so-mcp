@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Bimwright.Ipt.Server.Assets;
+using Bimwright.Ipt.Server.Imports;
 using Bimwright.Ipt.Server.Planning;
 using Bimwright.Ipt.Shared.Contracts;
 using ModelContextProtocol.Server;
@@ -26,11 +27,14 @@ public sealed class PlanningTools
     private readonly InventorMcpConfig _config;
     private readonly ICallerIdentity _caller;
     private readonly AssetStore _assets;
+    private readonly ImportResourceStore? _imports;
 
-    public PlanningTools(PluginClient client, ChangePlanStore plans, InventorMcpConfig config, ICallerIdentity caller, AssetStore assets)
+    public PlanningTools(PluginClient client, ChangePlanStore plans, InventorMcpConfig config, ICallerIdentity caller, AssetStore assets,
+        ImportResourceStore? imports = null)
     {
         _client = client; _plans = plans; _config = config; _caller = caller;
         _assets = assets;
+        _imports = imports;
     }
 
     [McpServerTool(Name = "inventor_plan_change"), Description("Plan a change without applying it. operations uses the inventor_atomic_batch vocabulary (resource inventor://batch-commands); validate optionally adds checks such as [\"interference\",\"min_clearance:2mm\"]; intent is free text kept with the plan for the approver. The server checks the plan against the catalogue, runs a real preview (executed then rolled back, revision restored), estimates impact (dependent features of edited parameters when dependency analysis is available) and returns a plan_id valid 15 minutes, bound to document_id, expected_revision and the SHA-256 of the operations. Show the preview to the user; commit with inventor_commit_plan. Requires write permission because the preview edits then aborts.")]
@@ -51,44 +55,68 @@ public sealed class PlanningTools
         catch (PlanException ex) { return XrTools.Error(ex.Code, ex.Message); }
         catch (Exception ex) when (ex is JsonException or ArgumentException) { return XrTools.Error(InventorErrorCodes.INVALID_ARGUMENT, ex.Message); }
 
-        JObject preview;
+        SketchImportAttachments? attachments = null;
         try
         {
-            preview = (JObject)await _client.SendAsync("atomic_batch", new JObject
+            try { attachments = SketchImportAttachments.Resolve(_imports, _caller.Client, ops, ct); }
+            catch (PlanException ex) { return XrTools.Error(ex.Code, ex.Message); }
+
+            JObject preview;
+            try
             {
-                ["document_id"] = document_id, ["expected_revision"] = expected_revision,
-                ["operations"] = ops, ["preview"] = true, ["validate"] = checks,
-                ["include_preview_mesh"] = include_preview_mesh,
-            }, ct);
-            if (include_preview_mesh)
-            {
-                var bytes = PreviewMeshAsset.Build(preview, document_id, expected_revision);
-                preview["sketches"] = preview["preview_mesh"]?["sketches"]?.DeepClone() ?? new JArray();
-                var asset = _assets.Put(bytes, "model/gltf-binary", _caller.Client, new JObject
+                await using var transfer = attachments == null ? null :
+                    await SketchImportTransfer.StageAsync(_client, attachments, _caller.Client, ct);
+                var request = new JObject
                 {
-                    ["kind"] = "design_preview", ["document_id"] = document_id,
-                    ["source_revision"] = expected_revision,
-                });
-                preview.Remove("preview_mesh");
-                preview["asset"] = asset.ToJson(_config.PublicBaseUrl);
-                preview["units"] = "m";
+                    ["document_id"] = document_id, ["expected_revision"] = expected_revision,
+                    ["operations"] = ops, ["preview"] = true, ["validate"] = checks,
+                    ["include_preview_mesh"] = include_preview_mesh,
+                };
+                preview = (JObject)await (transfer == null ? _client.SendAsync("atomic_batch", request, ct)
+                    : transfer.SendBatchAsync(request, ct));
+                if (include_preview_mesh)
+                {
+                    var bytes = PreviewMeshAsset.Build(preview, document_id, expected_revision);
+                    preview["sketches"] = preview["preview_mesh"]?["sketches"]?.DeepClone() ?? new JArray();
+                    var asset = _assets.Put(bytes, "model/gltf-binary", _caller.Client, new JObject
+                    {
+                        ["kind"] = "design_preview", ["document_id"] = document_id,
+                        ["source_revision"] = expected_revision,
+                    });
+                    preview.Remove("preview_mesh");
+                    preview["asset"] = asset.ToJson(_config.PublicBaseUrl);
+                    preview["units"] = "m";
+                }
+            }
+            catch (InventorGatewayException ex)
+            {
+                var failed = ex.ToErrorJson();
+                failed["planned"] = false;
+                return failed.ToString(Formatting.None);
+            }
+            catch (Exception ex) when (ex is FormatException or ArgumentException)
+            { return XrTools.Error(InventorErrorCodes.API_ERROR, "Preview mesh rejected: " + ex.Message); }
+
+            // Create takes ownership even if creation fails. Clear the local owner before calling.
+            var transferred = attachments;
+            attachments = null;
+            var plan = _plans.Create(_caller.Client, document_id, expected_revision, ops, checks, intent, transferred);
+            try
+            {
+                plan.Preview = preview;
+                plan.Impact = await ImpactOf(ops, ct);
+                var result = plan.ToJson();
+                result["next"] = "Show preview and impact to the user; on approval call inventor_commit_plan(plan_id, expected_revision). Any other change to the document invalidates the plan.";
+                return result.ToString(Formatting.None);
+            }
+            catch
+            {
+                // An undelivered plan must not retain attachments or remain available for commit.
+                _plans.Discard(plan.Id);
+                throw;
             }
         }
-        catch (InventorGatewayException ex)
-        {
-            var failed = ex.ToErrorJson();
-            failed["planned"] = false;
-            return failed.ToString(Formatting.None);
-        }
-        catch (Exception ex) when (ex is FormatException or ArgumentException)
-        { return XrTools.Error(InventorErrorCodes.API_ERROR, "Preview mesh rejected: " + ex.Message); }
-
-        var plan = _plans.Create(_caller.Client, document_id, expected_revision, ops, checks, intent);
-        plan.Preview = preview;
-        plan.Impact = await ImpactOf(ops, ct);
-        var result = plan.ToJson();
-        result["next"] = "Show preview and impact to the user; on approval call inventor_commit_plan(plan_id, expected_revision). Any other change to the document invalidates the plan.";
-        return result.ToString(Formatting.None);
+        finally { attachments?.Dispose(); }
     }
 
     [McpServerTool(Name = "inventor_commit_plan"), Description("Commit a plan made by inventor_plan_change exactly as previewed: same operations (hash-checked), same checks, same document and revision. Refuses with PLAN_NOT_FOUND (unknown, expired, foreign or already used) or PLAN_MISMATCH (document or revision moved: plan again), and with STALE_REVISION if the document changed after planning. The commit is one atomic Inventor transaction with rollback on any failure. A plan is consumed by the attempt, successful or not.")]
@@ -99,17 +127,23 @@ public sealed class PlanningTools
         catch (PlanException ex) { return XrTools.Error(ex.Code, ex.Message); }
         try
         {
-            var committed = (JObject)await _client.SendAsync("atomic_batch", new JObject
+            var attachments = plan.Attachment<SketchImportAttachments>();
+            await using var transfer = attachments == null ? null :
+                await SketchImportTransfer.StageAsync(_client, attachments, _caller.Client, ct);
+            var request = new JObject
             {
                 ["document_id"] = plan.DocumentId, ["expected_revision"] = plan.Revision,
                 ["operations"] = plan.Operations, ["preview"] = false, ["validate"] = plan.Validate,
                 ["history_owner"] = plan.Preview?["asset"] != null && (_config.EnableExperimental || _config.FullAccess) ? _caller.Client : null,
-            }, ct);
+            };
+            var committed = (JObject)await (transfer == null ? _client.SendAsync("atomic_batch", request, ct)
+                : transfer.SendBatchAsync(request, ct));
             committed["plan_id"] = plan.Id;
             committed["operations_sha256"] = plan.Hash;
             return committed.ToString(Formatting.None);
         }
         catch (InventorGatewayException ex) { return ex.ToErrorJson().ToString(Formatting.None); }
+        finally { plan.Dispose(); }
     }
 
     [McpServerTool(Name = "inventor_list_plans"), Description("List this client's pending change plans (id, document, revision, intent, expiry). Plans are held in server memory for 15 minutes and are never shared between clients.")]

@@ -48,6 +48,11 @@ public static class HttpHost
 
         var services = builder.Services;
         options?.ConfigureServices?.Invoke(services);
+        if (options?.ImportResources is { } importPolicy)
+        {
+            services.AddSingleton(importPolicy);
+            services.TryAddSingleton(_ => new Bimwright.Ipt.Server.Imports.ImportResourceStore(importPolicy.StorePolicy));
+        }
         services.AddSingleton(tokens);
         services.TryAddSingleton<ISpeechEngine>(_ => ExternalProcessSpeechEngine.FromConfig(config));
         services.AddSingleton(new VoiceEndpoint.Settings(config.VoiceDiagnostics));
@@ -127,6 +132,8 @@ public static class HttpHost
             .RequireAuthorization()
             .RequireRateLimiting(RatePolicy);
         VoiceEndpoint.Map(app);
+        if (options?.ImportResources is { } imports)
+            Imports.ImportResourceEndpoint.MapImportResources(app, imports);
         MapViewer(app);
         return app;
     }

@@ -28,7 +28,7 @@ namespace InventorXrSo.Xr
         public Func<double> DoubleTriggerClock { get; set; }
         public FeatureEditModel FeatureEdit => _featureEdit;
         public string FeatureTabId => _featureEdit == null ? null : ContextTabs.FeatureEditPrefix + _featureEdit.Name;
-        public TabState TabState => new TabState { FeatureEditOpen = Active && _featureEdit != null, FeatureName = _featureEdit?.Name };
+        public TabState TabState => new TabState { SketchOpen = SketchOpen, FeatureEditOpen = Active && _featureEdit != null, FeatureName = _featureEdit?.Name };
 
         private const string IdFeaturePrefix = "lamiera.feature.", IdFeaturePrevious = "lamiera.feature.prev",
             IdFeatureDesktop = "lamiera.feature.desktop";
@@ -178,7 +178,7 @@ namespace InventorXrSo.Xr
                 }, () => "Nessuna feature aperta."));
 
             var list = new List<XrAction>();
-            int room = ActionCatalog.MaxPalette - fixedActions.Count;
+            int room = PaletteLayout.PickerCapacity - fixedActions.Count;
             for (int i = 0; i < model.Chips.Count && list.Count < room; i++)
             {
                 var chip = model.Chips[i];

@@ -4,7 +4,7 @@ using Newtonsoft.Json;
 
 namespace Bimwright.Ipt.Shared.Contracts;
 
-/// <summary>Portable, opaque reference including Inventor's saved B-Rep key context.</summary>
+/// <summary>Portable, opaque reference; B-Rep references include their saved key context.</summary>
 public sealed class PersistentEntityReference
 {
     public int Version { get; set; } = 1;
@@ -13,6 +13,8 @@ public sealed class PersistentEntityReference
     public byte[] Key { get; set; } = Array.Empty<byte>();
     public byte[] Context { get; set; } = Array.Empty<byte>();
     public const int MaximumEncodedLength = 131072;
+    public static bool SupportsContextFreeKey(string type) => type is "sketch" or "sketch_entity"
+        or "sketch_constraint" or "sketch_dimension" or "sketch_text" or "sketch_image";
 
     public string Encode()
     {
@@ -44,7 +46,7 @@ public sealed class PersistentEntityReference
     {
         if (Version != 1 || string.IsNullOrWhiteSpace(DocumentId) || DocumentId.Length > 256 ||
             string.IsNullOrWhiteSpace(EntityType) || EntityType.Length > 128 || Key == null || Key.Length == 0 ||
-            Context == null || Context.Length == 0)
+            Context == null || (Context.Length == 0 && !SupportsContextFreeKey(EntityType)))
             throw new ArgumentException("Unsupported or incomplete entity reference.");
     }
 }

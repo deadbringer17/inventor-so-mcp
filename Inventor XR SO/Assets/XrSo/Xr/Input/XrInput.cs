@@ -8,12 +8,14 @@ namespace InventorXrSo.Xr.Input
     /// Unico lettore dei controller per la UI M6: trasforma lo stato grezzo in eventi semantici
     /// (spec M6, mappatura dei controller). B resta a PushToTalkInput.
     /// </summary>
+    [DefaultExecutionOrder(100)] // Il raycast UI del frame precede i gesti sul foglio.
     public sealed class XrInput : MonoBehaviour
     {
         public const float FlickOn = 0.6f, FlickOff = 0.3f, ZoomDeadZone = 0.2f, BackHoldSeconds = 1f;
 
         private XrInputFrame _last;
         private bool _penStickX, _penStickY, _paletteStickX;
+        private bool _penNeedsRelease;
         private float _xDownAt = -1;
         private bool _xRest, _xHeld;
         private Action<int> _flickH, _flickV;
@@ -53,7 +55,7 @@ namespace InventorXrSo.Xr.Input
         public event Action<float> Zoom;
         public event Action<bool> TwoHandChanged;
         /// <summary>
-        /// Il controller destro ha perso il tracking. Scatta PRIMA di <see cref="PenReleased"/> (se il trigger era tenuto), cosi
+        /// Uno dei controller ha perso il tracking. Scatta PRIMA di <see cref="PenReleased"/> (se il trigger era tenuto), cosi
         /// i chiamanti distinguono il rilascio voluto dalla perdita e chiudono la cattura senza anteprima.
         /// </summary>
         public event Action TrackingLost;
@@ -62,11 +64,14 @@ namespace InventorXrSo.Xr.Input
 
         public void Poll(XrInputFrame f, float time)
         {
-            if (_last.PenTracked && !f.PenTracked) TrackingLost?.Invoke();
+            bool paletteLost = _last.PaletteTracked && !f.PaletteTracked;
+            if (_last.PenTracked && !f.PenTracked || paletteLost) TrackingLost?.Invoke();
             PenTracked = f.PenTracked; PaletteTracked = f.PaletteTracked;
             bool grip = f.PenGrip && f.PenTracked;
             PenGripHeld = grip;   // before the Trigger event: a Grip pressed in the same frame already makes the Trigger view-only
-            bool trigger = f.PenTrigger && f.PenTracked;
+            if (!f.PenTracked || paletteLost) _penNeedsRelease = true;
+            else if (!f.PenTrigger) _penNeedsRelease = false;
+            bool trigger = f.PenTrigger && f.PenTracked && !_penNeedsRelease;
             if (trigger && !PenHeld) { PenHeld = true; PenPressed?.Invoke(); }
             else if (!trigger && PenHeld) { PenHeld = false; PenReleased?.Invoke(); }
 

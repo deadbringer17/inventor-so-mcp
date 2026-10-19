@@ -43,6 +43,13 @@ public sealed class SetParameterHandler : HandlerBase, IInventorCommand
         {
             prm.Expression = value;
             doc.Update();
+#if INVENTOR2027 && SO_EXPERIMENTAL
+            // Update can leave native parameter-bound text facets cached.
+            // Regenerate inside the owned mutation so preview/failed batches
+            // roll it back; read-only snapshots must never repair CAD state.
+            if (ctx.AllowExperimental && ctx.OwnedBatchTransaction != null && !doc.Rebuild2(false))
+                throw new InvalidOperationException("Parameter consumer regeneration failed.");
+#endif
         }
         catch (Exception ex)
         {

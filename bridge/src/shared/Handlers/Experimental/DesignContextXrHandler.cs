@@ -49,19 +49,21 @@ public sealed class DesignContextXrHandler : ExperimentalHandler
             if (sketches.Count >= limit) { truncated = true; break; }
             var frame = SketchFrame(app, sketch);
             frame["name"] = sketch.Name; frame["visible"] = sketch.Visible;
+            frame["sketch_id"] = SketchReferences.Describe(document, sketch, "sketch");
             frame["entity_count"] = sketch.SketchEntities.Count;
             frame["constraint_status"] = sketch.ConstraintStatus.ToString();
             sketches.Add(frame);
             int count=sketch.SketchEntities.Count;
             if (sketchSnapshots.Count<256 && sketchEntities+count<=20000)
             {
-                var snapshot=new GetSketchInfoHandler().Execute(ctx,new JObject { ["sketch_name"]=sketch.Name,["max_entities"]=20000 });
-                if(snapshot.Ok && snapshot.Data is JObject data)
+                try
                 {
-                    data["frame"]=SketchFrame(app,sketch); data["visible"]=sketch.Visible;
+                    var native = SketchEditorXrHandler.Capture(ctx,app,document,sketch,null,revision,false);
+                    var data = SketchEditorXrHandler.PreviewData(native);
                     sketchSnapshots.Add(data); sketchEntities+=count;
+                    if ((bool?)native["partial"] != false) { truncated=true; warnings.Add("Sketch geometry is partial: "+sketch.Name); }
                 }
-                else { truncated=true; warnings.Add("Sketch geometry unavailable: "+sketch.Name); }
+                catch (Exception ex) { truncated=true; warnings.Add("Sketch geometry unavailable: "+sketch.Name+" ("+ex.GetType().Name+")"); }
             }
             else { truncated=true; warnings.Add("Sketch geometry limit: "+sketch.Name); }
         }

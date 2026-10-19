@@ -20,8 +20,9 @@ namespace InventorXrSo.Xr
 
         private static readonly XrTab[] StaticTabs =
         {
-            new XrTab(TabSketch, "Schizzo"), new XrTab(TabConstraints, "Vincoli"), new XrTab(TabFeature, "Feature"),
+            new XrTab(TabSketch, "Schizzo", PaletteProfile.Sketch), new XrTab(TabConstraints, "Vincoli"), new XrTab(TabFeature, "Feature"),
             new XrTab(TabOptions, "Opzioni feature"), new XrTab(TabParameters, "Parametri"),
+            new XrTab(NativeParameterTab, "Parametro: espressione e gestione"),
         };
 
         private sealed class PickerItem
@@ -35,7 +36,7 @@ namespace InventorXrSo.Xr
             public string Title;
             public List<PickerItem> Items;
             public string ReturnTab;
-            public int Pages => (Items.Count + ActionCatalog.MaxPalette - 1) / ActionCatalog.MaxPalette;
+            public int Pages => (Items.Count + PaletteLayout.PickerCapacity - 1) / PaletteLayout.PickerCapacity;
         }
 
         private XrAction[] _actions;
@@ -47,8 +48,8 @@ namespace InventorXrSo.Xr
         {
             get
             {
-                if (_picker == null && _featureEdit == null) return StaticTabs;
-                var tabs = new List<XrTab>(StaticTabs);
+                if (_picker == null && _featureEdit == null && _selectedNativeParameter==null) return StaticTabs.Concat(InventorXrSo.Unity.Ui.SketchRibbon.Tabs).ToArray();
+                var tabs = new List<XrTab>(StaticTabs.Concat(InventorXrSo.Unity.Ui.SketchRibbon.Tabs));
                 if (_featureEdit != null) tabs.Add(new XrTab(FeatureTabId, "Feature: " + _featureEdit.Name));
                 if (_picker == null) return tabs;
                 for (int page = 0; page < _picker.Pages; page++)
@@ -94,7 +95,7 @@ namespace InventorXrSo.Xr
 
         // ---------------------------------------------------------------- actions
 
-        private bool EditableNow => Active && _kind == "part" && _online && !_busy && _context != null && _pendingMutations == 0
+        private bool EditableNow => !NativeEditorOpen && Active && _kind == "part" && _online && !_busy && _context != null && _pendingMutations == 0
             && _session != null && _session.CanEdit && _session.Status != DesignStatus.Committing && _session.Status != DesignStatus.Previewing;
         private bool SketchOn => EditableNow && _screen == "sketch" && _sketch != null;
         private bool FeatureOn => EditableNow && _screen == "feature";
@@ -103,6 +104,7 @@ namespace InventorXrSo.Xr
 
         private string EditReason()
         {
+            if (NativeEditorOpen) return "Concludi prima l'editor dello schizzo nativo.";
             if (!Active) return "Progettazione non è aperta.";
             if (_kind != "part") return "Progettazione richiede una parte attiva in Inventor.";
             if (!_online) return "Offline: anteprima e modifiche CAD disabilitate.";
@@ -194,20 +196,25 @@ namespace InventorXrSo.Xr
 
                 // Barra di conferma: l'unico percorso verso il CAD
                 new XrAction(CommitIds.Preview, "Anteprima", ActionCatalog.CommitTab,
-                    () => CommitReady && InDraftScreen && _session.CanEdit && _session.Status != DesignStatus.Previewing,
+                    () => CommitReady && InDraftScreen && _session.CanEdit && _session.Status != DesignStatus.Previewing && (!NativeEditorOpen || _nativeEditor?.Session.CanEdit == true && _nativeEditor.Session.HasDraft && _session.Status != DesignStatus.Empty),
                     () => { if (_screen == "parameter") PreviewParameter(); else Preview(); },
                     () => !InDraftScreen ? "Nessun comando in corso." : EditReason()),
                 new XrAction(CommitIds.Apply, "Applica", ActionCatalog.CommitTab,
-                    () => CommitReady && InDraftScreen && _session.CanApply, Apply,
+                    () => CommitReady && InDraftScreen && _session.CanApply && (!NativeEditorOpen || _nativeEditor?.Session.CanEdit == true), Apply,
                     () => !InDraftScreen ? "Nessun comando in corso." : "Serve un’anteprima verificata e visualizzata.", voiceInvokes: false),
                 new XrAction(CommitIds.Cancel, "Annulla comando", ActionCatalog.CommitTab,
-                    () => CommitReady && InDraftScreen, CancelDraft, () => "Nessun comando da annullare."),
+                    () => CommitReady && InDraftScreen && (!NativeEditorOpen || _nativeEditor?.Session.HasDraft == true), CancelDraft, () => "Nessun comando da annullare."),
                 new XrAction(CommitIds.Recover, _session?.CommitOutcomeUnknown == true ? "Ho controllato il CAD" : "Aggiorna documento", ActionCatalog.CommitTab,
                     () => Active && _online && _session?.Status == DesignStatus.RefreshRequired && _pendingMutations == 0, ReviewUnknown,
                     () => _pendingMutations > 0 ? "Attendo la conclusione della richiesta CAD precedente." : "Il documento è aggiornato.",
                     new[] { "aggiorna documento", "ho controllato il cad" }),
             };
 
+            list.AddRange(NativeParameterActions());
+            list.Add(new XrAction("sketch.editor.open","Modifica schizzo esistente",TabSketch,
+                () => EditableNow && _nativeEditor != null && _session.Status == DesignStatus.Empty && _context.Sketches.Any(s=>s.NativeSketchId!=null),
+                OpenNativePicker,()=> _nativeEditor == null ? "Il backend non espone l'editor di schizzo nativo." : EditReason()));
+            list.AddRange(InventorXrSo.Unity.Ui.SketchRibbon.Actions(() => _shell?.Palette,_nativeEditor));
             if (_featureEdit != null) list.AddRange(BuildFeatureEditActions());
             if (_picker != null)
             {
@@ -215,7 +222,7 @@ namespace InventorXrSo.Xr
                 for (int i = 0; i < picker.Items.Count; i++)
                 {
                     var item = picker.Items[i];
-                    list.Add(new XrAction("design.pick." + i, item.Label, PickTabPrefix + i / ActionCatalog.MaxPalette,
+                    list.Add(new XrAction("design.pick." + i, item.Label, PickTabPrefix + i / PaletteLayout.PickerCapacity,
                         () => PickerOpen(picker), () => { ClosePicker(); item.Choose(); }, () => "L’elenco è stato chiuso."));
                 }
             }
@@ -242,19 +249,25 @@ namespace InventorXrSo.Xr
 
         private void OpenParameters()
         {
+            var context=_context;int generation=_generation;
+            bool Current()=>EditableNow && generation==_generation && ReferenceEquals(context,_context);
             var items = new List<PickerItem>();
-            foreach (var p in _context.Parameters.OfType<Newtonsoft.Json.Linq.JObject>()
-                .Where(p => p["value_mm"] != null || p["value_deg"] != null || (string)p["unit"] == "ul"))
+            foreach (var p in _context.Parameters.OfType<Newtonsoft.Json.Linq.JObject>())
             {
-                string name = (string)p["name"], unit = p["value_mm"] != null ? "mm" : p["value_deg"] != null ? "deg" : "ul";
-                double value = (double?)(p["value_mm"] ?? p["value_deg"] ?? p["value_unitless"]) ?? 0;
+                if(!TryNumericParameter(p,out double value,out string unit)) continue;
+                string name = (string)p["name"];
                 var quantity = unit == "deg" ? QuantityUnit.Degrees : unit == "mm" ? QuantityUnit.Millimeters : QuantityUnit.None;
-                items.Add(new PickerItem(name + " = " + Format(value) + " " + unit, () => Ask("Parametro " + name, new[] { unit }, new[] { value }, values =>
+                items.Add(new PickerItem(name + " = " + Format(value) + " " + unit, () =>
                 {
-                    _feature = null; _sketch = null; _parameterName = name; _screen = "parameter";
-                    _session.SetDraft(new Newtonsoft.Json.Linq.JArray(DesignOperations.Parameter(name, values[0], unit)));
-                    PreviewParameter();
-                }, quantity)));
+                    if(!Current()) return;
+                    Ask("Parametro " + name, new[] { unit }, new[] { value }, values =>
+                    {
+                        if(!Current()) return;
+                        _feature = null; _sketch = null; _parameterName = name; _screen = "parameter";
+                        _session.SetDraft(new Newtonsoft.Json.Linq.JArray(DesignOperations.Parameter(name, values[0], unit)));
+                        PreviewParameter();
+                    }, quantity);
+                }));
             }
             OpenPicker("Parametri CAD", items);
         }

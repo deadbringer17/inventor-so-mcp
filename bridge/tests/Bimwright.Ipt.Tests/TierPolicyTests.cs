@@ -40,6 +40,7 @@ public sealed class TierPolicyTests
 
     [Theory]
     [InlineData("inventor_get_display_mesh")]
+    [InlineData("inventor_get_sketch_image_xr")]
     [InlineData("inventor_get_scene_graph")]
     [InlineData("inventor_set_camera")]
     [InlineData("inventor_get_sketch_info")]

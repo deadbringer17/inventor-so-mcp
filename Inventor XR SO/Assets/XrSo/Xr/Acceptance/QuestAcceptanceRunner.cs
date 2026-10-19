@@ -223,7 +223,12 @@ namespace InventorXrSo.Xr
         protected async Task<LoadedScene> WaitForFixture(CancellationToken ct)
         {
             App = await WaitFor(() => FindObjectOfType<AppController>(), ct, TimeoutSeconds);
-            Session = await WaitFor(() => Read<SessionController>(App, "_session"), ct, TimeoutSeconds);
+            Session = await WaitFor(() =>
+            {
+                if (Milestone == "s1" && App.AcceptanceBootstrapBlocked)
+                    throw new InvalidOperationException("S1 bootstrap rejected at stage " + App.AcceptanceBootstrapStage + "; no CAD case executed.");
+                return Read<SessionController>(App, "_session");
+            }, ct, TimeoutSeconds);
             var session = Session;
             return await WaitFor(() => session.Status == SessionStatus.Online && HasFixtureRoot(session)
                 ? session.Scene : null, ct, TimeoutSeconds);

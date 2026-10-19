@@ -74,13 +74,29 @@ namespace InventorXrSo.Unity.Scene
         private Material _material;
         private GameObject _content;
         private LineRenderer _cursor;
+        private LineRenderer _selectionWindow;
+        private MaterialPropertyBlock _windowProperties;
         private GameObject _errorContext;
         private Material _errorMaterial;
+        private NativeSketchConstraintLayer _constraintLayer;
+        private NativeSketchImageLayer _imageLayer;
+        private NativeSketchTextLayer _textLayer;
+        public void BindNativeImages(INativeSketchImageBackend backend)
+        {
+            if (_imageLayer == null) _imageLayer = NativeSketchImageLayer.Create(transform, backend);
+            else _imageLayer.BindBackend(backend);
+        }
+        public NativeSketchConstraintGlyphResult ConstraintLayout => _constraintLayer?.Layout;
+        public string ConstraintLayoutUnavailableReason => _constraintLayer?.UnavailableReason ?? "";
+        public IReadOnlyList<SketchEntityRef> PickConstraintLabels(NativeSketchSnapshot current, Ray ray)
+            => _constraintLayer == null ? Array.Empty<SketchEntityRef>() : _constraintLayer.PickTargets(current,ray);
         public bool HasErrorContext => _errorContext != null && _errorContext.activeSelf;
         public void Initialize(Material material)
         {
             _material = material;
             _cursor = CadCoordinates.Line(transform, "Sketch cursor", Array.Empty<CadPoint>(), material, 0.002f);
+            _selectionWindow = CadCoordinates.Line(transform, "Native selection window", Array.Empty<CadPoint>(), material, 0.0015f);
+            _windowProperties = new MaterialPropertyBlock();
         }
         public void ShowDraft(SketchDraft draft, int selected = -1, int selectedSide = -1)
         {
@@ -97,6 +113,80 @@ namespace InventorXrSo.Unity.Scene
                     CadCoordinates.Line(_content.transform,"Selected rectangle side",new[]{outline[selectedSide],outline[selectedSide+1]}.Select(draft.Frame.ToModel),_material,0.003f);
                 }
             }
+        }
+        public void ShowNative(NativeSketchSnapshot snapshot, Transform head = null, IEnumerable<SketchEntityRef> selected = null,bool showConstraints=true,
+            IEnumerable<string> constraintNativeTypes=null)
+        {
+            if (snapshot == null) { ClearContent(); return; }
+            var references = (selected ?? Array.Empty<SketchEntityRef>()).ToArray();
+            if (references.Any(r => r == null || !r.Matches(snapshot.State,snapshot.SketchId)))
+                throw new InvalidOperationException("Refresh native selection references before rendering another revision.");
+            foreach(var reference in references)
+            {
+                var entity=snapshot.Entities.Concat(snapshot.Dimensions).Concat(snapshot.Constraints).SingleOrDefault(e=>e.Reference?.EntityId==reference.EntityId);
+                if(entity==null || !entity.CanSelectSubpart(reference.Subpart) || entity.Type!=reference.Type)
+                    throw new InvalidOperationException("Native selection subpart is absent from the authoritative snapshot.");
+            }
+            if(_constraintLayer == null) _constraintLayer=NativeSketchConstraintLayer.Create(transform,transform,_material);
+            _imageLayer?.Synchronize(snapshot);
+            _constraintLayer.Synchronize(snapshot,references.FirstOrDefault(r=>r.Type=="constraint"),showConstraints,constraintNativeTypes);
+            references=references.Concat(_constraintLayer.Layout?.Entries.Where(c=>c.Reference!=null && references.Any(r=>r.EntityId==c.Reference.EntityId))
+                .SelectMany(c=>c.RelatedEntities) ?? Enumerable.Empty<SketchEntityRef>())
+                .GroupBy(r=>(r.EntityId,r.Subpart)).Select(g=>g.First()).ToArray();
+            ClearContent(true); _content = new GameObject("Native sketch snapshot"); _content.transform.SetParent(transform,false);
+            if(_textLayer==null)_textLayer=NativeSketchTextLayer.Create(transform);
+            _textLayer.Synchronize(snapshot,references);
+            foreach (var entity in snapshot.Entities)
+            {
+                bool highlight = entity.Reference != null && references.Any(r => r.EntityId == entity.Reference.EntityId && r.Subpart==SketchSubpart.Entity);
+                float width = highlight ? .003f : .0012f;
+                if (entity.Strokes.Count > 1)
+                    CadCoordinates.Line(_content.transform,entity.Type,entity.Strokes.Select(snapshot.Frame.ToModel),_material,width);
+                else if (entity.Strokes.Count == 1)
+                {
+                    var p = entity.Strokes[0];
+                    CadCoordinates.Line(_content.transform,"Native point X",new[] {p+new CadPoint(-.5,0),p+new CadPoint(.5,0)}.Select(snapshot.Frame.ToModel),_material,width);
+                    CadCoordinates.Line(_content.transform,"Native point Y",new[] {p+new CadPoint(0,-.5),p+new CadPoint(0,.5)}.Select(snapshot.Frame.ToModel),_material,width);
+                }
+                var data = entity.Data;
+                string formatLabel=SketchSnapshot.NativeFormatLabel(data);
+                var formatAnchor=data["point_mm"] ?? data["center_mm"] ?? data["start_mm"];
+                if(formatLabel.Length>0 && formatAnchor!=null)
+                    SketchDimensionLabel.Create(_content.transform,transform,head,snapshot.Frame.ToModel(CadPoint.Parse(formatAnchor,2)),formatLabel);
+                if (entity.TextGlyphs==null && data["text_mm"] != null && data["text"] != null)
+                    SketchDimensionLabel.Create(_content.transform,transform,head,snapshot.Frame.ToModel(CadPoint.Parse(data["text_mm"],2)),(string)data["text"]);
+                foreach(var reference in references.Where(r=>r.EntityId==entity.Reference?.EntityId && r.Subpart!=SketchSubpart.Entity))
+                {
+                    entity.TryGetSubpartPoint(reference.Subpart,out var p);
+                    CadCoordinates.Line(_content.transform,"Native selected "+reference.Subpart+" X",new[] {p+new CadPoint(-1,0),p+new CadPoint(1,0)}.Select(snapshot.Frame.ToModel),_material,.003f);
+                    CadCoordinates.Line(_content.transform,"Native selected "+reference.Subpart+" Y",new[] {p+new CadPoint(0,-1),p+new CadPoint(0,1)}.Select(snapshot.Frame.ToModel),_material,.003f);
+                }
+            }
+            foreach (var dimension in snapshot.Dimensions.Where(d => d.Supported && d.Data["text_mm"] != null))
+            {
+                var data = dimension.Data;
+                if(references.Any(r=>r.EntityId==dimension.Reference?.EntityId && r.Subpart==SketchSubpart.Entity))
+                {
+                    var p=CadPoint.Parse(data["text_mm"],2);
+                    CadCoordinates.Line(_content.transform,"Selected native dimension X",new[] {p+new CadPoint(-1,0),p+new CadPoint(1,0)}.Select(snapshot.Frame.ToModel),_material,.003f);
+                    CadCoordinates.Line(_content.transform,"Selected native dimension Y",new[] {p+new CadPoint(0,-1),p+new CadPoint(0,1)}.Select(snapshot.Frame.ToModel),_material,.003f);
+                }
+                SketchDimensionLabel.Create(_content.transform,transform,head,snapshot.Frame.ToModel(CadPoint.Parse(data["text_mm"],2)),
+                    (string)data["name"] + " = " + (string)data["expression"]);
+            }
+            foreach(var glyph in _constraintLayer.Layout?.Entries ?? Array.Empty<NativeSketchConstraintGlyph>())
+            {
+                if(glyph.State!=NativeSketchConstraintGlyphState.Visible || !glyph.AnchorMm.HasValue || !glyph.PositionMm.HasValue) continue;
+                var anchor=glyph.AnchorMm.Value;
+                if(glyph.Selected)
+                {
+                    CadCoordinates.Line(_content.transform,"Selected native constraint X",new[] {anchor+new CadPoint(-1,0),anchor+new CadPoint(1,0)}.Select(snapshot.Frame.ToModel),_material,.003f);
+                    CadCoordinates.Line(_content.transform,"Selected native constraint Y",new[] {anchor+new CadPoint(0,-1),anchor+new CadPoint(0,1)}.Select(snapshot.Frame.ToModel),_material,.003f);
+                }
+            }
+            if (snapshot.Partial)
+                SketchDimensionLabel.Create(_content.transform,transform,head,snapshot.Frame.OriginMm,snapshot.NativeMutationComplete
+                    ? "Immagini di sola lettura — altre geometrie modificabili" : "Schizzo parziale — modifica non disponibile");
         }
         /// <summary>
         /// The one edge on screen when exactly one real edge is shown (a picked edge, not a sketch profile or a multi-selection): its
@@ -188,9 +278,40 @@ namespace InventorXrSo.Unity.Scene
             _cursor.positionCount = points.Length;
             for (int i = 0; i < points.Length; i++) _cursor.SetPosition(i, CadCoordinates.ToLocal(points[i]));
         }
-        public void Clear() { ClearContent(); ClearErrorContext(); if (_cursor != null) _cursor.positionCount = 0; }
-        private void ClearContent()
+        public void ArcCursor(SketchFrame frame,CadPoint center,double radius,double startDegrees,double sweepDegrees)
         {
+            if(frame==null || radius<=0 || double.IsNaN(radius) || double.IsInfinity(radius)
+                || double.IsNaN(startDegrees) || double.IsInfinity(startDegrees) || double.IsNaN(sweepDegrees) || double.IsInfinity(sweepDegrees))
+            {_cursor.positionCount=0;return;}
+            double sweep=Math.Max(-360,Math.Min(360,sweepDegrees));
+            int segments=Math.Max(1,(int)Math.Ceiling(Math.Abs(sweep)/5));_cursor.positionCount=segments+1;
+            for(int i=0;i<=segments;i++)
+            {
+                double angle=(startDegrees+sweep*i/segments)*Math.PI/180;
+                var point=center+new CadPoint(radius*Math.Cos(angle),radius*Math.Sin(angle));
+                if(Math.Abs(sweep)<1e-9 && i==0) point=center;
+                _cursor.SetPosition(i,CadCoordinates.ToLocal(frame.ToModel(point)));
+            }
+        }
+        public void SelectionWindow(SketchFrame frame,CadPoint first,CadPoint second,bool crossing)
+        {
+            if (_selectionWindow==null) return;
+            if (frame==null) { _selectionWindow.positionCount=0;return; }
+            var color=crossing ? new Color(.2f,1,.4f) : new Color(.3f,.65f,1);
+            _selectionWindow.startColor=_selectionWindow.endColor=color;
+            _windowProperties.SetColor("_BaseColor",color);_windowProperties.SetColor("_Color",color);
+            _windowProperties.SetFloat("_UseVertexColor",0);_selectionWindow.SetPropertyBlock(_windowProperties);
+            _selectionWindow.positionCount=5;
+            _selectionWindow.SetPosition(0,CadCoordinates.ToLocal(frame.ToModel(first)));
+            _selectionWindow.SetPosition(1,CadCoordinates.ToLocal(frame.ToModel(new CadPoint(second.X,first.Y))));
+            _selectionWindow.SetPosition(2,CadCoordinates.ToLocal(frame.ToModel(second)));
+            _selectionWindow.SetPosition(3,CadCoordinates.ToLocal(frame.ToModel(new CadPoint(first.X,second.Y))));
+            _selectionWindow.SetPosition(4,_selectionWindow.GetPosition(0));
+        }
+        public void Clear() { ClearContent(); ClearErrorContext(); if (_cursor != null) _cursor.positionCount = 0; if (_selectionWindow!=null) _selectionWindow.positionCount=0; }
+        private void ClearContent(bool preserveConstraints = false)
+        {
+            if(!preserveConstraints) { _constraintLayer?.Clear(); _imageLayer?.Clear(); _textLayer?.Clear(); }
             _singleEdge = null;
             if (_content == null) return; _content.SetActive(false);
             if (Application.isPlaying) Destroy(_content); else DestroyImmediate(_content);
@@ -199,6 +320,8 @@ namespace InventorXrSo.Unity.Scene
         private void OnDisable() => Clear();
         private void OnDestroy()
         {
+            _imageLayer?.Dispose();
+            _textLayer?.Dispose();
             foreach (var material in new[] { _errorMaterial, _selectedEdgeMaterial })
             {
                 if (material == null) continue;

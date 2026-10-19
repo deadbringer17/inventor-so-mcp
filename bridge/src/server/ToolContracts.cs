@@ -127,6 +127,8 @@ public static class ToolContracts
         XQ("inventor_get_visual_revision", PAD),
         new() { Name = "inventor_inspect_xr", Tier = Experimental, Access = "query", RequiresRevision = true, Documents = PA, Verification = Pending },
         new() { Name = "inventor_get_design_context_xr", Tier = Experimental, Access = "query", RequiresRevision = true, Documents = Pa, Verification = Pending },
+        new() { Name = "inventor_get_sketch_editor_xr", Tier = Experimental, Access = "query", RequiresRevision = true, Documents = Pa, Verification = Pending },
+        new() { Name = "inventor_get_sketch_image_xr", Tier = Experimental, Access = "query", RequiresRevision = true, Documents = Pa, Verification = Pending },
         new() { Name = "inventor_get_assembly_context_xr", Tier = Experimental, Access = "query", RequiresRevision = true, Documents = As, Verification = Pending },
         new() { Name = "inventor_check_interference_xr", Tier = Experimental, Access = "query", RequiresRevision = true, Documents = As, Verification = Pending },
         new() { Name = "inventor_measure_min_distance_xr", Tier = Experimental, Access = "query", RequiresRevision = true, Documents = As, Verification = Pending },

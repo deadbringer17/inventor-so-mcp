@@ -50,14 +50,16 @@ namespace XrSo.Core.Tests.Ui
         }
 
         [Fact]
-        public void Palette_rejects_more_than_eight_actions()
+        public void Palette_retains_every_action_and_pages_by_layout()
         {
             var p = new Provider();
             p.TabList.Add(new XrTab("t", "T"));
             for (int i = 0; i < 9; i++) p.All.Add(A("a" + i, "Azione " + i, "t"));
             var c = new ActionCatalog(Spaces());
             c.SetActive(p);
-            Assert.Throws<InvalidOperationException>(() => c.Palette("t"));
+            Assert.Equal(9, c.Palette("t").Count);
+            Assert.Equal(8, c.PalettePage("t", PaletteLayout.Compact, 0).Count);
+            Assert.Single(c.PalettePage("t", PaletteLayout.Compact, 1));
         }
 
         [Fact]

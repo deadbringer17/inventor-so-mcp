@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using InventorXrSo.Core.Mcp;
@@ -28,7 +29,7 @@ namespace InventorXrSo.Core.Backend
         public bool CanEdit => !_disposed && !_commitInFlight && Status != DesignStatus.RefreshRequired
             && _online && _part && _context != null;
         public bool CanApply => CanEdit && Status == DesignStatus.PreviewReady && _rendered && Preview != null
-            && Preview.ExpiresUtc > _clock() && Matches(Preview);
+            && Preview.ExpiresUtc > _clock() && Matches(Preview) && Preview.Sketches.All(s=>s.NativeMutationComplete);
 
         public DesignSession(IDesignBackend backend, Func<DateTimeOffset> clock = null)
         { _backend = backend ?? throw new ArgumentNullException(nameof(backend)); _clock = clock ?? (() => DateTimeOffset.UtcNow); }

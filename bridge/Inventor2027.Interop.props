@@ -1,0 +1,16 @@
+<Project>
+  <!-- The shared Extensions 2027 directory can contain an older interop.
+       Resolve the installed 2027 binary before falling back to that directory. -->
+  <PropertyGroup>
+    <Inventor2027Bin Condition="'$(OS)' == 'Windows_NT'">$([MSBuild]::GetRegistryValue('HKEY_LOCAL_MACHINE\SOFTWARE\Autodesk\Inventor\RegistryVersion31.0', 'InventorLocation', ''))</Inventor2027Bin>
+    <InventorInteropDir Condition="'$(InventorInteropDir)' == '' and Exists('$(Inventor2027Bin)Autodesk.Inventor.Interop.dll')">$(Inventor2027Bin)</InventorInteropDir>
+    <InventorInteropDir Condition="'$(InventorInteropDir)' == ''">C:\Program Files\Common Files\Autodesk Shared\Extensions 2027\Framework\Interop</InventorInteropDir>
+  </PropertyGroup>
+  <Target Name="ValidateInventor2027Interop" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(InventorInteropDir)\Autodesk.Inventor.Interop.dll')" Text="Inventor 2027 interop is required. Set InventorInteropDir to the installed 2027 Bin directory." />
+    <GetAssemblyIdentity AssemblyFiles="$(InventorInteropDir)\Autodesk.Inventor.Interop.dll">
+      <Output TaskParameter="Assemblies" ItemName="_Inventor2027InteropIdentity" />
+    </GetAssemblyIdentity>
+    <Error Condition="!$([System.String]::Copy('%(_Inventor2027InteropIdentity.Version)').StartsWith('31.'))" Text="Inventor 2027 requires interop version 31.x; found %(_Inventor2027InteropIdentity.Version) in $(InventorInteropDir)." />
+  </Target>
+</Project>

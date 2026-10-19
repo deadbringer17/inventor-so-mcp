@@ -34,6 +34,8 @@ public sealed class CommandDispatcher
         // Experimental tier: always runs inside one aborted transaction (plan F13). Registered only
         // by the experimental build, so a default build reports it as an unknown command.
         "sample_parameter_motion",
+        // Memory-only, experimental internal upload; never a public MCP tool or CAD step.
+        "stage_sketch_import",
     };
 
     /// <summary>Read-only-flagged legacy exports that still write files; they stay blocked.</summary>

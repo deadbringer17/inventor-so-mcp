@@ -12,13 +12,14 @@ namespace InventorXrSo.Core.Ui
     /// <summary>Scheda della tavolozza. Gli id che iniziano con "_" sono interni e non si mostrano.</summary>
     public sealed class XrTab
     {
-        public XrTab(string id, string label)
+        public XrTab(string id, string label, PaletteProfile profile = PaletteProfile.Compact)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("id scheda vuoto");
-            Id = id; Label = label ?? id;
+            Id = id; Label = label ?? id; Profile = profile;
         }
         public string Id { get; }
         public string Label { get; }
+        public PaletteProfile Profile { get; }
         public bool Hidden => Id.StartsWith("_", StringComparison.Ordinal);
     }
 

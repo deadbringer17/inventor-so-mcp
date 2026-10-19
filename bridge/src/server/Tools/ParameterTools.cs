@@ -3,6 +3,8 @@ using System.ComponentModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Bimwright.Ipt.Server.Imports;
+using Bimwright.Ipt.Server.Planning;
 using ModelContextProtocol.Server;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -17,7 +19,10 @@ namespace Bimwright.Ipt.Server.Tools;
 public sealed class ParameterTools
 {
     private readonly PluginClient _client;
-    public ParameterTools(PluginClient client) => _client = client;
+    private readonly ImportResourceStore? _imports;
+    private readonly ICallerIdentity? _caller;
+    public ParameterTools(PluginClient client, ImportResourceStore? imports = null, ICallerIdentity? caller = null)
+    { _client = client; _imports = imports; _caller = caller; }
 
     [McpServerTool(Name = "inventor_list_parameters"),
      Description("List a part document's parameters (model + user): name, expression, evaluated value, unit, and kind. Defaults to the active document; pass document_id to read any other OPEN part without activating it, which is how one part's dimension is carried into another. Inventor offers no cross-document parameter link outside iLogic or a derived part, so the propagation itself is done by writing the value into the other part with inventor_atomic_batch.")]
@@ -53,17 +58,28 @@ public sealed class ParameterTools
     }
 
     [McpServerTool(Name = "inventor_atomic_batch"), Description("Execute up to 32 typed operations in one reversible transaction on the active part, assembly or drawing (each command declares the document kinds it runs in). Requires document_id and revision from inventor://active-document. Always validates rebuild plus feature health (parts) or constraint/joint health (assemblies) before commit; validate adds checks such as [\"interference\",\"min_clearance:2mm\"] (vocabulary in inventor://batch-commands). A failed check rolls everything back with VALIDATION_FAILED details. preview=true executes then rolls back, leaving the revision untouched; it is not a read-only operation. Each operation has command (wire name, e.g. set_parameter) and arguments (a JSON object). The command names and their arguments are listed in the inventor://batch-commands resource. No scripting, file export or document lifecycle allowed. Inventor SO 2027 only.")]
-    public Task<string> AtomicBatch(string document_id, string expected_revision, AtomicOperation[] operations, bool preview = false,
+    public async Task<string> AtomicBatch(string document_id, string expected_revision, AtomicOperation[] operations, bool preview = false,
         string[]? validate = null, CancellationToken ct = default)
     {
         if (!TryBuildOperations(operations, out var wire, out var rejection))
-            return Task.FromResult(rejection!.ToString(Formatting.Indented));
+            return rejection!.ToString(Formatting.Indented);
+        SketchImportAttachments? attachments;
+        try { attachments = SketchImportAttachments.Resolve(_imports, _caller?.Client ?? "", wire, ct); }
+        catch (PlanException ex) { return XrTools.Error(ex.Code, ex.Message); }
+        using var ownedAttachments = attachments;
         var request = new JObject { ["document_id"] = document_id, ["expected_revision"] = expected_revision,
             ["operations"] = wire, ["preview"] = preview };
         // Only sent when asked, so an add-in that predates validation keeps receiving the exact
         // request shape it was verified with.
         if (validate != null) request["validate"] = new JArray(validate);
-        return Call("atomic_batch", request, ct);
+        try
+        {
+            await using var transfer = attachments == null ? null :
+                await SketchImportTransfer.StageAsync(_client, attachments, _caller!.Client, ct);
+            return transfer == null ? await Call("atomic_batch", request, ct)
+                : (await transfer.SendBatchAsync(request, ct)).ToString(Formatting.Indented);
+        }
+        catch (InventorGatewayException ex) { return ex.ToErrorJson().ToString(Formatting.Indented); }
     }
 
     /// <summary>

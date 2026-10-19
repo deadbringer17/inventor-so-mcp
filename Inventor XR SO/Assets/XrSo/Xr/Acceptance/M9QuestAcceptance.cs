@@ -589,7 +589,8 @@ namespace InventorXrSo.Xr
             foreach (var id in tabs)
             {
                 var items = Catalog.Palette(id);
-                Check(items.Count > 0 && items.Count <= ActionCatalog.MaxPalette, context + ": tab '" + id + "' is never inert and holds at most " + ActionCatalog.MaxPalette + " actions");
+                var capacity = Catalog.FindTab(id)?.Profile == PaletteProfile.Sketch ? PaletteLayout.Sketch.Capacity : PaletteLayout.Compact.Capacity;
+                Check(items.Count > 0 && items.Count <= capacity, context + ": tab '" + id + "' is never inert and fits its palette profile (" + capacity + " actions)");
             }
             Check(tabs.Count(t => t == "vista") == 1, context + ": exactly one Vista tab");
             var vista = Catalog.Palette("vista").Select(a => a.Id).ToList();

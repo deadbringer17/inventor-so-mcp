@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup><OutputType>Exe</OutputType><AssemblyName>S1CopyCoreHttpProbe94</AssemblyName><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><S1RepositoryRoot Condition="'$(S1RepositoryRoot)'==''">$(MSBuildThisFileDirectory)..\..\..\..\</S1RepositoryRoot></PropertyGroup>
+ <ItemGroup><ProjectReference Include="$(S1RepositoryRoot)Inventor XR SO/Tests~/XrSo.Core/XrSo.Core.csproj" /></ItemGroup>
+</Project>

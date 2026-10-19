@@ -29,6 +29,9 @@ public static partial class InventorCommandRegistry
         add(new PickEntityHandler());
         add(new InspectXrHandler());
         add(new DesignContextXrHandler());
+        add(new SketchEditorXrHandler());
+        add(new NativeSketchImageDownloadHandler());
+        add(new StageSketchImportHandler());
         add(new AssemblyContextXrHandler());
         add(new AssemblyMoveHandler());
         add(new AssemblyConstraintHandler());
@@ -51,6 +54,7 @@ public static partial class InventorCommandRegistry
 
         // Batch commands: sketch
         add(new DrawEllipseHandler());
+        add(new EditSketchHandler());
         add(new DrawSplineHandler());
         add(new DrawSlotHandler());
         add(new DrawPolygonHandler());

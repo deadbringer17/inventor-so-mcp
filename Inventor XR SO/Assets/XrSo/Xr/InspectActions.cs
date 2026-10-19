@@ -58,7 +58,7 @@ namespace InventorXrSo.Xr
             public string Title;
             public List<PickerItem> Items;
             public string ReturnTab;
-            public int Pages => (Items.Count + ActionCatalog.MaxPalette - 1) / ActionCatalog.MaxPalette;
+            public int Pages => (Items.Count + PaletteLayout.PickerCapacity - 1) / PaletteLayout.PickerCapacity;
         }
 
         private XrAction[] _actions;
@@ -258,7 +258,7 @@ namespace InventorXrSo.Xr
                 for (int i = 0; i < picker.Items.Count; i++)
                 {
                     var item = picker.Items[i];
-                    list.Add(new XrAction(item.Id ?? IdPickPrefix + i, item.Label, PickTabPrefix + i / ActionCatalog.MaxPalette,
+                    list.Add(new XrAction(item.Id ?? IdPickPrefix + i, item.Label, PickTabPrefix + i / PaletteLayout.PickerCapacity,
                         () => PickerOpen(picker) && (!item.Backend || Backend), () => { ClosePicker(); item.Choose(); },
                         () => PickerOpen(picker) ? BackendReason() : "L’elenco è stato chiuso."));
                 }

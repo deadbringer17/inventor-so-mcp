@@ -91,6 +91,8 @@ public sealed class ExperimentalSourceTests
     [InlineData("inventor_pick_entity", "pick_entity")]
     [InlineData("inventor_inspect_xr", "inspect_xr")]
     [InlineData("inventor_get_design_context_xr", "get_design_context_xr")]
+    [InlineData("inventor_get_sketch_editor_xr", "get_sketch_editor_xr")]
+    [InlineData("inventor_get_sketch_image_xr", "get_sketch_image_payload")]
     [InlineData("inventor_get_assembly_context_xr", "get_assembly_context_xr")]
     [InlineData("inventor_activate_open_document_xr", "activate_open_document_xr")]
     [InlineData("inventor_check_interference_xr", "check_interference_xr")]
@@ -109,7 +111,8 @@ public sealed class ExperimentalSourceTests
     {
         Assert.Equal(ToolContracts.Experimental, SoToolPolicy.TierOf(tool));
         Assert.Contains(command, ExperimentalWireNames());
-        var serverSources = string.Join("\n", Directory.GetFiles(Src("server", "Tools"), "*.cs").Select(File.ReadAllText));
+        var serverSources = string.Join("\n", Directory.GetFiles(Src("server", "Tools"), "*.cs")
+            .Concat(Directory.GetFiles(Src("server", "Planning"), "*.cs")).Select(File.ReadAllText));
         Assert.Contains("\"" + command + "\"", serverSources);
     }
 

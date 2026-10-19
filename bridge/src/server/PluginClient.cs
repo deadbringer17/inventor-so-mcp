@@ -176,6 +176,45 @@ public sealed class PluginClient
             InventorErrorCodes.NO_TARGET,
             "No unique live Inventor target. Load the Inventor SO add-in and explicitly select an instance when several are available.");
 
+        return await SendToTargetAsync(target,command,parameters,ct);
+    }
+
+    internal sealed class PinnedTarget
+    {
+        private readonly string? _auth,_transport,_pipe;
+        private readonly int _pid,_port;
+        internal PinnedTarget(TargetDescriptor target)
+        { TargetId=target.TargetId;_auth=target.AuthToken;_transport=target.Transport;_pipe=target.PipeName;_pid=target.ProcessId;_port=target.Port; }
+        internal string TargetId { get; }
+        internal bool Matches(TargetDescriptor target)=>target.TargetId==TargetId && target.AuthToken==_auth
+            && target.ProcessId==_pid && target.Transport==_transport && target.PipeName==_pipe && target.Port==_port;
+    }
+
+    internal PinnedTarget CapturePinnedTarget()=>new(CurrentTarget ?? throw new InventorGatewayException(
+        InventorErrorCodes.NO_TARGET,"No unique live Inventor target is available for transfer."));
+
+    /// <summary>A multi-request transfer must never follow an automatic re-pin or an explicit switch.
+    /// Also compare credentials and endpoint, since process ids can be reused after a restart.</summary>
+    internal async Task<JToken> SendPinnedAsync(PinnedTarget pinned,string command,object parameters,CancellationToken ct)
+    {
+        var target=CurrentTarget;
+        if(pinned==null || target==null || !pinned.Matches(target))
+            throw new InventorGatewayException(InventorErrorCodes.TARGET_UNAVAILABLE,"The selected Inventor target changed or is unavailable; the transfer must be planned again.");
+        return await SendToTargetAsync(target,command,parameters,ct);
+    }
+
+    internal static string SerializeRequestLine(InventorCommandEnvelope envelope)
+    {
+        string json=JsonConvert.SerializeObject(envelope);
+        int bytes=Encoding.UTF8.GetByteCount(json);
+        if(bytes>InventorTransportLimits.MaxRequestLineBytes)
+            throw new InventorGatewayException(InventorErrorCodes.INVALID_ARGUMENT,"Request exceeds the Inventor transport limit.",
+                new JObject {["request_bytes"]=bytes,["max_request_bytes"]=InventorTransportLimits.MaxRequestLineBytes});
+        return json+"\n";
+    }
+
+    private async Task<JToken> SendToTargetAsync(TargetDescriptor target,string command,object parameters,CancellationToken ct)
+    {
         var env = new InventorCommandEnvelope
         {
             Id = Guid.NewGuid(),
@@ -186,7 +225,7 @@ public sealed class PluginClient
             ReadOnly = _config.ReadOnly
         };
 
-        var line = JsonConvert.SerializeObject(env) + "\n";
+        var line = SerializeRequestLine(env);
         var response = await SendLineAsync(target, line, ct);
 
         var result = JsonConvert.DeserializeObject<InventorCommandResult>(response)

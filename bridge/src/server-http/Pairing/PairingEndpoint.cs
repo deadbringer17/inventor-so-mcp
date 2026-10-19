@@ -15,6 +15,8 @@ public sealed class HostOptions
     public PairingEndpoint? Pairing { get; init; }
     /// <summary>Extra service registrations made before the defaults (tests and embedders: a speech engine, log providers).</summary>
     public Action<IServiceCollection>? ConfigureServices { get; init; }
+    /// <summary>Explicit opt-in in-memory resource exchange; requires a supplied content inspector and limits.</summary>
+    public Inventor.So.Mcp.Http.Imports.ImportHttpPolicy? ImportResources { get; init; }
 }
 
 /// <summary>

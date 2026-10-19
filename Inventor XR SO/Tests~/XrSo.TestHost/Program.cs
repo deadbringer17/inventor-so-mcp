@@ -5,6 +5,8 @@ using Inventor.So.Mcp.Http.Pairing;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -50,6 +52,29 @@ var store = new PairingStore(() => DateTimeOffset.UtcNow);
 var window = store.Open("quest3", TimeSpan.FromMinutes(30));
 var app = HttpHost.Build(Array.Empty<string>(), config, tokens,
     new HostOptions { Certificate = certificate, Pairing = new PairingEndpoint(store, tokens, config.HttpTokenFile) });
+// Test-only endpoints are mapped before Start. A same-origin redirect would retain the pinned
+// certificate, so target counters distinguish redirect refusal from a certificate rejection.
+int redirectSourceRequests = 0, redirectTargetRequests = 0;
+bool RedirectAuthorized(HttpContext context) => context.Request.Headers.Authorization.ToString() == "Bearer " + editorToken;
+app.MapGet("/test/redirect/{status:int}", (HttpContext context, int status) =>
+{
+    if (!RedirectAuthorized(context)) return (IResult)Results.Unauthorized();
+    if (status != 302 && status != 307) return (IResult)Results.BadRequest();
+    Interlocked.Increment(ref redirectSourceRequests);
+    context.Response.StatusCode = status;
+    context.Response.Headers.Location = context.Request.Scheme + "://" + context.Request.Host + "/test/redirect-target";
+    return Results.Empty;
+});
+app.MapGet("/test/redirect-target", (HttpContext context) =>
+{
+    Interlocked.Increment(ref redirectTargetRequests);
+    return Results.Json(new { followed = true });
+});
+app.MapGet("/test/redirect-counters", (HttpContext context) =>
+{
+    if (!RedirectAuthorized(context)) return (IResult)Results.Unauthorized();
+    return Results.Json(new { source_requests = Volatile.Read(ref redirectSourceRequests), target_requests = Volatile.Read(ref redirectTargetRequests) });
+});
 await app.StartAsync();
 
 var address = new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>().Addresses.First());

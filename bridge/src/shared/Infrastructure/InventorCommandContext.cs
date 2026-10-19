@@ -11,6 +11,12 @@ public sealed class InventorCommandContext
 {
     // Assigned only while the atomic backend invokes a step. Never supplied by JSON callers.
     internal object? OwnedBatchTransaction { get; set; }
+    // Installed only around the owning atomic batch; never supplied by a sketch step.
+    internal SketchBatchImportAttachments? OwnedSketchImports { get; set; }
+    internal object? OwnedSketchImageJournal { get; set; }
+    public SketchImportStagingStore? SketchImports { get; init; }
+    // Separate bounded memory budget for immutable document-image download snapshots.
+    public SketchImportStagingStore? SketchImageDownloads { get; init; }
     public bool RequireAtomicWrites { get; init; }
     public System.Func<bool>? IsDeadlineExceeded { get; init; }
     public CadEventJournal? Events { get; init; }

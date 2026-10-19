@@ -12,7 +12,7 @@ public sealed class SystemHttpTransport : IHttpTransport, IDisposable
     public SystemHttpTransport(ServerTrust trust)
     {
         _trust = trust;
-        var handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, cert, _, _) => cert != null && trust.Validate(cert.RawData) };
+        var handler = new HttpClientHandler { AllowAutoRedirect = false, ServerCertificateCustomValidationCallback = (_, cert, _, _) => cert != null && trust.Validate(cert.RawData) };
         _http = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
     }
 

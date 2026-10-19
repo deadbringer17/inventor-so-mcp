@@ -37,6 +37,8 @@ public abstract class InventorAddInServerBase : InvApi.ApplicationAddInServer
 #endif
 #if INVENTOR2027 && SO_EXPERIMENTAL
     private SelectionEventTracker? _selection;
+    private SketchImportStagingStore? _sketchImports;
+    private SketchImportStagingStore? _sketchImageDownloads;
 #endif
     protected virtual string ProductDirectory => Path.Combine("Bimwright", "ipt-mcp");
     protected virtual string PipePrefix => "BimwrightInventor";
@@ -64,6 +66,10 @@ public abstract class InventorAddInServerBase : InvApi.ApplicationAddInServer
         // Selection events are journalled only when the experimental tier is switched on.
         if (EnvFlag("INVENTOR_SO_EXPERIMENTAL"))
         {
+            _sketchImports = new SketchImportStagingStore(new SketchImportStagingPolicy(
+                32 * 1024 * 1024, 64L * 1024 * 1024, 32, 192 * 1024, TimeSpan.FromMinutes(10), 256));
+            _sketchImageDownloads = new SketchImportStagingStore(new SketchImportStagingPolicy(
+                32 * 1024 * 1024, 64L * 1024 * 1024, 32, 192 * 1024, TimeSpan.FromMinutes(2), 256));
             try { _selection = new SelectionEventTracker(_app, _events.Journal); }
             catch { _selection = null; /* selection events stay unavailable; reported by get_capabilities */ }
         }
@@ -133,6 +139,10 @@ public abstract class InventorAddInServerBase : InvApi.ApplicationAddInServer
 #if INVENTOR2027
                 Events = _events?.Journal,
 #endif
+#if INVENTOR2027 && SO_EXPERIMENTAL
+                SketchImports = _sketchImports,
+                SketchImageDownloads = _sketchImageDownloads,
+#endif
             };
 
             // Marshal the actual API work onto the STA thread.
@@ -178,6 +188,12 @@ public abstract class InventorAddInServerBase : InvApi.ApplicationAddInServer
         _events = null;
 #endif
         try { _server?.Dispose(); } catch { }
+#if INVENTOR2027 && SO_EXPERIMENTAL
+        try { _sketchImports?.Dispose(); } catch { }
+        _sketchImports = null;
+        try { _sketchImageDownloads?.Dispose(); } catch { }
+        _sketchImageDownloads = null;
+#endif
         try { _descriptorWriter?.Dispose(); } catch { }
         try { _sta?.Dispose(); } catch { }
         _server = null;

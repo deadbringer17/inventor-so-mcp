@@ -67,6 +67,12 @@ namespace InventorXrSo.Core.Backend
             Name=name; Expression=expression; TextPoint=textPoint; Driven=driven;
         }
     }
+    public sealed class SketchAnnotation
+    {
+        public SketchAnnotation(CadPoint point, string text) { Point = point; Text = text ?? ""; }
+        public CadPoint Point { get; }
+        public string Text { get; }
+    }
     public sealed class SketchSnapshot
     {
         public string Name { get; }
@@ -74,13 +80,24 @@ namespace InventorXrSo.Core.Backend
         public bool Visible { get; }
         public IReadOnlyList<SketchElement> Elements { get; }
         public int UnsupportedEntities { get; }
+        public bool NativePartial { get; }
+        public bool NativeMutationComplete { get; }
         public IReadOnlyList<SketchDimension> Dimensions { get; }
         public IReadOnlyList<string> Constraints { get; }
+        public IReadOnlyList<DesignEdge> NativePaths { get; }
+        public IReadOnlyList<SketchAnnotation> NativeAnnotations { get; }
+        public IReadOnlyList<NativeSketchTextGlyphMesh> NativeTextGlyphs { get; }
+        public IEnumerable<IEnumerable<CadPoint>> Outlines => NativePaths.Count > 0
+            ? NativePaths.Select(p => (IEnumerable<CadPoint>)p.PointsMm) : Elements.Select(e => (IEnumerable<CadPoint>)e.Outline());
         public SketchSnapshot(string name, SketchFrame frame, bool visible, IEnumerable<SketchElement> elements, int unsupported = 0,
-            IEnumerable<SketchDimension> dimensions = null, IEnumerable<string> constraints = null)
+            IEnumerable<SketchDimension> dimensions = null, IEnumerable<string> constraints = null, IEnumerable<DesignEdge> nativePaths = null,
+            IEnumerable<SketchAnnotation> nativeAnnotations = null, bool nativePartial = false, bool? nativeMutationComplete = null,
+            IEnumerable<NativeSketchTextGlyphMesh> nativeTextGlyphs = null)
         { Name = name; Frame = frame; Visible = visible; Elements = elements.ToArray(); UnsupportedEntities = unsupported;
             Dimensions=dimensions?.ToArray() ?? Array.Empty<SketchDimension>();
-            Constraints=constraints?.ToArray() ?? Array.Empty<string>(); }
+            Constraints=constraints?.ToArray() ?? Array.Empty<string>(); NativePaths=nativePaths?.ToArray() ?? Array.Empty<DesignEdge>();
+            NativeAnnotations=nativeAnnotations?.ToArray() ?? Array.Empty<SketchAnnotation>(); NativePartial=nativePartial; NativeMutationComplete=nativeMutationComplete ?? !nativePartial;
+            NativeTextGlyphs=Array.AsReadOnly(nativeTextGlyphs?.ToArray() ?? Array.Empty<NativeSketchTextGlyphMesh>()); }
         public SketchElement Pick(CadPoint point,double toleranceMm)
         {
             if (!(toleranceMm>0) || double.IsInfinity(toleranceMm)) throw new ArgumentOutOfRangeException(nameof(toleranceMm));
@@ -89,6 +106,8 @@ namespace InventorXrSo.Core.Backend
         }
         public static SketchSnapshot Parse(JToken json)
         {
+            if(json["mutation_completeness"]!=null && !(json["native_entities"] is JArray))
+                throw new FormatException("Native completeness requires native preview collections.");
             var shapes = new List<SketchElement>(); int unsupported = 0;
             foreach (var e in json["entities"] as JArray ?? new JArray())
             {
@@ -98,12 +117,74 @@ namespace InventorXrSo.Core.Backend
                 else if (type == "circle") shapes.Add(new SketchElement(SketchShape.Circle, CadPoint.Parse(e["center_mm"], 2), default, (double)e["radius_mm"],constraints:constraints));
                 else if (type != "point") unsupported++;
             }
+            var paths = new List<DesignEdge>();
+            var annotations = new List<SketchAnnotation>();
+            var textGlyphs = new List<NativeSketchTextGlyphMesh>();
+            int pointCount = 0; bool nativePartial=false;bool? nativeMutationComplete=null;
+            if (json["native_entities"] is JArray native)
+            {
+                if (native.Count > 2000) throw new FormatException("Native preview entity budget exceeded.");
+                unsupported = native.Count(e => (bool?)e["supported"] == false);
+                nativePartial=(bool?)json["partial"]!=false || native.Any(e=>(bool?)e["supported"]!=true);
+                if(json["mutation_completeness"]!=null)
+                {
+                    if(!(json["mutation_completeness"] is JObject proof)) throw new FormatException("Native preview completeness is invalid.");
+                    nativeMutationComplete=SketchMutationCompleteness.Validate(proof,native,json["dimensions"] as JArray,json["native_constraints"] as JArray,true,nativePartial);
+                }
+                foreach (var item in native)
+                {
+                    if (item["id"] != null) throw new FormatException("Tentative preview must never export selectable CAD identities.");
+                    if(item["text_glyphs"]!=null)
+                    {
+                        if((string)item["type"]!="text"||!(item["text_glyphs"] is JObject glyphMesh)) throw new FormatException("Native preview glyph type is invalid.");
+                        var glyphs=NativeSketchTextGlyphMesh.Parse(glyphMesh);textGlyphs.Add(glyphs);
+                        if((pointCount+=glyphs.VerticesMm.Count)>100000||textGlyphs.Sum(g=>g.Indices.Count/3)>200000) throw new FormatException("Native preview glyph budget exceeded.");
+                    }
+                    if (item["strokes_mm"] is JArray flat)
+                    {
+                        if (flat.Count < 4 || flat.Count % 2 != 0 || flat.Count > 16384) throw new FormatException("Invalid native preview stroke.");
+                        var points = new List<CadPoint>();
+                        for (int i=0;i<flat.Count;i+=2) points.Add(CadPoint.Parse(new JArray(flat[i],flat[i+1]),2));
+                        if ((pointCount += points.Count) > 100000) throw new FormatException("Native preview stroke budget exceeded.");
+                        paths.Add(new DesignEdge("profile:native:" + paths.Count, (string)item["type"], points));
+                    }
+                    else if (item["point_mm"] is JArray point)
+                    {
+                        var p = CadPoint.Parse(point,2);
+                        paths.Add(new DesignEdge("profile:native:" + paths.Count,"point",new[] { p + new CadPoint(-.5,0),p + new CadPoint(.5,0) }));
+                        paths.Add(new DesignEdge("profile:native:" + paths.Count,"point",new[] { p + new CadPoint(0,-.5),p + new CadPoint(0,.5) }));
+                    }
+                    else if (item["text_glyphs"]==null && item["text_mm"] is JArray textPoint && item["text"] != null)
+                        annotations.Add(new SketchAnnotation(CadPoint.Parse(textPoint,2),(string)item["text"]));
+                }
+            }
+            if(json["native_entities"] is JArray formatted)
+                foreach(var item in formatted)
+                {
+                    string label=NativeFormatLabel(item); if(label.Length==0) continue;
+                    JToken anchor=item["point_mm"] ?? item["center_mm"] ?? item["start_mm"];
+                    if(anchor!=null) annotations.Add(new SketchAnnotation(CadPoint.Parse(anchor,2),label));
+                }
+            if(json["geometric_constraints"] is JArray nativeConstraints)
+            {
+                if(nativeConstraints.Count>2000) throw new FormatException("Native preview constraint budget exceeded.");
+                foreach(var constraint in nativeConstraints)
+                {
+                    if(constraint["id"]!=null || constraint["related_entities"]!=null) throw new FormatException("Tentative constraints must never export selectable CAD identities.");
+                    if(constraint["annotation_mm"]!=null) annotations.Add(new SketchAnnotation(CadPoint.Parse(constraint["annotation_mm"],2),
+                        NativeSketchConstraintRules.Label((string)constraint["type"])));
+                }
+            }
             return new SketchSnapshot((string)json["sketch_name"], SketchFrame.Parse(json["frame"]),
                 (bool?)json["visible"] ?? true, shapes, unsupported,
                 (json["dimensions"] as JArray ?? new JArray()).Where(d=>d["text_mm"] is JArray).Select(d=>new SketchDimension(
                     (string)d["name"],(string)d["expression"],CadPoint.Parse(d["text_mm"],2),(bool?)d["driven"] ?? false)),
-                (json["geometric_constraints"] as JArray ?? new JArray()).Select(c=>(string)c["type"]));
+                (json["geometric_constraints"] as JArray ?? new JArray()).Select(c=>(string)c["type"]), paths, annotations,nativePartial,nativeMutationComplete,textGlyphs);
         }
+        public static string NativeFormatLabel(JToken data) => string.Join(" • ",new[] {
+            (bool?)data["construction"]==true && (string)data["type"]!="point" ? "Costruzione" : null,
+            (bool?)data["centerline"]==true ? "Linea d'asse" : null,
+            (bool?)data["hole_center"]==true ? "Punto centrale" : null }.Where(label=>label!=null));
     }
 
     public sealed class DesignPlane
@@ -111,7 +192,9 @@ namespace InventorXrSo.Core.Backend
         public string Reference { get; }
         public string Name { get; }
         public SketchFrame Frame { get; }
-        public DesignPlane(string reference, string name, SketchFrame frame) { Reference = reference; Name = name; Frame = frame; }
+        public string NativeSketchId { get; }
+        public DesignPlane(string reference, string name, SketchFrame frame, string nativeSketchId = null)
+        { Reference = reference; Name = name; Frame = frame; NativeSketchId = nativeSketchId; }
     }
     public sealed class DesignFace
     {
@@ -167,7 +250,7 @@ namespace InventorXrSo.Core.Backend
             {
                 State = expected, Truncated = (bool?)json["truncated"] ?? false, Edges = edges,
                 Planes = (json["planes"] as JArray ?? new JArray()).Select(p => new DesignPlane((string)p["reference"], (string)p["name"], SketchFrame.Parse(p))).ToArray(),
-                Sketches = (json["sketches"] as JArray ?? new JArray()).Select(p => new DesignPlane((string)p["name"], (string)p["name"], SketchFrame.Parse(p))).ToArray(),
+                Sketches = (json["sketches"] as JArray ?? new JArray()).Select(p => new DesignPlane((string)p["name"], (string)p["name"], SketchFrame.Parse(p), (string)p["sketch_id"])).ToArray(),
                 SketchSnapshots = (json["sketch_snapshots"] as JArray ?? new JArray()).Select(SketchSnapshot.Parse).ToArray(),
                 Faces = faces, PlanarFaces = faces.Select(p => p.Id).ToArray(),
                 Parameters = (JArray)(json["parameters"] as JArray ?? new JArray()).DeepClone(),

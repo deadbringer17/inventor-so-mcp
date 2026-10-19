@@ -12,16 +12,18 @@
          verified production add-in: dotnet build -p:SoExperimental=true to include them. -->
     <SoExperimental Condition="'$(SoExperimental)' == ''">false</SoExperimental>
     <DefineConstants Condition="'$(SoExperimental)' == 'true'">$(DefineConstants);SO_EXPERIMENTAL</DefineConstants>
-    <InventorInteropDir Condition="'$(InventorInteropDir)' == ''">C:\Program Files\Common Files\Autodesk Shared\Extensions 2027\Framework\Interop</InventorInteropDir>
   </PropertyGroup>
-  <Target Name="ValidateInventorReferences" BeforeTargets="ResolveReferences">
-    <Error Condition="!Exists('$(InventorInteropDir)\Autodesk.Inventor.Interop.dll')" Text="Real Inventor 2027 interop is required. Set InventorInteropDir to its directory." />
-  </Target>
+  <Import Project="../../Inventor2027.Interop.props" />
   <ItemGroup>
     <Reference Include="Autodesk.Inventor.Interop">
       <HintPath>$(InventorInteropDir)\Autodesk.Inventor.Interop.dll</HintPath>
       <Private>false</Private>
       <EmbedInteropTypes>false</EmbedInteropTypes>
+    </Reference>
+    <Reference Include="stdole" Condition="'$(SoExperimental)' == 'true'">
+      <HintPath>$(InventorInteropDir)\stdole.dll</HintPath>
+      <EmbedInteropTypes>false</EmbedInteropTypes>
+      <Private>true</Private>
     </Reference>
     <Compile Include="..\shared\**\*.cs" LinkBase="Shared" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />

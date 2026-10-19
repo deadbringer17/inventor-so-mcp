@@ -28,7 +28,7 @@ namespace InventorXrSo.Tests
     /// Lamiera workspace on the M6 shell: draft, preview and Apply cycle, gates M5-01..M5-07 at the software level (no Quest, no
     /// Inventor). Every command goes through the declared actions by stable id, like the palette, ring and commit bar do.
     /// </summary>
-    public class LamieraWorkspaceTests
+    public partial class LamieraWorkspaceTests
     {
         private const string Rule = LamieraWorkspace.IdRule, FlangeAction = LamieraWorkspace.IdFlange, Height = LamieraWorkspace.IdFlangeHeight,
             Angle = LamieraWorkspace.IdFlangeAngle, Datum = LamieraWorkspace.IdFlangeDatum, ClearEdges = LamieraWorkspace.IdFlangeClear,
@@ -50,13 +50,17 @@ namespace InventorXrSo.Tests
         private readonly List<GameObject> _roots = new List<GameObject>();
         private static readonly BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic;
 
-        private sealed class Backend : IDesignWorkspaceBackend, IDesignHistoryBackend, ISheetMetalBackend
+        private sealed class Backend : IDesignWorkspaceBackend, IDesignHistoryBackend, ISheetMetalBackend, INativeSketchBackend
         {
             public DocumentState State = new DocumentState("doc_bolt", "r", "v");
             public GlbModel Model;
             public bool SheetMetal = true, FlatExists;
             public int Bodies = 1, Previews, Commits, HistoryCalls, FlatMeshes, ExtraRules, ExtraSketches;
             public JArray LastOperations;
+            public bool NativePartial,NativeDimensions,NativeConstraints,NativePatterns,NativeCurves;
+            public int NativeSplineFitMethod=26369;
+            public Task<NativeSketchSnapshot> GetNativeSketchAsync(DocumentState state,string id,CancellationToken ct)
+                => Task.FromResult(NativeSketchTestData.Snapshot(state,id,NativePartial,curves:NativeCurves,dimensions:NativeDimensions,constraints:NativeConstraints,patterns:NativePatterns,splineFitMethod:NativeSplineFitMethod));
             public Exception PreviewError, CommitError;
             public FlatPatternException FlatFailure;
             public TaskCompletionSource<DesignPreview> PendingPreview;
@@ -84,6 +88,7 @@ namespace InventorXrSo.Tests
             public Task<DesignContext> GetDesignContextAsync(DocumentState state, CancellationToken ct)
             {
                 var sketches = JArray.Parse(@"[{""name"":""Contour"",""origin_mm"":[0,0,0],""x_axis"":[1,0,0],""y_axis"":[0,1,0]},{""name"":""Open"",""origin_mm"":[0,0,0],""x_axis"":[1,0,0],""y_axis"":[0,1,0]}]");
+                sketches[0]["sketch_id"]="ent_contour"; sketches[1]["sketch_id"]="ent_open";
                 for (int i = 0; i < ExtraSketches; i++)
                     sketches.Add(new JObject { ["name"] = "Extra_" + i, ["origin_mm"] = new JArray(0, 0, 0), ["x_axis"] = new JArray(1, 0, 0), ["y_axis"] = new JArray(0, 1, 0) });
                 return Task.FromResult(DesignContext.Parse(new JObject
@@ -501,12 +506,12 @@ namespace InventorXrSo.Tests
         private Action<HapticPulse, bool> _previousSink;
 
         /// <summary>Synthetic input: no OVRInput is read; the test feeds frames to the same XrInput the app uses.</summary>
-        private void UseInput()
+        private void UseInput(UiShell shell=null)
         {
             _xr = Child("XrInput").AddComponent<XrInput>(); _xr.Source = new SyntheticInputSource();
             Assert.True(_xr.Synthetic, "the runner log must call this input synthetic");
             _xr.Dispatcher.StateProbe = () => InventorXrSo.Core.Input.InputMap.Resolve(_workspace.KeypadOpen, _workspace.InputArmed, false, false);
-            _workspace.Attach(null, null, null, _xr);
+            _workspace.Attach(shell, null, null, _xr);
             _frame = new XrInputFrame { PenTracked = true, PaletteTracked = true };
             Poll();
         }
@@ -1135,11 +1140,11 @@ namespace InventorXrSo.Tests
             var catalog = CatalogFor();
             var ids = _workspace.Actions.Select(a => a.Id).ToList();
             CollectionAssert.AllItemsAreUnique(ids, state + ": ids");
-            Assert.True(ids.All(id => id.StartsWith("lamiera.") || id.StartsWith("commit.")), state + ": stable id namespaces");
+            Assert.True(ids.All(id => id.StartsWith("lamiera.") || id.StartsWith("commit.") || id.StartsWith("sketch.")), state + ": stable id namespaces");
             var known = new HashSet<string>(_workspace.Tabs.Select(t => t.Id)) { ActionCatalog.CommitTab, LamieraWorkspace.TabView };   // M9: the Vista tab is shared (ViewActions)
             foreach (var action in _workspace.Actions) Assert.True(known.Contains(action.Tab), state + ": tab of " + action.Id);
             foreach (var tab in _workspace.Tabs)
-                Assert.LessOrEqual(catalog.Palette(tab.Id).Count, ActionCatalog.MaxPalette, state + ": " + tab.Id);
+                Assert.LessOrEqual(catalog.Palette(tab.Id).Count, (tab.Profile == PaletteProfile.Sketch ? PaletteLayout.Sketch.Capacity : ActionCatalog.MaxPalette), state + ": " + tab.Id);
             Assert.LessOrEqual(catalog.Palette(ActionCatalog.CommitTab).Count, ActionCatalog.MaxPalette);
             Assert.False(_workspace.Actions.Any(a => a.Label == "Precedenti" || a.Label == "Successivi"), state + ": no pagination buttons");
             Assert.False(_workspace.Actions.Any(a => a.Label.StartsWith("Blocca") || a.Label == "Ispeziona" || a.Label == "Dettagli errore"), state);
@@ -1148,7 +1153,7 @@ namespace InventorXrSo.Tests
             Assert.AreEqual(new[] { "Lamiera", "Schizzo", "Sviluppo", "Documento" }, catalog.Tabs.Select(t => t.Label).ToArray(), state);
         }
 
-        [Test] public void ActionIdsAreUniqueAndEveryTabHasAtMostEightActionsInEveryState()
+        [Test] public void ActionIdsAreUniqueAndEveryTabFitsItsProfileInEveryState()
         {
             _backend.ExtraRules = 17; _backend.ExtraSketches = 11; _backend.FlatExists = false; Start(_backend);
             AssertCatalogIsValid("tools");

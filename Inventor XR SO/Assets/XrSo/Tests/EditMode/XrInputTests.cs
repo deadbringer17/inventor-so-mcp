@@ -63,6 +63,36 @@ namespace InventorXrSo.Tests
         }
 
         [Test]
+        public void TrackingRecoveryWithTriggerStillHeldRequiresReleaseBeforeAnotherStroke()
+        {
+            var down = F();down.PenTrigger = true;
+            _input.Poll(down, 0);
+            var lost = down;lost.PenTracked = false;_input.Poll(lost, .1f);
+            _input.Poll(down, .2f);_input.Poll(down, .3f);
+            CollectionAssert.AreEqual(new[] { "press", "release" }, _log);
+            Assert.False(_input.PenHeld);
+            _input.Poll(F(), .4f);_input.Poll(down, .5f);
+            CollectionAssert.AreEqual(new[] { "press", "release", "press" }, _log);
+            Assert.True(_input.PenHeld);
+        }
+
+        [Test]
+        public void LeftTrackingLossCancelsBeforeReleaseAndNeverStartsAStrokeOnTheFallbackTransition()
+        {
+            _input.TrackingLost += () => _log.Add("lost");
+            _input.Poll(F(), 0);
+            var lost = F();lost.PaletteTracked = false;lost.PenTrigger = true;
+            _input.Poll(lost, .1f);_input.Poll(lost, .2f);
+            CollectionAssert.AreEqual(new[] { "lost" }, _log);
+            lost.PenTrigger = false;_input.Poll(lost, .3f);
+            lost.PenTrigger = true;_input.Poll(lost, .4f);
+            CollectionAssert.AreEqual(new[] { "lost", "press" }, _log, "The pen remains usable while the palette is on the bench.");
+            var recovered = lost;recovered.PaletteTracked = true;_input.Poll(recovered, .5f);
+            recovered.PaletteTracked = false;_input.Poll(recovered, .6f);
+            CollectionAssert.AreEqual(new[] { "lost", "press", "lost", "release" }, _log);
+        }
+
+        [Test]
         public void StickFlicksFireOncePerFlickWithHysteresis()
         {
             var right = F(); right.PenStick = new Vector2(0.9f, 0);

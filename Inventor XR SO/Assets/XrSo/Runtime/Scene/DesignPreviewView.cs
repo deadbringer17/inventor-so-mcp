@@ -69,8 +69,11 @@ namespace InventorXrSo.Unity.Scene
                 foreach (var sketch in preview.Sketches)
                     if (sketch.Visible)
                     {
-                        foreach (var element in sketch.Elements)
-                            CadCoordinates.Line(_previewRoot.transform, sketch.Name, System.Linq.Enumerable.Select(element.Outline(), sketch.Frame.ToModel), _sketch);
+                        if(sketch.NativeTextGlyphs.Count>0)NativeSketchTextLayer.Create(_previewRoot.transform).ShowPreview(sketch.NativeTextGlyphs);
+                        foreach (var outline in sketch.Outlines)
+                            CadCoordinates.Line(_previewRoot.transform, sketch.Name, System.Linq.Enumerable.Select(outline, sketch.Frame.ToModel), _sketch);
+                        foreach (var annotation in sketch.NativeAnnotations)
+                            SketchDimensionLabel.Create(_previewRoot.transform,_view.transform,_head,sketch.Frame.ToModel(annotation.Point),annotation.Text);
                         foreach (var dimension in sketch.Dimensions)
                             SketchDimensionLabel.Create(_previewRoot.transform,_view.transform,_head,sketch.Frame.ToModel(dimension.TextPoint),
                                 dimension.Name+" = "+dimension.Expression+(dimension.Driven ? " (riferimento)" : ""));

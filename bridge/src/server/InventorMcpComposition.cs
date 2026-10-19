@@ -27,6 +27,7 @@ public static class InventorMcpComposition
         services.AddSingleton<ServerState>();
         services.AddSingleton<PluginClient>();
         services.AddSingleton<AssetStore>();
+        services.AddSingleton<SketchImageAssets>();
         services.AddSingleton<MeshCache>();
         services.AddSingleton<ChangePlanStore>();
         services.AddSingleton<AuditLog>();

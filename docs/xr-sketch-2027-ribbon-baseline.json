@@ -1,0 +1,1193 @@
+{
+  "captured_utc": "2026-10-06T19:16:15.202457+00:00",
+  "version": "2027",
+  "pid": 97300,
+  "document_state_before": {
+    "InternalName": "{C0A0BCFB-37F6-C8F9-B399-F99EA45D4E8C}",
+    "DatabaseRevisionId": "{D6B37CA3-48FD-82C0-1896-64BB2B280571}",
+    "Dirty": true
+  },
+  "document_state_after": {
+    "InternalName": "{C0A0BCFB-37F6-C8F9-B399-F99EA45D4E8C}",
+    "DatabaseRevisionId": "{D6B37CA3-48FD-82C0-1896-64BB2B280571}",
+    "Dirty": true
+  },
+  "read_only": true,
+  "tabs": [
+    {
+      "id": "id_TabSketch",
+      "label": "Schizzo",
+      "panels": [
+        {
+          "id": "id_PanelP_Model2DSketchCreate",
+          "label": "Schizzo",
+          "controls": [
+            {
+              "InternalName": "AppSketchWrapperSplit",
+              "DisplayName": "Avvia\rschizzo 2D",
+              "ControlType": 45059,
+              "Visible": true,
+              "command": null,
+              "children": [
+                {
+                  "InternalName": "AppSketch2DWrapperCmd",
+                  "DisplayName": "Avvia\rschizzo 2D",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "AppSketch2DWrapperCmd",
+                    "DisplayName": "Nuovo schizzo",
+                    "DescriptionText": "Crea o modifica uno schizzo 2D\r",
+                    "ToolTipText": "Nuovo schizzo"
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "AppSketch3DWrapperCmd",
+                  "DisplayName": "Avvia\rschizzo 3D",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "AppSketch3DWrapperCmd",
+                    "DisplayName": "Nuovo schizzo",
+                    "DescriptionText": "Crea o modifica uno schizzo 3D\r",
+                    "ToolTipText": "Nuovo schizzo"
+                  },
+                  "children_read_error": "TypeError"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "id_PanelP_2DSketchDraw",
+          "label": "Crea",
+          "controls": [
+            {
+              "InternalName": "SketchLineSplit",
+              "DisplayName": "Linea",
+              "ControlType": 45059,
+              "Visible": true,
+              "command": null,
+              "children": [
+                {
+                  "InternalName": "SketchLineCmd",
+                  "DisplayName": "Linea",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchLineCmd",
+                    "DisplayName": "Linea",
+                    "DescriptionText": "Crea segmenti di linea e archi tangenti\r",
+                    "ToolTipText": "Linea"
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "SketchMidpointLineWrapperCmd",
+                  "DisplayName": "Linea",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchMidpointLineWrapperCmd",
+                    "DisplayName": "Linea punto medio",
+                    "DescriptionText": "Linea punto medio\r",
+                    "ToolTipText": "Linea punto medio"
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "SketchCPSplineCmd",
+                  "DisplayName": "Spline",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchCPSplineCmd",
+                    "DisplayName": "Spline vertice di controllo",
+                    "DescriptionText": "Crea una spline mediante i vertici di controllo\r",
+                    "ToolTipText": "Spline vertice di controllo"
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "SketchSplineCmd",
+                  "DisplayName": "Spline",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchSplineCmd",
+                    "DisplayName": "Spline",
+                    "DescriptionText": "Crea una spline attraverso i punti specificati\r",
+                    "ToolTipText": "Spline"
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "EquationCurveCmd",
+                  "DisplayName": "Curva da equazione",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "EquationCurveCmd",
+                    "DisplayName": "Curva da equazione",
+                    "DescriptionText": "Crea una curva da un'equazione\r",
+                    "ToolTipText": "Curva da equazione"
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "MoldBridgeCurve",
+                  "DisplayName": "Curva\nponte",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "MoldBridgeCurve",
+                    "DisplayName": "Curva\nponte",
+                    "DescriptionText": "Curva ponte",
+                    "ToolTipText": "Curva ponte"
+                  },
+                  "children_read_error": "TypeError"
+                }
+              ]
+            },
+            {
+              "InternalName": "SketchCircleSplit",
+              "DisplayName": "Cerchio",
+              "ControlType": 45059,
+              "Visible": true,
+              "command": null,
+              "children": [
+                {
+                  "InternalName": "SketchCenterPointCircleCmd",
+                  "DisplayName": "Cerchio",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchCenterPointCircleCmd",
+                    "DisplayName": "Cerchio mediante centro e punto",
+                    "DescriptionText": "Crea un cerchio mediante un centro e un punto sul raggio\r",
+                    "ToolTipText": "Cerchio mediante centro e punto"
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "SketchTangentCircleCmd",
+                  "DisplayName": "Cerchio",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchTangentCircleCmd",
+                    "DisplayName": "Cerchio tangente",
+                    "DescriptionText": "Crea un cerchio tangente a tre linee\r",
+                    "ToolTipText": "Cerchio tangente"
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "SketchEllipseCmd",
+                  "DisplayName": "Ellisse",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchEllipseCmd",
+                    "DisplayName": "Ellisse",
+                    "DescriptionText": "Crea un'ellisse\r",
+                    "ToolTipText": "Ellisse"
+                  },
+                  "children_read_error": "TypeError"
+                }
+              ]
+            },
+            {
+              "InternalName": "SketchArcSplit",
+              "DisplayName": "Arco",
+              "ControlType": 45059,
+              "Visible": true,
+              "command": null,
+              "children": [
+                {
+                  "InternalName": "SketchThreePointArcCmd",
+                  "DisplayName": "Arco",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchThreePointArcCmd",
+                    "DisplayName": "Arco a tre punti",
+                    "DescriptionText": "Crea un arco con due punti finali e un punto sull'arco\r",
+                    "ToolTipText": "Arco a tre punti"
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "SketchTangentArcCmd",
+                  "DisplayName": "Arco",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchTangentArcCmd",
+                    "DisplayName": "Arco tangente",
+                    "DescriptionText": "Crea un arco tangente a una curva in corrispondenza del suo punto finale\r",
+                    "ToolTipText": "Arco tangente"
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "SketchCenterPointArcCmd",
+                  "DisplayName": "Arco",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchCenterPointArcCmd",
+                    "DisplayName": "Arco mediante centro e punto",
+                    "DescriptionText": "Crea un arco con un punto centrale e due punti finali\r",
+                    "ToolTipText": "Arco mediante centro e punto"
+                  },
+                  "children_read_error": "TypeError"
+                }
+              ]
+            },
+            {
+              "InternalName": "SketchRectangleSplit",
+              "DisplayName": "Rettangolo",
+              "ControlType": 45059,
+              "Visible": true,
+              "command": null,
+              "children": [
+                {
+                  "InternalName": "SketchTwoPointRectangleCmd",
+                  "DisplayName": "Rettangolo",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchTwoPointRectangleCmd",
+                    "DisplayName": "Rettangolo mediante due punti",
+                    "DescriptionText": "Crea un rettangolo mediante due punti diagonali\r",
+                    "ToolTipText": "Rettangolo mediante due punti"
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "SketchThreePointRectangleCmd",
+                  "DisplayName": "Rettangolo",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchThreePointRectangleCmd",
+                    "DisplayName": "Rettangolo mediante tre punti",
+                    "DescriptionText": "Crea un rettangolo mediante tre punti\r",
+                    "ToolTipText": "Rettangolo mediante tre punti"
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "SketchTwoPointCenRectangleCmd",
+                  "DisplayName": "Rettangolo",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchTwoPointCenRectangleCmd",
+                    "DisplayName": "Rettangolo centro a due punti",
+                    "DescriptionText": "Crea un rettangolo mediante il punto centrale e un punto diagonale\r",
+                    "ToolTipText": "Rettangolo centro a due punti"
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "SketchThreePointCenRectangleCmd",
+                  "DisplayName": "Rettangolo",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchThreePointCenRectangleCmd",
+                    "DisplayName": "Rettangolo centro a tre punti",
+                    "DescriptionText": "Crea un rettangolo mediante il punto centrale e due punti sul rettangolo\r",
+                    "ToolTipText": "Rettangolo centro a tre punti"
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "SketchCentertoCenterSlotCmd",
+                  "DisplayName": "Asola",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchCentertoCenterSlotCmd",
+                    "DisplayName": "Asola da centro a centro",
+                    "DescriptionText": "Crea asola da centro a centro\r",
+                    "ToolTipText": "Asola da centro a centro"
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "SketchOverallLengthSlotCmd",
+                  "DisplayName": "Asola",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchOverallLengthSlotCmd",
+                    "DisplayName": "Asola sull'intera lunghezza",
+                    "DescriptionText": "Crea asola sull'intera lunghezza\r",
+                    "ToolTipText": "Asola sull'intera lunghezza"
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "SketchCenterPointSlotCmd",
+                  "DisplayName": "Asola",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchCenterPointSlotCmd",
+                    "DisplayName": "Asola tramite punto centrale",
+                    "DescriptionText": "Crea asola tramite punto centrale\r",
+                    "ToolTipText": "Asola tramite punto centrale"
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "SketchThreePointArcSlotCmd",
+                  "DisplayName": "Asola",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchThreePointArcSlotCmd",
+                    "DisplayName": "Asola tramite arco mediante tre punti",
+                    "DescriptionText": "Crea asola tramite arco mediante tre punti\r",
+                    "ToolTipText": "Asola tramite arco mediante tre punti"
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "SketchCenterPointArcSlotCmd",
+                  "DisplayName": "Asola",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchCenterPointArcSlotCmd",
+                    "DisplayName": "Asola tramite arco mediante centro e punto",
+                    "DescriptionText": "Crea asola tramite arco mediante centro e punto\r",
+                    "ToolTipText": "Asola tramite arco mediante centro e punto"
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "SketchPolygonCmd",
+                  "DisplayName": "Poligono",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchPolygonCmd",
+                    "DisplayName": "Poligono",
+                    "DescriptionText": "Crea un poligono\r",
+                    "ToolTipText": "Poligono"
+                  },
+                  "children_read_error": "TypeError"
+                }
+              ]
+            },
+            {
+              "InternalName": "SketchFilletSplit",
+              "DisplayName": "Raccordo",
+              "ControlType": 45059,
+              "Visible": true,
+              "command": null,
+              "children": [
+                {
+                  "InternalName": "SketchFilletCmd",
+                  "DisplayName": "Raccordo",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchFilletCmd",
+                    "DisplayName": "Raccordo",
+                    "DescriptionText": "Crea un raccordo all'angolo o all'intersezione di due linee\r",
+                    "ToolTipText": "Raccordo"
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "SketchChamferCmd",
+                  "DisplayName": "Smusso",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchChamferCmd",
+                    "DisplayName": "Smusso",
+                    "DescriptionText": "Crea uno smusso all'angolo o all'intersezione di due linee\r",
+                    "ToolTipText": "Smusso"
+                  },
+                  "children_read_error": "TypeError"
+                }
+              ]
+            },
+            {
+              "InternalName": "AppTextWrapperSplit",
+              "DisplayName": "Testo",
+              "ControlType": 45059,
+              "Visible": true,
+              "command": null,
+              "children": [
+                {
+                  "InternalName": "SketchCreateTextCmd",
+                  "DisplayName": "Testo",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchCreateTextCmd",
+                    "DisplayName": "Crea testo",
+                    "DescriptionText": "Crea il testo\r",
+                    "ToolTipText": "Crea testo"
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "SketchCreateGeometryTextCmd",
+                  "DisplayName": "Testo geometria",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchCreateGeometryTextCmd",
+                    "DisplayName": "Crea testo allineato alla geometria",
+                    "DescriptionText": "Crea testo allineato alla geometria\r",
+                    "ToolTipText": "Crea testo allineato alla geometria"
+                  },
+                  "children_read_error": "TypeError"
+                }
+              ]
+            },
+            {
+              "InternalName": "SketchHoleCenterPointCmd",
+              "DisplayName": "Punto",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchHoleCenterPointCmd",
+                "DisplayName": "Punto, Punto centrale",
+                "DescriptionText": "Crea un punto dello schizzo o un punto centrale\r",
+                "ToolTipText": "Punto, Punto centrale"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "",
+              "DisplayName": "",
+              "ControlType": 45065,
+              "Visible": true,
+              "command": null,
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "ProjectGeometrySplit",
+              "DisplayName": "Proietta\rgeometria",
+              "ControlType": 45059,
+              "Visible": true,
+              "command": null,
+              "children": [
+                {
+                  "InternalName": "SketchProjectGeometryCmd",
+                  "DisplayName": "Proietta\rgeometria",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchProjectGeometryCmd",
+                    "DisplayName": "Proietta geometria",
+                    "DescriptionText": "Proietta le curve sul piano dello schizzo\r",
+                    "ToolTipText": "Proietta geometria"
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "SketchProjectCutEdgesCmd",
+                  "DisplayName": "Proietta spigoli\rdi taglio",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchProjectCutEdgesCmd",
+                    "DisplayName": "Proietta spigoli di taglio",
+                    "DescriptionText": "Proietta sul piano dello schizzo gli spigoli della parte tagliati dal piano dello schizzo.\r",
+                    "ToolTipText": "Proietta spigoli di taglio"
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "SketchProjectFlatPatternCmd",
+                  "DisplayName": "Proietta modello\rpiatto",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchProjectFlatPatternCmd",
+                    "DisplayName": "Proietta modello piatto",
+                    "DescriptionText": "Proietta la geometria di una faccia del modello piatto sul piano dello schizzo\r",
+                    "ToolTipText": "Proietta modello piatto"
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "SketchProjectTo3dSketchCmd",
+                  "DisplayName": "Proietta\rsu schizzo 3D",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchProjectTo3dSketchCmd",
+                    "DisplayName": "",
+                    "DescriptionText": "",
+                    "ToolTipText": ""
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "SketchProjectDwgGeomCmd",
+                  "DisplayName": "Proietta\rgeometria DWG",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "SketchProjectDwgGeomCmd",
+                    "DisplayName": "Proietta geometria DWG",
+                    "DescriptionText": "Proietta la geometria DWG sul piano dello schizzo\r",
+                    "ToolTipText": "Proietta geometria DWG"
+                  },
+                  "children_read_error": "TypeError"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "id_PanelP_2DSketchPattern",
+          "label": "Serie",
+          "controls": [
+            {
+              "InternalName": "SketchRectangularPatternCmd",
+              "DisplayName": "Rettangolare",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchRectangularPatternCmd",
+                "DisplayName": "Serie rettangolare",
+                "DescriptionText": "Crea una serie rettangolare\r",
+                "ToolTipText": "Serie rettangolare"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchCircularPatternCmd",
+              "DisplayName": "Circolare",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchCircularPatternCmd",
+                "DisplayName": "Serie circolare",
+                "DescriptionText": "Crea una serie circolare\r",
+                "ToolTipText": "Serie circolare"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchMirrorCmd",
+              "DisplayName": "Speculare",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchMirrorCmd",
+                "DisplayName": "Specchio",
+                "DescriptionText": "Crea una copia speculare della geometria lungo una linea\r",
+                "ToolTipText": "Specchio"
+              },
+              "children_read_error": "TypeError"
+            }
+          ]
+        },
+        {
+          "id": "id_PanelP_2DSketchModify",
+          "label": "Modifica",
+          "controls": [
+            {
+              "InternalName": "SketchMoveCmd",
+              "DisplayName": "Sposta",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchMoveCmd",
+                "DisplayName": "Sposta",
+                "DescriptionText": "Sposta gli elementi selezionati\r",
+                "ToolTipText": "Sposta"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchCopyCmd",
+              "DisplayName": "Copia",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchCopyCmd",
+                "DisplayName": "Copia",
+                "DescriptionText": "Copia gli elementi selezionati\r",
+                "ToolTipText": "Copia"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchRotateCmd",
+              "DisplayName": "Ruota",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchRotateCmd",
+                "DisplayName": "Ruota",
+                "DescriptionText": "Ruota gli elementi selezionati\r",
+                "ToolTipText": "Ruota"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchTrimCmd",
+              "DisplayName": "Taglia",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchTrimCmd",
+                "DisplayName": "Taglia",
+                "DescriptionText": "Esegue il taglio delle curve\r",
+                "ToolTipText": "Taglia"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchExtendCmd",
+              "DisplayName": "Estendi",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchExtendCmd",
+                "DisplayName": "Estendi",
+                "DescriptionText": "Estende le curve\r",
+                "ToolTipText": "Estendi"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchSplitCmd",
+              "DisplayName": "Dividi",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchSplitCmd",
+                "DisplayName": "",
+                "DescriptionText": "",
+                "ToolTipText": ""
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchScaleCmd",
+              "DisplayName": "Scala",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchScaleCmd",
+                "DisplayName": "Scala",
+                "DescriptionText": "Scala gli elementi selezionati\r",
+                "ToolTipText": "Scala"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchStretchCmd",
+              "DisplayName": "Allunga",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchStretchCmd",
+                "DisplayName": "Allunga",
+                "DescriptionText": "Allunga gli elementi selezionati\r",
+                "ToolTipText": "Allunga"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchOffsetCmd",
+              "DisplayName": "Offset",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchOffsetCmd",
+                "DisplayName": "Offset",
+                "DescriptionText": "Crea curve sfalsando le curve esistenti\r",
+                "ToolTipText": "Offset"
+              },
+              "children_read_error": "TypeError"
+            }
+          ]
+        },
+        {
+          "id": "id_PanelP_2DSketchConstrain",
+          "label": "Vincola",
+          "controls": [
+            {
+              "InternalName": "SketchGeneralDimensionCmd",
+              "DisplayName": "Quota",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchGeneralDimensionCmd",
+                "DisplayName": "Quota generica",
+                "DescriptionText": "Quota generica\r",
+                "ToolTipText": "Quota generica"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchAutoDimensionCmd",
+              "DisplayName": "Quotatura automatica",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchAutoDimensionCmd",
+                "DisplayName": "Quota automatica",
+                "DescriptionText": "Applica automaticamente le quote alla geometria dello schizzo\r",
+                "ToolTipText": "Quota automatica"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchShowAllConstraintsCmd",
+              "DisplayName": "Mostra vincoli",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchShowAllConstraintsCmd",
+                "DisplayName": "Mostra vincoli",
+                "DescriptionText": "Mostra i vincoli della geometria dello schizzo\r",
+                "ToolTipText": "Mostra vincoli"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchConstraintSettingsCmd",
+              "DisplayName": "Impostazioni vincoli",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchConstraintSettingsCmd",
+                "DisplayName": "Opzioni vincolo",
+                "DescriptionText": "Opzioni vincolo\r",
+                "ToolTipText": "Opzioni vincolo"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "",
+              "DisplayName": "",
+              "ControlType": 45065,
+              "Visible": true,
+              "command": null,
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchCoincidentConstraintCmd",
+              "DisplayName": "Coincidente",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchCoincidentConstraintCmd",
+                "DisplayName": "Coincidente",
+                "DescriptionText": "Rende coincidenti punti o curve\r",
+                "ToolTipText": "Coincidente"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchParallelConstraintCmd",
+              "DisplayName": "Parallelo",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchParallelConstraintCmd",
+                "DisplayName": "Parallelo",
+                "DescriptionText": "Rende parallele le linee\r",
+                "ToolTipText": "Parallelo"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchTangentConstraintCmd",
+              "DisplayName": "Tangente",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchTangentConstraintCmd",
+                "DisplayName": "Tangente",
+                "DescriptionText": "Rende tangenti due curve\r",
+                "ToolTipText": "Tangente"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchColinearConstraintCmd",
+              "DisplayName": "Collineare",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchColinearConstraintCmd",
+                "DisplayName": "Collineare",
+                "DescriptionText": "Rende collineari le linee\r",
+                "ToolTipText": "Collineare"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchPerpendicularConstraintCmd",
+              "DisplayName": "Perpendicolare",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchPerpendicularConstraintCmd",
+                "DisplayName": "Perpendicolare",
+                "DescriptionText": "Rende perpendicolari due linee\r",
+                "ToolTipText": "Perpendicolare"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchCurvatureConstraintCmd",
+              "DisplayName": "Levigato (G2)",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchCurvatureConstraintCmd",
+                "DisplayName": "Levigato",
+                "DescriptionText": "Rende levigate due curve\r",
+                "ToolTipText": "Levigato"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchConcentricConstraintCmd",
+              "DisplayName": "Concentrico",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchConcentricConstraintCmd",
+                "DisplayName": "Concentrico",
+                "DescriptionText": "Fa in modo che le curve abbiano lo stesso centro\r",
+                "ToolTipText": "Concentrico"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchHorizontalConstraintCmd",
+              "DisplayName": "Orizzontale",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchHorizontalConstraintCmd",
+                "DisplayName": "Orizzontale",
+                "DescriptionText": "Rende orizzontali linee o punti\r",
+                "ToolTipText": "Orizzontale"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchSymmetricConstraintCmd",
+              "DisplayName": "Simmetrico",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchSymmetricConstraintCmd",
+                "DisplayName": "Simmetrico",
+                "DescriptionText": "Rende simmetrica la geometria\r",
+                "ToolTipText": "Simmetrico"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchFixConstraintCmd",
+              "DisplayName": "Fissaggio",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchFixConstraintCmd",
+                "DisplayName": "Fissaggio",
+                "DescriptionText": "Rende fissi curve o punti rispetto al sistema di coordinate dello schizzo\r",
+                "ToolTipText": "Fissaggio"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchVerticalConstraintCmd",
+              "DisplayName": "Verticale",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchVerticalConstraintCmd",
+                "DisplayName": "Verticale",
+                "DescriptionText": "Rende verticali linee o punti\r",
+                "ToolTipText": "Verticale"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchEqualConstraintCmd",
+              "DisplayName": "Uguaglianza",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchEqualConstraintCmd",
+                "DisplayName": "Uguale",
+                "DescriptionText": "Assegna lo stesso valore di lunghezza ai raggi o alle linee\r",
+                "ToolTipText": "Uguale"
+              },
+              "children_read_error": "TypeError"
+            }
+          ]
+        },
+        {
+          "id": "id_PanelP_2DSketchLayout",
+          "label": "Scheletro",
+          "controls": [
+            {
+              "InternalName": "PartMakePartCmd",
+              "DisplayName": "Crea parte",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "PartMakePartCmd",
+                "DisplayName": "Crea parte",
+                "DescriptionText": "Crea una parte\r",
+                "ToolTipText": "Crea parte"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "PartMakeComponentsCmd",
+              "DisplayName": "Crea componenti",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "PartMakeComponentsCmd",
+                "DisplayName": "Crea componenti",
+                "DescriptionText": "Crea componenti\r",
+                "ToolTipText": "Crea componenti"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "PartCreateSketchBlockCmd",
+              "DisplayName": "Crea blocco",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "PartCreateSketchBlockCmd",
+                "DisplayName": "Crea blocco",
+                "DescriptionText": "Crea un blocco dalle geometrie selezionate\r",
+                "ToolTipText": "Crea blocco"
+              },
+              "children_read_error": "TypeError"
+            }
+          ]
+        },
+        {
+          "id": "id_PanelA_2DSketchInsert",
+          "label": "Inserisci",
+          "controls": [
+            {
+              "InternalName": "AppInsertImageWrapperCmd",
+              "DisplayName": "Immagine",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "AppInsertImageWrapperCmd",
+                "DisplayName": "Inserisci immagine",
+                "DescriptionText": "Inserisce l'immagine dal file\r",
+                "ToolTipText": "Inserisci immagine"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SCxImportPointsCmd",
+              "DisplayName": "Punti",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SCxImportPointsCmd",
+                "DisplayName": "Importa punti...",
+                "DescriptionText": "Importa i punti dello schizzo dal file Excel\r",
+                "ToolTipText": "Importa punti..."
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchInsertAutoCADFileCmd",
+              "DisplayName": "ACAD",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchInsertAutoCADFileCmd",
+                "DisplayName": "Inserisci file di AutoCAD",
+                "DescriptionText": "Inserisce un file di AutoCAD nello schizzo selezionato\r",
+                "ToolTipText": "Inserisci file di AutoCAD"
+              },
+              "children_read_error": "TypeError"
+            }
+          ]
+        },
+        {
+          "id": "id_PanelP_2DSketchFormat",
+          "label": "Formato",
+          "controls": [
+            {
+              "InternalName": "SketchConstructionCmd",
+              "DisplayName": "Costruzione",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchConstructionCmd",
+                "DisplayName": "Costruzione",
+                "DescriptionText": "Linee, archi o spline di costruzione non faranno parte di un profilo di schizzo\r",
+                "ToolTipText": "Costruzione"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchCenterlineCmd",
+              "DisplayName": "Linea d'asse",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchCenterlineCmd",
+                "DisplayName": "Linea d'asse",
+                "DescriptionText": "Converte la linea in una linea d'asse\r",
+                "ToolTipText": "Linea d'asse"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "AppLinePropertiesToggleCmd",
+              "DisplayName": "Mostra formato",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "AppLinePropertiesToggleCmd",
+                "DisplayName": "Commutazione formattazione",
+                "DescriptionText": "Fare clic per commutare tra la formattazione di default e quella definita dall'utente\r",
+                "ToolTipText": "Commutazione formattazione"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchDimensionToggleCmd",
+              "DisplayName": "Quota non parametrica",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchDimensionToggleCmd",
+                "DisplayName": "Quota non parametrica",
+                "DescriptionText": "Attiva/disattiva le quote normali e quelle non parametriche\r",
+                "ToolTipText": "Quota non parametrica"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "SketchHoleCenterCmd",
+              "DisplayName": "Punto centrale",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "SketchHoleCenterCmd",
+                "DisplayName": "Punto centrale",
+                "DescriptionText": "Il punto dello schizzo viene automaticamente riconosciuto come punto centrale per i fori nelle parti e negli assiemi\r",
+                "ToolTipText": "Punto centrale"
+              },
+              "children_read_error": "TypeError"
+            }
+          ]
+        },
+        {
+          "id": "id_PanelP_ToolsParameters",
+          "label": "Parametri",
+          "controls": [
+            {
+              "InternalName": "AppParametersCmd",
+              "DisplayName": "Parametri",
+              "ControlType": 45061,
+              "Visible": true,
+              "command": {
+                "InternalName": "AppParametersCmd",
+                "DisplayName": "Parametri",
+                "DescriptionText": "Definisce/modifica i parametri e le equazioni\r",
+                "ToolTipText": "Parametri"
+              },
+              "children_read_error": "TypeError"
+            }
+          ]
+        },
+        {
+          "id": "id_PanelP_ShowPanels",
+          "label": "",
+          "controls": []
+        }
+      ]
+    },
+    {
+      "id": "id_TabSketch_Exit",
+      "label": "Esci da schizzo 2D",
+      "panels": [
+        {
+          "id": "id_PanelP_2DSketchExit",
+          "label": "Esci",
+          "controls": [
+            {
+              "InternalName": "ReturnToFeatureCmd",
+              "DisplayName": "Torna\ralla lavorazione",
+              "ControlType": 45061,
+              "Visible": false,
+              "command": {
+                "InternalName": "ReturnToFeatureCmd",
+                "DisplayName": "Torna alla lavorazione",
+                "DescriptionText": "Torna alla lavorazione\r",
+                "ToolTipText": "Torna alla lavorazione"
+              },
+              "children_read_error": "TypeError"
+            },
+            {
+              "InternalName": "Finish2dSketchSplit",
+              "DisplayName": "Concludi schizzo",
+              "ControlType": 45059,
+              "Visible": true,
+              "command": null,
+              "children": [
+                {
+                  "InternalName": "Finish2dSketchCmd",
+                  "DisplayName": "Concludi schizzo",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "Finish2dSketchCmd",
+                    "DisplayName": "Concludi schizzo",
+                    "DescriptionText": "Conclude lo schizzo\r",
+                    "ToolTipText": "Concludi schizzo"
+                  },
+                  "children_read_error": "TypeError"
+                },
+                {
+                  "InternalName": "Cancel2dSketchCmd",
+                  "DisplayName": "Annulla schizzo",
+                  "ControlType": 45061,
+                  "Visible": true,
+                  "command": {
+                    "InternalName": "Cancel2dSketchCmd",
+                    "DisplayName": "Annulla schizzo",
+                    "DescriptionText": "Annulla schizzo\r",
+                    "ToolTipText": "Annulla schizzo"
+                  },
+                  "children_read_error": "TypeError"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

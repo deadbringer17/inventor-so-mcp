@@ -261,7 +261,7 @@ Short version: your model stays on your machine, and write/dangerous tools are g
 
 ## Not Redistributed
 
-This project does **not** redistribute Autodesk Inventor binaries or the Inventor SDK / interop DLLs. The shipped server and unit tests build and run with no Inventor present. Building the per-version add-ins requires a **local Inventor installation** or the matching **interop reference assemblies** (`Autodesk.Inventor.Interop.dll`), supplied via the default Autodesk shared-extensions path or an explicit `/p:InventorInteropDir=...` MSBuild property. Running the gateway against Inventor requires a licensed Inventor install.
+This project does **not** redistribute Autodesk Inventor binaries or the Inventor SDK / interop DLLs. The shipped server and unit tests build and run with no Inventor present. Building the per-version add-ins requires a **local Inventor installation** or the matching **interop reference assemblies** (`Autodesk.Inventor.Interop.dll`), supplied via the default Autodesk shared-extensions path or an explicit `/p:InventorInteropDir=...` MSBuild property. The SO 2027 add-in and S1 probe first resolve the installed 2027 `Bin` directory from the registry and require interop major version 31; the shared `Extensions 2027` folder can contain an older assembly. Running the gateway against Inventor requires a licensed Inventor install.
 
 ---
 

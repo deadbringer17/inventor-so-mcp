@@ -33,7 +33,8 @@ namespace InventorXrSo.Core.Ui
     {
         public const string DocumentTab = "documento";
         public const string CommitTab = "_commit";
-        public const int MaxPalette = 8;
+        // Compatibilità M6–M10: non è un limite del catalogo semantico.
+        public const int MaxPalette = PaletteLayout.PickerCapacity;
         public const int MaxContext = 6;
 
         /// <summary>Id dell'azione Misura del fornitore Ispeziona: compare in coda all'anello di facce e bordi.</summary>
@@ -138,9 +139,15 @@ namespace InventorXrSo.Core.Ui
 
         public IReadOnlyList<XrAction> Palette(string tabId)
         {
-            var list = All().Where(a => a.Tab == tabId).ToArray();
-            if (list.Length > MaxPalette) throw new InvalidOperationException($"Scheda {tabId}: {list.Length} azioni, massimo {MaxPalette}.");
-            return list;
+            return All().Where(a => a.Tab == tabId).ToArray();
+        }
+
+        public IReadOnlyList<XrAction> PalettePage(string tabId, PaletteLayout layout, int page)
+        {
+            if (layout == null) throw new ArgumentNullException(nameof(layout));
+            var all = Palette(tabId);
+            if (page < 0 || page >= layout.PageCount(all.Count)) throw new ArgumentOutOfRangeException(nameof(page));
+            return all.Skip(page * layout.Capacity).Take(layout.Capacity).ToArray();
         }
 
         public IReadOnlyList<XrAction> Context(SelectionKind selection)

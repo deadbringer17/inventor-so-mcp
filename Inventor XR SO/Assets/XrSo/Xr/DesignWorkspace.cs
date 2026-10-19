@@ -101,13 +101,14 @@ namespace InventorXrSo.Xr
         /// <summary>M9: a handle is captured; Ispeziona tools suspend until it is released.</summary>
         public bool HandleCaptured => _dimensionDrag;
         /// <summary>M9 input state: the numeric keypad is open (A = OK, X = Annulla).</summary>
-        public bool KeypadOpen => Active && (_ask != null || (_shell != null && _shell.Palette.KeypadVisible));
+        public bool KeypadOpen => Active && (_ask != null || ActiveParameterTextEntry!=null || (_shell != null && _shell.Palette.KeypadVisible));
         /// <summary>M9 input state: the dimension chip of a feature is armed or a handle captured (stick right = step, A = keypad).</summary>
         public bool InputArmed => Active && (_dimensionDrag || (_screen == "feature" && DimensionApplies));
         /// <summary>M9 input state: a sketch is open on its plane (A = Snap si/no).</summary>
-        public bool SketchOpen => Active && _screen == "sketch" && _sketch?.Frame != null;
+        public bool SketchOpen => Active && ((_screen == "sketch" && _sketch?.Frame != null)
+            || (NativeEditorOpen && NativeEditor?.Snapshot?.Frame != null));
         /// <summary>M9: what is true now (sketch open, feature/move in progress): decides the tabs that appear by themselves.</summary>
-        public TabState TabState => new TabState { SketchOpen = _screen == "sketch" && _sketch != null, FeatureInProgress = _screen == "feature",
+        public TabState TabState => new TabState { SketchOpen = SketchOpen, FeatureInProgress = _screen == "feature",
             FeatureEditOpen = Active && _featureEdit != null, FeatureName = _featureEdit?.Name };
         public Func<bool> CanEnter { get; set; }
         public event Action<bool> ActiveChanged;
@@ -118,7 +119,7 @@ namespace InventorXrSo.Xr
         /// <summary>Last notice, also sent to <see cref="HudMessage"/> when non-empty.</summary>
         public string Notice => _notice;
         /// <summary>The numeric entry currently waiting for the keypad (or dictation), if any.</summary>
-        public NumericEntry ActiveEntry => _ask;
+        public NumericEntry ActiveEntry => _nativeEditor?.ActiveEntry ?? _ask;
 
         public void Initialize(CadSceneView view, SelectionVisuals selection, ControllerRay ray, Transform head)
         {
@@ -199,12 +200,14 @@ namespace InventorXrSo.Xr
 
         public void Bind(IDesignWorkspaceBackend backend)
         {
+            SaveNativeEditor();
             CancelReads();
             _reviewAfterRebind |= _pendingMutations>0 || _session?.Status==DesignStatus.Committing
                 || _session?.Status==DesignStatus.RefreshRequired;
             if (_session != null) { _session.Changed -= SessionChanged; _session.Dispose(); }
             _backend = backend;
             _session = backend == null ? null : new DesignSession(backend);
+            BindNativeEditor();
             if (_session != null)
             {
                 if (_reviewAfterRebind) _session.RequireCadReview();
@@ -215,6 +218,7 @@ namespace InventorXrSo.Xr
         }
         public void SetScene(LoadedScene scene)
         {
+            if (NativeEditorOpen) _nativeEditor?.Session.InvalidatePresentation();
             _sceneState = scene?.Graph.State;
             _kind = scene?.Graph.Kind;
             SetDocumentState(scene?.Graph.State);
@@ -223,14 +227,16 @@ namespace InventorXrSo.Xr
         {
             bool changed = _state?.DocumentId != state?.DocumentId || _state?.Revision != state?.Revision;
             _state = state;
-            if (changed) { CancelReads(); _context = null; ResetDraft(); }
+            if (changed) { CancelReads(); _context = null; if (!NativeEditorOpen) ResetDraft(); }
+            _nativeEditor?.SetEnvironment(state, _online, _kind == "part");
             _session?.SetContext(state, _online, _kind == "part");
             if (changed && Active && _online && _kind == "part") LoadContext();
         }
         public void SetOnline(bool online)
         {
             if (_online == online) return;
-            _online = online; CancelReads(); _context = null; ResetDraft();
+            _online = online; CancelReads(); _context = null; if (!NativeEditorOpen) ResetDraft();
+            _nativeEditor?.SetEnvironment(_state, online, _kind == "part");
             _session?.SetContext(_state, online, _kind == "part");
             if (online && Active) LoadContext();
             Refresh();
@@ -244,16 +250,18 @@ namespace InventorXrSo.Xr
         {
             if (!_visible || CanEnter?.Invoke() == false) return;
             Active = true; _ray.CanPick = false; _selection.Clear();
-            _screen = "tools";
+            _screen = NativeEditorOpen ? "native" : "tools";
             ActiveChanged?.Invoke(true);
             PlaceWorkbench(); Refresh(); LoadContext();
         }
         public void Close()
         {
+            _nativeEditor?.CancelWindow();
+            if (NativeEditorOpen) _nativeEditor?.Session.InvalidatePresentation();
             bool was = Active;
             _dimensionDrag = false; _dragFactor = 1; EndViewGrabs();   // capture ends with the workspace (M5-08)
             Active = false; CancelReads();
-            if (_session != null && _session.Status != DesignStatus.Committing && _session.Status != DesignStatus.RefreshRequired) _session.Cancel();
+            if (!NativeEditorOpen && _session != null && _session.Status != DesignStatus.Committing && _session.Status != DesignStatus.RefreshRequired) _session.Cancel();
             ResetDraft(); _selection?.Clear();
             _shell?.Palette.HideKeypad();
             if (_chip != null) _chip.Canvas.gameObject.SetActive(false);
@@ -264,9 +272,10 @@ namespace InventorXrSo.Xr
             if (was) Closed?.Invoke();
         }
         private void CancelReads()
-        { _generation++; _reads.Cancel(); _reads.Dispose(); _reads = new CancellationTokenSource(); _busy = false; }
+        { CancelParameterInput(); _generation++; _reads.Cancel(); _reads.Dispose(); _reads = new CancellationTokenSource(); _busy = false; }
         private void ResetDraft()
         {
+            CancelParameterInput();
             _constraintKind=null; _constraintPicks.Clear(); _parameterName=null;
             _dimensionStep = 0; _dimensionIndex = -1;
             _history = null;
@@ -276,7 +285,7 @@ namespace InventorXrSo.Xr
             _previewView?.Clear(); _geometry?.Clear();
             if (_handle != null) _handle.positionCount = 0;
             if (_cursorCanvas != null) _cursorCanvas.gameObject.SetActive(false);
-            _screen = "tools";
+            _screen = NativeEditorOpen ? "native" : "tools";
             HideRing(); ClosePicker(false);
             if (_sheet != null && _sheet.State == SketchSheetState.Sheet && _bench?.Frame != null) _sheet.ShowModel(_bench.PartPose);
             _sheetSuppressed = false;
@@ -284,6 +293,7 @@ namespace InventorXrSo.Xr
         private async void LoadContext()
         {
             if (!_online || _state == null || _kind != "part" || _backend == null || _busy) { Refresh(); return; }
+            CancelParameterInput();ClosePicker(false);
             int generation = _generation; var state = _state; _busy = true; _history = null;
             Refresh();
             try
@@ -291,6 +301,7 @@ namespace InventorXrSo.Xr
                 var context = await _backend.GetDesignContextAsync(state, _reads.Token);
                 if (generation != _generation) return;
                 _context = context; _notice = "";
+                _nativeEditor?.Render();
                 if (context.Truncated) SetNotice("Elenco CAD parziale: alcune entità superano i limiti.");
                 if (_backend is IDesignHistoryBackend historyBackend)
                 {
@@ -396,7 +407,7 @@ namespace InventorXrSo.Xr
                 refreshRequired: s?.Status == DesignStatus.RefreshRequired,
                 busy: working || _pendingMutations > 0 || (_busy && InDraftScreen),
                 hasPreview: s != null && s.Status == DesignStatus.PreviewReady && s.CanApply,
-                hasDraft: s != null && InDraftScreen,
+                hasDraft: s != null && InDraftScreen && (!NativeEditorOpen || _nativeEditor?.Session.HasDraft == true),
                 error: s?.Status == DesignStatus.Error ? ShortError : ""), Time.unscaledTimeAsDouble);
         }
 
@@ -481,7 +492,7 @@ namespace InventorXrSo.Xr
         /// a held X means "Torna". Mirrors the <see cref="Back"/> chain.
         /// </summary>
         public bool AtRest => Active && !(_shell != null && (_shell.Palette.KeypadVisible || _shell.Palette.InTabGroup))
-            && _ask == null && !(_ring != null && _ring.Visible) && _picker == null && !InDraftScreen && _featureEdit == null
+            && _ask == null && ActiveParameterTextEntry==null && !(_ring != null && _ring.Visible) && _picker == null && !InDraftScreen && _featureEdit == null
             && (_session == null || _session.Status == DesignStatus.Empty);
 
         /// <summary>
@@ -491,11 +502,19 @@ namespace InventorXrSo.Xr
         public void Back()
         {
             if (!Active) return;
-            if (_shell != null && _shell.Palette.KeypadVisible) { _shell.Palette.HideKeypad(); _ask = null; return; }
+            if(ActiveParameterTextEntry!=null) {CancelParameterInput();Refresh();return;}
+            if (_nativeEditor?.WindowActive == true) { _nativeEditor.CancelWindow(); return; }
+            if (_shell != null && _shell.Palette.KeypadVisible) { _nativeEditor?.CancelPrompt(); _shell.Palette.HideKeypad(); _ask = null; return; }
             if (_shell == null && _ask != null) { _ask.CancelEdit(); _ask = null; return; }
             if (_ring != null && _ring.Visible) { HideRing(); return; }
             if (_picker != null) { ClosePicker(); return; }
-            if (_shell != null && _shell.Palette.TryLeaveGroup(ContextTabs.Inspect)) return;
+            if (_shell != null && _shell.Palette.TryLeaveGroup()) return;
+            if (NativeEditorOpen)
+            {
+                if (_nativeEditor?.PromptOpen == true) _nativeEditor.CancelPrompt();
+                else if (_nativeEditor?.Session.HasDraft == true && _session?.CanEdit == true) _nativeEditor.DiscardOperation();
+                return;
+            }
             if (_featureEdit != null && _screen != "parameter") { CloseFeatureEdit(); return; }
             DiscardLastDraftStep();
         }
@@ -621,6 +640,7 @@ namespace InventorXrSo.Xr
         }
         private void UpdateDraft()
         {
+            if (NativeEditorOpen) return;
             if (_session?.CanEdit != true) return;
             try
             {
@@ -635,13 +655,13 @@ namespace InventorXrSo.Xr
         }
         private async void Preview()
         {
-            try { UpdateDraft(); if (_session.Status != DesignStatus.Error) await _session.PreviewAsync(); }
+            try { if (NativeEditorOpen) await _nativeEditor.Session.PreviewAsync(); else { UpdateDraft(); if (_session.Status != DesignStatus.Error) await _session.PreviewAsync(); } }
             catch (Exception ex) { SetNotice(ex.Message); Refresh(); }
         }
         private async void Apply()
         {
             var session=_session;
-            await RunMutation(session,()=>session.ApplyAsync());
+            await RunMutation(session,()=>NativeEditorOpen ? _nativeEditor.Session.ApplyAsync() : session.ApplyAsync());
             if (this != null && session == _session && session.LastCommit != null && !session.CommitOutcomeUnknown)
             { CommitBar.MarkApplied(Time.unscaledTimeAsDouble); Haptics.Play(HapticPulse.Success); }
         }
@@ -676,7 +696,9 @@ namespace InventorXrSo.Xr
             var backend=_backend; var session=_session; int generation=_generation;
             var state = await backend.GetDocumentStateAsync(_reads.Token);
             if (this==null || backend!=_backend || session!=_session || generation!=_generation) return;
-            session.AcknowledgeRefresh(state, reviewed); _reviewAfterRebind=false; _state = state; ResetDraft(); LoadContext();
+            if (NativeEditorOpen && _nativeEditor != null) await RefreshNativeSketch(state,reviewed);
+            else { session.AcknowledgeRefresh(state, reviewed); _state = state; ResetDraft(); LoadContext(); }
+            _reviewAfterRebind=false;
             SetNotice("Documento aggiornato. Attendo il modello da Inventor.");
         }
         private async void ReviewUnknown()
@@ -686,14 +708,14 @@ namespace InventorXrSo.Xr
             Refresh();
         }
         private async void PreviewParameter() { try { await _session.PreviewAsync(); } catch (Exception ex) { SetNotice(ex.Message); Refresh(); } }
-        private void CancelDraft() { _session.Cancel(); ResetDraft(); Refresh(); }
+        private void CancelDraft() { if (NativeEditorOpen) _nativeEditor?.DiscardOperation(); else { _session.Cancel(); ResetDraft(); } Refresh(); }
 
         // ---------------------------------------------------------------- voice surface
 
         public const string FieldDimension = "design.dimension";
         private const double MinDimensionMm = 0.001, MaxDimensionMm = 10000;
 
-        private bool InDraftScreen => _screen == "sketch" || _screen == "feature" || _screen == "parameter";
+        private bool InDraftScreen => NativeEditorOpen || _screen == "sketch" || _screen == "feature" || _screen == "parameter";
         /// <summary>Progettazione no longer has a floating panel: voice labels come from the declared actions.</summary>
         public HomePanel VoicePanel => null;
 
@@ -702,7 +724,7 @@ namespace InventorXrSo.Xr
             && DimensionApplies;
 
         /// <summary>The numeric field waiting for the keypad, else the dimension chip of the feature, or null when none is on screen.</summary>
-        public DictationField ArmedField => _ask != null ? new DictationField(_ask.Id, _ask.Unit, _ask.Min, _ask.Max)
+        public DictationField ArmedField => ActiveParameterTextEntry!=null || _nativeEditor?.ActiveTextEntry!=null ? null : ActiveEntry != null ? new DictationField(ActiveEntry.Id, ActiveEntry.Unit, ActiveEntry.Min, ActiveEntry.Max)
             : DimensionFieldAvailable ? new DictationField(FieldDimension, QuantityUnit.Millimeters, MinDimensionMm, MaxDimensionMm) : null;
 
         /// <summary>
@@ -711,7 +733,7 @@ namespace InventorXrSo.Xr
         /// </summary>
         public bool SetArmedField(string fieldId, double value)
         {
-            if (_ask != null && fieldId == _ask.Id) return _ask.CommitValue(value, out _);
+            if (ActiveEntry != null && fieldId == ActiveEntry.Id) return ActiveEntry.CommitValue(value, out _);
             if (fieldId != FieldDimension || !DimensionFieldAvailable) return false;
             if (!DimEntry.SetValue(value, out _)) return false;
             if (_dimension != value)
@@ -929,11 +951,22 @@ namespace InventorXrSo.Xr
 
         private void EndViewGrabs() { _grab = null; _gripHeld = false; _twoHandActive = false; }
 
-        private void OnPenReleased() => EndCapture(true, false);
+        private void OnPenReleased()
+        {
+            if (_nativeEditor?.WindowDragging == true)
+            {
+                if (TryPenRay(out var ray,out bool overUi)) _nativeEditor.WindowRay(_view.transform,ray,overUi,true);
+                else _nativeEditor.CancelWindow();
+                return;
+            }
+            EndCapture(true,false);
+        }
 
         private void OnTrackingLost()
         {
+            _nativeEditor?.CancelWindow();
             // Raised before the release of a held trigger: the capture is closed here, without preview.
+            _nativeEditor?.HideCoordinateCursor();
             if (!Active) return;
             EndCapture(false, true);
             EndViewGrabs(); _first = null; _snapLocked = false; _hoverKey = 0;
@@ -943,6 +976,7 @@ namespace InventorXrSo.Xr
 
         private void OnGrabStarted()
         {
+            if (_nativeEditor?.WindowActive == true) return;
             if (!TryPenRay(out var ray, out bool overUi)) return;
             _gripHeld = true;
             if (_dimensionDrag || _twoHandActive || overUi || !CadRaycaster.TryPick(ray,20,out _,out _,out _)) return;
@@ -967,6 +1001,7 @@ namespace InventorXrSo.Xr
         private void OnTwoHandChanged(bool on)
         {
             if (!Active) return;
+            if (on) _nativeEditor?.CancelWindow();
             if (!on) { _twoHandActive = false; return; }
             if (_ray?.Origin == null || !LeftHandPose(out var left)) return;
             _dimensionDrag = false; _grab = null;
@@ -1050,6 +1085,13 @@ namespace InventorXrSo.Xr
         {
             if (!TryPenRay(out var ray, out bool overUi)) return;
             if (PickSuppressed?.Invoke() == true) return;
+            if (NativeEditorOpen)
+            {
+                var snapshot=_nativeEditor?.Session.Snapshot;
+                if (!overUi && snapshot != null && !_nativeEditor.PickConstraint(ray)
+                    && CadCoordinates.SketchRay(_view.transform,snapshot.Frame,ray,out var point)) _nativeEditor.Pick(point,GripDown);
+                return;
+            }
             if (_session?.CanEdit == true && !overUi && !GripDown && TryBeginHandleDrag(ray)) return;
             if (overUi || _ask != null || _session?.CanEdit != true || _gripHeld || _dimensionDrag) return;
             if (_screen == "sketch" && _sketch?.Frame != null) { SketchPress(ray); return; }
@@ -1118,6 +1160,8 @@ namespace InventorXrSo.Xr
             if (_grab != null) { _grab.SetPositionAndRotation(_ray.Origin.TransformPoint(_grabPosition),_ray.Origin.rotation*_grabRotation); return; }
             if (!TryPenRay(out var ray, out bool overUi)) return;
             HoverFeedback(ray, overUi);
+            if (NativeEditorOpen && _nativeEditor?.WindowDragging == true) { _nativeEditor.WindowRay(_view.transform,ray,overUi);return; }
+            if (NativeEditorOpen) { _nativeEditor?.CoordinateRay(_view.transform,ray,overUi);return; }
             if (overUi || _ask != null || _session?.CanEdit != true || _gripHeld) return;
             if (_screen != "sketch" || _sketch?.Frame == null) return;
             if (!TryPenPoint(ray,out var point)) return;
@@ -1180,6 +1224,8 @@ namespace InventorXrSo.Xr
         }
         private void OnDestroy()
         {
+            CancelParameterInput();
+            _nativeEditor?.Dispose();
             DetachInput();
             _reads.Cancel(); _reads.Dispose();
             if (_session != null) { _session.Changed-=SessionChanged; _session.Dispose(); }

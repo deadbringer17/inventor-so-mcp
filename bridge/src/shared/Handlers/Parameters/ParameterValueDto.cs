@@ -1,13 +1,15 @@
-#if INVENTOR2022 || INVENTOR2023 || INVENTOR2024 || INVENTOR2025 || INVENTOR2026 || INVENTOR2027
 using System;
 using Newtonsoft.Json.Linq;
+#if INVENTOR2022 || INVENTOR2023 || INVENTOR2024 || INVENTOR2025 || INVENTOR2026 || INVENTOR2027
 using Inventor;
+#endif
 using Bimwright.Ipt.Shared.Contracts;
 
 namespace Bimwright.Ipt.Shared.Handlers.Parameters;
 
 internal static class ParameterValueDto
 {
+#if INVENTOR2022 || INVENTOR2023 || INVENTOR2024 || INVENTOR2025 || INVENTOR2026 || INVENTOR2027
     public static JObject From(Parameter prm, bool includeKind = true)
     {
         return FromCore(
@@ -27,8 +29,11 @@ internal static class ParameterValueDto
             includeKind ? prm.ParameterType.ToString() : null,
             () => prm.Value);
     }
+#endif
 
-    private static JObject FromCore(string name, string expression, string unit, string? kind, Func<object?> value)
+    // This mapping has no Inventor dependency. Keep typed values separate from
+    // converted numeric fields so callers cannot confuse false/text with zero.
+    internal static JObject FromCore(string name, string expression, string unit, string? kind, Func<object?> value)
     {
         var o = new JObject
         {
@@ -41,7 +46,19 @@ internal static class ParameterValueDto
 
         object? raw = null;
         try { raw = value(); } catch { }
-        if (raw is not double d)
+        if (raw is bool boolean)
+        {
+            o["evaluated"] = JValue.CreateNull();
+            o["value_bool"] = boolean;
+            return o;
+        }
+        if (raw is string text)
+        {
+            o["evaluated"] = JValue.CreateNull();
+            o["value_text"] = text;
+            return o;
+        }
+        if (raw is not double d || double.IsNaN(d) || double.IsInfinity(d))
         {
             o["evaluated"] = JValue.CreateNull();
             return o;
@@ -82,4 +99,3 @@ internal static class ParameterValueDto
         }
     }
 }
-#endif

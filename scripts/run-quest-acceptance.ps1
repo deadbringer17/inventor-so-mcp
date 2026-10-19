@@ -7,7 +7,7 @@ This script never touches Quest test properties (proximity, guardian).
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9', 'm9n', 'm9f', 'm9h', 'm10')][string]$Milestone,
+    [Parameter(Mandatory)][ValidateSet('m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9', 'm9n', 'm9f', 'm9h', 'm10', 's1')][string]$Milestone,
     [Parameter(Mandatory)][string]$Apk,
     [string]$Serial,
     [int]$TimeoutSeconds = 240,
@@ -21,6 +21,7 @@ Set-StrictMode -Version Latest
 
 # The M6 runner crosses four workspaces and two documents: it needs more than the default of the single-workspace runners.
 if ($Milestone -eq 'm6' -and -not $PSBoundParameters.ContainsKey('TimeoutSeconds')) { $TimeoutSeconds = 780 }
+if ($Milestone -eq 's1' -and -not $PSBoundParameters.ContainsKey('TimeoutSeconds')) { $TimeoutSeconds = 720 }
 if (($Milestone -eq 'm8' -or $Milestone -eq 'm10') -and -not $PSBoundParameters.ContainsKey('TimeoutSeconds')) { $TimeoutSeconds = 900 }
 # The M9 runner enters and leaves the fixture documents several times (double Trigger, Torna, desktop change, voice) and applies one feature edit.
 if (($Milestone -eq 'm9' -or $Milestone -eq 'm9n' -or $Milestone -eq 'm9f' -or $Milestone -eq 'm9h') -and -not $PSBoundParameters.ContainsKey('TimeoutSeconds')) { $TimeoutSeconds = 960 }
@@ -130,6 +131,12 @@ $checks = @(
 )
 
 $pulled = New-Object System.Collections.Generic.List[string]
+# S1 currently has no in-app screenshots. Preserve the final Android compositor
+# separately; this is not evidence of a specific preview or a physical gesture.
+if ($Milestone -eq 's1' -and $runnerStarted) {
+    $compositor = Invoke-Adb shell screencap -p "$remoteDir/s1-acceptance-final-compositor.png"
+    if ($compositor.Code -ne 0) { Write-Warning 'Could not capture the S1 final Android compositor.' }
+}
 $logTarget = Join-Path $OutDir "$prefix$Milestone-acceptance.txt"
 $pull = Invoke-Adb pull $remoteLog $logTarget
 if ($pull.Code -eq 0) { $pulled.Add($logTarget) } else { Write-Warning "Could not pull log: $($pull.Text)" }

@@ -31,7 +31,7 @@ namespace InventorXrSo.Xr
 
         private static readonly XrTab[] StaticTabs =
         {
-            new XrTab(TabLamiera, "Lamiera"), new XrTab(TabSketch, "Schizzo"), new XrTab(TabFlat, "Sviluppo"),
+            new XrTab(TabLamiera, "Lamiera"), new XrTab(TabSketch, "Schizzo", PaletteProfile.Sketch), new XrTab(TabFlat, "Sviluppo"),
         };
 
         private sealed class PickerItem
@@ -45,7 +45,7 @@ namespace InventorXrSo.Xr
             public string Title;
             public List<PickerItem> Items;
             public string ReturnTab;
-            public int Pages => (Items.Count + ActionCatalog.MaxPalette - 1) / ActionCatalog.MaxPalette;
+            public int Pages => (Items.Count + PaletteLayout.PickerCapacity - 1) / PaletteLayout.PickerCapacity;
         }
 
         private XrAction[] _actions;
@@ -57,8 +57,8 @@ namespace InventorXrSo.Xr
         {
             get
             {
-                if (_picker == null && _featureEdit == null) return StaticTabs;
-                var tabs = new List<XrTab>(StaticTabs);
+                if (_picker == null && _featureEdit == null) return StaticTabs.Concat(InventorXrSo.Unity.Ui.SketchRibbon.Tabs).ToArray();
+                var tabs = new List<XrTab>(StaticTabs.Concat(InventorXrSo.Unity.Ui.SketchRibbon.Tabs));
                 if (_featureEdit != null) tabs.Add(new XrTab(FeatureTabId, "Feature: " + _featureEdit.Name));
                 if (_picker == null) return tabs;
                 for (int page = 0; page < _picker.Pages; page++)
@@ -133,7 +133,7 @@ namespace InventorXrSo.Xr
         // ---------------------------------------------------------------- availability
 
         /// <summary>The workspace is open, the CAD context is readable and no CAD request is running.</summary>
-        private bool Interactive => Active && _kind == "part" && _online && _session != null && !_busy && _mode.CanWrite && _designContext != null
+        private bool Interactive => !NativeEditorOpen && Active && _kind == "part" && _online && _session != null && !_busy && _mode.CanWrite && _designContext != null
             && _session.Status != DesignStatus.RefreshRequired;
         private bool Locked => _session != null && (_session.Status == DesignStatus.Committing || _session.Status == DesignStatus.Previewing || _pendingMutations > 0);
         /// <summary>Draft options (flange datum, cut extent...): readable context, editable draft, nothing in flight.</summary>
@@ -141,6 +141,7 @@ namespace InventorXrSo.Xr
 
         private string CommandReason()
         {
+            if (NativeEditorOpen) return "Concludi prima l'editor dello schizzo nativo.";
             if (!Active) return "Lamiera non è aperta.";
             if (_kind != "part") return "Lamiera richiede una parte in lamiera attiva in Inventor.";
             if (_session == null) return "PC non collegato.";
@@ -238,7 +239,9 @@ namespace InventorXrSo.Xr
 
                 // Barra di conferma: l'unico percorso verso il CAD
                 new XrAction(CommitIds.Preview, "Anteprima", ActionCatalog.CommitTab,
-                    () => Interactive && !Locked && InDraftScreen && _session.CanEdit && _mode.Armed != SheetMetalCommand.None, Preview,
+                    () => NativeEditorOpen ? NativeHostReady && !Locked && _nativeEditor?.Session.CanEdit==true && _nativeEditor.Session.HasDraft && _session.Status!=DesignStatus.Empty
+                        : Interactive && !Locked && InDraftScreen && _session.CanEdit && _mode.Armed != SheetMetalCommand.None,
+                    () => { if (NativeEditorOpen) PreviewNative(); else Preview(); },
                     () => !InDraftScreen ? "Nessun comando in corso." : CommandReason()),
                 new XrAction(CommitIds.Apply, "Applica", ActionCatalog.CommitTab,
                     () => InDraftScreen && IsEnabled(CommandIds.Apply), ApplyPressed,
@@ -251,6 +254,10 @@ namespace InventorXrSo.Xr
                     new[] { "aggiorna documento", "ho controllato il cad" }),
             };
 
+            list.Add(new XrAction("sketch.editor.open","Modifica schizzo esistente",TabSketch,
+                () => Idle && _nativeEditor!=null && _session.Status==DesignStatus.Empty && _designContext?.Sketches.Any(s=>s.NativeSketchId!=null)==true,
+                OpenNativePicker,()=>_nativeEditor==null ? "Il backend non espone l'editor di schizzo nativo." : CommandReason()));
+            list.AddRange(InventorXrSo.Unity.Ui.SketchRibbon.Actions(() => _shell?.Palette,_nativeEditor));
             if (_featureEdit != null) list.AddRange(BuildFeatureEditActions());
             if (_picker != null)
             {
@@ -258,7 +265,7 @@ namespace InventorXrSo.Xr
                 for (int i = 0; i < picker.Items.Count; i++)
                 {
                     var item = picker.Items[i];
-                    list.Add(new XrAction(IdPickPrefix + i, item.Label, PickTabPrefix + i / ActionCatalog.MaxPalette,
+                    list.Add(new XrAction(IdPickPrefix + i, item.Label, PickTabPrefix + i / PaletteLayout.PickerCapacity,
                         () => PickerOpen(picker), () => { ClosePicker(); item.Choose(); }, () => "L’elenco è stato chiuso."));
                 }
             }

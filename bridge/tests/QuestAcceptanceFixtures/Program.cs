@@ -21,13 +21,19 @@ internal static class Program
             var mode = args.FirstOrDefault(a => a is "--prepare-quest" or "--inspect-quest" or "--restore-quest");
             var index = Array.IndexOf(args, mode);
             var milestone = mode == null || index + 1 >= args.Length ? null : args[index + 1].ToLowerInvariant();
-            if (mode == null || milestone is not ("m1" or "m2" or "m3" or "m5" or "m6" or "m7" or "m9n" or "m9f" or "m9h"))
+            if (mode == null || milestone is not ("m1" or "m2" or "m3" or "m5" or "m6" or "m7" or "m9n" or "m9f" or "m9h" or "s1"))
             {
-                Console.Error.WriteLine("Usage: QuestAcceptanceFixtures (--prepare-quest|--inspect-quest|--restore-quest) <m1|m2|m3|m5|m6|m7|m9n|m9f|m9h> | --probe-m7 | --probe-active");
+                Console.Error.WriteLine("Usage: QuestAcceptanceFixtures (--prepare-quest|--inspect-quest|--restore-quest) <m1|m2|m3|m5|m6|m7|m9n|m9f|m9h|s1> | --probe-m7 | --probe-active");
                 return 64;
             }
             GetActiveObject(ref clsid, IntPtr.Zero, out var active);
             var app = (global::Inventor.Application)active;
+            if (milestone == "s1") return mode switch
+            {
+                "--prepare-quest" => S1Fixtures.Prepare(app),
+                "--inspect-quest" => S1Fixtures.Inspect(app),
+                _ => S1Fixtures.Restore(app),
+            };
             return mode switch
             {
                 "--prepare-quest" => Fixtures.Prepare(app, milestone),

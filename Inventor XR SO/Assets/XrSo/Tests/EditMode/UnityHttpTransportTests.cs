@@ -129,6 +129,58 @@ namespace InventorXrSo.Tests
             }
         }
 
+        [UnityTest]
+        public IEnumerator BoundedPinnedDownloadRejectsOversizeAndAcceptsExactBody()
+        {
+            using (var host = TestHostProcess.Start())
+            {
+                var transport = new UnityHttpTransport(ServerTrust.Pinned(host.CertSha256));
+                var baseline = transport.SendAsync(new TransportRequest("GET", host.BaseUrl + "/healthz"), CancellationToken.None);
+                yield return Await(baseline);
+                Assert.IsNull(baseline.Exception, baseline.Exception?.ToString());
+                Assert.IsTrue(baseline.Result.IsSuccess);
+                var exact = transport.SendAsync(new TransportRequest("GET", host.BaseUrl + "/healthz")
+                    { MaxResponseBytes = baseline.Result.Body.Length }, CancellationToken.None);
+                yield return Await(exact);
+                Assert.IsNull(exact.Exception, exact.Exception?.ToString());
+                CollectionAssert.AreEqual(baseline.Result.Body, exact.Result.Body);
+                var over = transport.SendAsync(new TransportRequest("GET", host.BaseUrl + "/healthz")
+                    { MaxResponseBytes = baseline.Result.Body.Length - 1 }, CancellationToken.None);
+                yield return Await(over);
+                Assert.IsInstanceOf<TransportException>(over.Exception?.GetBaseException());
+                StringAssert.Contains("byte limit", over.Exception.GetBaseException().Message);
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator AuthenticatedPinnedSameOriginRedirectNeverReachesTarget()
+        {
+            using (var host = TestHostProcess.Start())
+            {
+                var transport = new UnityHttpTransport(ServerTrust.Pinned(host.CertSha256));
+                int expectedSources = 0;
+                foreach (int status in new[] { 302, 307 })
+                {
+                    var request = new TransportRequest("GET", host.BaseUrl + "/test/redirect/" + status) { MaxResponseBytes = 1024 };
+                    request.Headers["Authorization"] = "Bearer " + host.EditorToken;
+                    var redirected = transport.SendAsync(request, CancellationToken.None);
+                    yield return Await(redirected);
+                    // Unity versions may expose the redirect status or a redirect-limit transport error.
+                    // Both refuse it; the independently read target counter proves no request followed.
+                    if (redirected.Exception == null) Assert.AreEqual(status, redirected.Result.Status);
+                    else Assert.IsInstanceOf<TransportException>(redirected.Exception.GetBaseException());
+                    var counterRequest = new TransportRequest("GET", host.BaseUrl + "/test/redirect-counters") { MaxResponseBytes = 1024 };
+                    counterRequest.Headers["Authorization"] = "Bearer " + host.EditorToken;
+                    var counters = transport.SendAsync(counterRequest, CancellationToken.None);
+                    yield return Await(counters);
+                    Assert.IsNull(counters.Exception, counters.Exception?.ToString()); Assert.AreEqual(200, counters.Result.Status);
+                    var data = JObject.Parse(System.Text.Encoding.UTF8.GetString(counters.Result.Body));
+                    Assert.AreEqual(++expectedSources, (int)data["source_requests"], "The authenticated redirect source must have been reached.");
+                    Assert.AreEqual(0, (int)data["target_requests"], "A same-host HTTPS redirect must never be followed.");
+                }
+            }
+        }
+
         private static async Task<JObject> Call(McpClient mcp)
         {
             await mcp.InitializeAsync(CancellationToken.None);

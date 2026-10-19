@@ -26,7 +26,8 @@ namespace InventorXrSo.Unity.Net
                 return tcs.Task;
             }
             int before = _trust.RejectionCount;
-            var web = Create(request, new DownloadHandlerBuffer());
+            var bounded = request.MaxResponseBytes > 0 ? new BoundedDownloadHandler(request.MaxResponseBytes) : null;
+            var web = Create(request, bounded != null ? (DownloadHandler)bounded : new DownloadHandlerBuffer());
             var done = new int[1];
             var context = SynchronizationContext.Current;
             var registration = ct.Register(() => AbortSafely(web, context, done));
@@ -37,6 +38,9 @@ namespace InventorXrSo.Unity.Net
                 try
                 {
                     if (ct.IsCancellationRequested) tcs.TrySetCanceled(ct);
+                    else if (_trust.RejectionCount != before) tcs.TrySetException(Failure(web, before));
+                    else if (bounded != null && bounded.LimitExceeded)
+                        tcs.TrySetException(new TransportException("Response body exceeds the configured byte limit."));
                     else if (IsFailure(web)) tcs.TrySetException(Failure(web, before));
                     else tcs.TrySetResult(new TransportResponse((int)web.responseCode, Headers(web), web.downloadHandler.data));
                 }
@@ -106,6 +110,8 @@ namespace InventorXrSo.Unity.Net
                 disposeCertificateHandlerOnDispose = true,
                 disposeDownloadHandlerOnDispose = true,
                 disposeUploadHandlerOnDispose = true,
+                // Authentication and certificate trust bind the original endpoint. Never follow a redirect.
+                redirectLimit = 0,
                 timeout = request.Timeout == Timeout.InfiniteTimeSpan ? 0 : Math.Max(1, (int)Math.Ceiling(request.Timeout.TotalSeconds)),
             };
             if (request.Body != null) web.uploadHandler = new UploadHandlerRaw(request.Body);

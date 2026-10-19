@@ -25,7 +25,7 @@ using UiSelectionKind = InventorXrSo.Core.Ui.SelectionKind;
 
 namespace InventorXrSo.Tests
 {
-    public class DesignWorkspaceTests
+    public partial class DesignWorkspaceTests
     {
         private const string Create = "design.sketch.create", Extrude = "design.extrude", Hole = "design.hole",
             Fillet = "design.fillet", Chamfer = "design.chamfer", Undo = "design.history.undo", Redo = "design.history.redo",
@@ -40,13 +40,18 @@ namespace InventorXrSo.Tests
         private Backend _backend;
         private LoadedScene _scene;
         private readonly List<string> _hud = new List<string>();
-        private sealed class Backend : IDesignWorkspaceBackend, IDesignHistoryBackend
+        private sealed class Backend : IDesignWorkspaceBackend, IDesignHistoryBackend, INativeSketchBackend
         {
             public DocumentState State = new DocumentState("doc_bolt","r","v");
             public GlbModel Model;
             public int Previews, Commits, HistoryCalls;
             public int StateReads, ParameterCount;
             public string PreviewPlane;
+            public bool NativePartial, NativeOverlap, NativeNoCapabilities, NativeNoCopy, NativeCurves,NativeDimensions,NativeAngular,NativeConstraints,NativePatterns;
+            public JArray LastOperations;
+            public int NativeSplineFitMethod=26369;
+            public Task<NativeSketchSnapshot> GetNativeSketchAsync(DocumentState state,string id,CancellationToken ct)
+                => Task.FromResult(NativeSketchTestData.Snapshot(state,id,NativePartial,NativeOverlap,!NativeNoCapabilities,NativeCurves,NativeDimensions,NativeAngular,NativeConstraints,NativePatterns,!NativeNoCopy,NativeSplineFitMethod));
             public Exception PreviewError, CommitError;
             public TaskCompletionSource<DocumentState> PendingMutation, PendingState;
             public TaskCompletionSource<DesignPreview> PendingPreview;
@@ -55,13 +60,13 @@ namespace InventorXrSo.Tests
                     ["planes"]=JArray.Parse(@"[{""reference"":""3"",""name"":""XY"",""origin_mm"":[0,0,0],""x_axis"":[1,0,0],""y_axis"":[0,1,0]}]"),
                     ["faces"]=JArray.Parse(@"[{""id"":""ent_face"",""point_mm"":[0,0,10],""normal"":[0,0,1]}]"),
                     ["edges"]=JArray.Parse(@"[{""id"":""ent_edge"",""kind"":""line"",""points_mm"":[1000,2000,3000,1010,2000,3000]}]"),
-                    ["sketches"]=JArray.Parse(@"[{""name"":""Existing"",""origin_mm"":[0,0,0],""x_axis"":[1,0,0],""y_axis"":[0,1,0]}]"),
+                    ["sketches"]=JArray.Parse(@"[{""name"":""Existing"",""sketch_id"":""ent_existing"",""origin_mm"":[0,0,0],""x_axis"":[1,0,0],""y_axis"":[0,1,0]}]"),
                     ["parameters"]=new JArray(Enumerable.Range(0,ParameterCount).Select(i=>new JObject { ["name"]="P"+i,["value_mm"]=10.0+i,["unit"]="mm" })),
                     ["sketch_snapshots"]=JArray.Parse(@"[{""sketch_name"":""Existing"",""frame"":{""origin_mm"":[0,0,0],""x_axis"":[1,0,0],""y_axis"":[0,1,0]},""entities"":[{""type"":""circle"",""center_mm"":[20,20],""radius_mm"":4}]}]") },state));
             public Task<DocumentState> GetDocumentStateAsync(CancellationToken ct) { StateReads++; return PendingState?.Task ?? Task.FromResult(State); }
             public Task<DesignPreview> PreviewDesignAsync(DocumentState state,JArray operations,CancellationToken ct)
             {
-                Previews++;
+                Previews++; LastOperations=operations;
                 if (PreviewError != null) return Task.FromException<DesignPreview>(PreviewError);
                 PreviewPlane=(string)operations.FirstOrDefault(o=>(string)o["command"]=="create_sketch")?["arguments"]?["plane"];
                 var name=(string)operations.FirstOrDefault(o=>(string)o["command"]=="create_sketch")?["arguments"]?["name"];
@@ -340,11 +345,11 @@ namespace InventorXrSo.Tests
             var catalog=CatalogFor();
             var ids=_workspace.Actions.Select(a=>a.Id).ToList();
             CollectionAssert.AllItemsAreUnique(ids,state+": ids");
-            Assert.True(ids.All(id=>id.StartsWith("design.")||id.StartsWith("commit.")),state+": stable id namespaces");
+            Assert.True(ids.All(id=>id.StartsWith("design.")||id.StartsWith("commit.") || id.StartsWith("sketch.")),state+": stable id namespaces");
             var known=new HashSet<string>(_workspace.Tabs.Select(t=>t.Id)){ActionCatalog.CommitTab,DesignWorkspace.TabView};   // M9: the Vista tab is shared (ViewActions)
             foreach(var action in _workspace.Actions) Assert.True(known.Contains(action.Tab),state+": tab of "+action.Id);
             foreach(var tab in _workspace.Tabs)
-                Assert.LessOrEqual(catalog.Palette(tab.Id).Count,ActionCatalog.MaxPalette,state+": "+tab.Id);
+                Assert.LessOrEqual(catalog.Palette(tab.Id).Count,(tab.Profile == PaletteProfile.Sketch ? PaletteLayout.Sketch.Capacity : ActionCatalog.MaxPalette),state+": "+tab.Id);
             Assert.LessOrEqual(catalog.Palette(ActionCatalog.CommitTab).Count,ActionCatalog.MaxPalette);
             Assert.False(_workspace.Actions.Any(a=>a.Label=="Precedenti"||a.Label=="Successivi"),state+": no pagination buttons");
             Assert.False(_workspace.Actions.Any(a=>a.Label.StartsWith("Blocca")||a.Label=="Torna a Ispeziona"),state);
@@ -356,7 +361,7 @@ namespace InventorXrSo.Tests
             Do(Create); Pick("XY");
             Assert.False(_workspace.AtRest, "an open sketch is a draft: X must keep the Back chain");
         }
-        [Test] public void ActionIdsAreUniqueAndEveryTabHasAtMostEightActionsInEveryScreenState()
+        [Test] public void ActionIdsAreUniqueAndEveryTabFitsItsProfileInEveryScreenState()
         {
             _backend.ParameterCount=0;
             AssertCatalogIsValid("tools");

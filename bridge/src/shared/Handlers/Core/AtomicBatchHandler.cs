@@ -17,8 +17,12 @@ public sealed class AtomicBatchHandler : IInventorCommand
     {
         if (ctx.ReadOnly) return InventorCommandResult.Fail(Guid.Empty, InventorErrorCodes.READ_ONLY, "Batch requires write permission", new());
         if (p["operations"] is not JArray operations) return InventorCommandResult.Fail(Guid.Empty, InventorErrorCodes.INVALID_ARGUMENT, "operations must be an array", new());
+        var previousImports = ctx.OwnedSketchImports;
         try
         {
+            using var imports = SketchBatchImportAttachments.Resolve(ctx.SketchImports, p["import_attachments"],
+                operations, ctx.AllowExperimental, ctx.IsDeadlineExceeded);
+            ctx.OwnedSketchImports = imports;
             using var backend = new InventorBatchBackend(ctx);
             var options = new CadBatchOptions
             {
@@ -59,6 +63,7 @@ public sealed class AtomicBatchHandler : IInventorCommand
             // own code rather than letting them reach the dispatcher's catch-all as an API_ERROR.
             return InventorCommandResult.Fail(Guid.Empty, failure.Code, failure.Message, failure.Details, new());
         }
+        finally { ctx.OwnedSketchImports = previousImports; }
     }
 }
 
@@ -73,6 +78,10 @@ internal sealed class InventorBatchBackend : ICadBatchBackend, ICadBatchValidati
     private Transaction? _transaction;
     public string? CommittedTransactionId { get; private set; }
     private bool? _priorInteractionDisabled;
+#if SO_EXPERIMENTAL
+    private readonly Experimental.NativeSketchImageJournal? _imageJournal;
+    private readonly object? _previousImageJournal;
+#endif
     public InventorBatchBackend(InventorCommandContext ctx)
     {
         _ctx = ctx;
@@ -87,6 +96,15 @@ internal sealed class InventorBatchBackend : ICadBatchBackend, ICadBatchValidati
                 "Atomic batches run in part, assembly or drawing documents."),
         };
         if (ctx.Events == null) throw new InvalidOperationException("EVENTS_UNAVAILABLE: cannot verify concurrency.");
+#if SO_EXPERIMENTAL
+        _previousImageJournal = ctx.OwnedSketchImageJournal;
+        if (ctx.OwnedSketchImports != null)
+        {
+            if (_doc is not PartDocument imagePart)
+                throw new CodedFailureException(InventorErrorCodes.WRONG_DOCUMENT_TYPE, "Sketch image imports require a part document.");
+            _imageJournal = new Experimental.NativeSketchImageJournal(_app, imagePart);
+        }
+#endif
     }
 
     public string DocumentKind { get; }
@@ -114,14 +132,16 @@ internal sealed class InventorBatchBackend : ICadBatchBackend, ICadBatchValidati
         {
             if (sketches.Count >= 256 || (entities += sketch.SketchEntities.Count) > 20000)
                 throw new ArgumentException("Preview sketch geometry exceeds the supported limit.");
-            var snapshot = new Experimental.GetSketchInfoHandler().Execute(_ctx, new JObject
-            { ["sketch_name"] = sketch.Name, ["max_entities"] = 20000 });
-            if (!snapshot.Ok) throw new CodedFailureException(snapshot.Error?.Code ?? InventorErrorCodes.API_ERROR,
-                snapshot.Error?.Message ?? "Sketch preview failed.", snapshot.Error?.Details);
-            var data = (JObject)snapshot.Data!;
-            data["frame"] = Experimental.DesignContextXrHandler.SketchFrame(_app, sketch);
-            data["visible"] = sketch.Visible;
-            sketches.Add(data);
+            JObject native;
+            try { native = Experimental.SketchEditorXrHandler.Capture(_ctx, _app, _doc, sketch, null, Revision, false); }
+            catch (Exception ex) { throw new InvalidOperationException("Native sketch preview capture failed: " + ex.Message, ex); }
+            bool mutationComplete;
+            try { mutationComplete = native["mutation_completeness"] is JObject proof
+                && SketchMutationCompleteness.Validate(proof,(JArray)native["entities"]!,(JArray)native["dimensions"]!,(JArray)native["constraints"]!,true,(bool?)native["partial"]!=false); }
+            catch(FormatException) { mutationComplete=false; }
+            if (!mutationComplete)
+                throw new ArgumentException("Native sketch preview is incomplete; unsupported objects must be resolved before Apply.");
+            sketches.Add(Experimental.SketchEditorXrHandler.PreviewData(native));
         }
         payload["sketches"] = sketches;
         return payload;
@@ -153,6 +173,9 @@ internal sealed class InventorBatchBackend : ICadBatchBackend, ICadBatchValidati
         {
             if (_transaction.HasParentTransaction)
                 throw ConcurrencyFailure.TransactionBusy();
+#if SO_EXPERIMENTAL
+            _ctx.OwnedSketchImageJournal = _imageJournal;
+#endif
         }
         catch
         {
@@ -278,15 +301,24 @@ internal sealed class InventorBatchBackend : ICadBatchBackend, ICadBatchValidati
         _transaction!.MergeWithPrevious = false;
         string id = _transaction.Id.ToString(System.Globalization.CultureInfo.InvariantCulture);
         _transaction.End(); _transaction = null; CommittedTransactionId = id;
+#if SO_EXPERIMENTAL
+        _imageJournal?.Commit();
+#endif
         ObserveOwnedEnd();
     }
     public void RestoreRevision(string revision) => _ctx.Events!.TryRestoreRevision(EntityReferences.DocumentId(_doc), revision);
     public void Rollback()
     {
-        if (_transaction == null) return;
-        EnsureOwned(); bool root = !_transaction.HasParentTransaction;
-        _transaction.Abort(); _transaction = null;
-        if (root) ObserveOwnedEnd();
+        if (_transaction != null)
+        {
+            EnsureOwned(); bool root = !_transaction.HasParentTransaction;
+            _transaction.Abort(); _transaction = null;
+            if (root) ObserveOwnedEnd();
+        }
+#if SO_EXPERIMENTAL
+        // Repair failure must remain a failure if the runner asks for rollback again.
+        _imageJournal?.RepairAfterAbort();
+#endif
     }
     private void ObserveOwnedEnd()
     {
@@ -297,6 +329,10 @@ internal sealed class InventorBatchBackend : ICadBatchBackend, ICadBatchValidati
     }
     public void Dispose()
     {
+#if SO_EXPERIMENTAL
+        _ctx.OwnedSketchImageJournal = _previousImageJournal;
+        _imageJournal?.Dispose();
+#endif
         // The runner owns rollback; restore user interaction even if rollback itself failed.
         if (_priorInteractionDisabled.HasValue) _app.UserInterfaceManager.UserInteractionDisabled = _priorInteractionDisabled.Value;
     }

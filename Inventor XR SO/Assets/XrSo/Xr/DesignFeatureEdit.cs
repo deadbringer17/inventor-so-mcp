@@ -185,7 +185,7 @@ namespace InventorXrSo.Xr
                 () => "Nessuna feature aperta."));
 
             var list = new List<XrAction>();
-            int room = ActionCatalog.MaxPalette - fixedActions.Count;
+            int room = PaletteLayout.PickerCapacity - fixedActions.Count;
             for (int i = 0; i < model.Chips.Count && list.Count < room; i++)
             {
                 var chip = model.Chips[i];

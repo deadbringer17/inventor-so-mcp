@@ -401,8 +401,9 @@ namespace InventorXrSo.Xr
             var counts = new List<string>();
             foreach (var id in tabs)
             {
-                var items = Catalog.Palette(id);   // throws if a tab holds more than ActionCatalog.MaxPalette actions
-                Check(items.Count <= ActionCatalog.MaxPalette, name + ": tab '" + id + "' holds at most " + ActionCatalog.MaxPalette + " actions");
+                var items = Catalog.Palette(id);
+                var capacity = Catalog.FindTab(id)?.Profile == PaletteProfile.Sketch ? PaletteLayout.Sketch.Capacity : PaletteLayout.Compact.Capacity;
+                Check(items.Count <= capacity, name + ": tab '" + id + "' fits its palette profile (" + capacity + " actions)");
                 counts.Add(id + "=" + items.Count);
             }
             if (normalizeFirstTab)

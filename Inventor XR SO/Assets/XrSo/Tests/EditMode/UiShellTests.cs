@@ -56,6 +56,17 @@ namespace InventorXrSo.Tests
 
         private static string[] Labels(Component root) =>
             root.GetComponentsInChildren<Button>(false).Select(b => b.GetComponentInChildren<TextMeshProUGUI>().text).ToArray();
+        [Test]
+        public void TextKeyboardPagesCharactersAndUsesTheSameExplicitCommitPath()
+        {
+            var shell=Shell(Catalog(out _));var entry=new TextEntry("name","",128);int committed=0;entry.Committed+=()=>committed++;
+            shell.Palette.ShowTextKeypad(entry,"Nome parametro");
+            void PressText(string label)=>shell.Palette.GetComponentsInChildren<Button>(false).Single(b=>b.GetComponentInChildren<TextMeshProUGUI>().text==label).onClick.Invoke();
+            Assert.AreEqual(PaletteProfile.Sketch,shell.Palette.Layout.Profile);Assert.LessOrEqual(Labels(shell.Palette).Length,16);
+            PressText("a");PressText("b");PressText("◀");PressText("c");Assert.AreEqual("acb",entry.Buffer);Assert.AreEqual(0,committed);
+            PressText("tasti ›");Assert.Contains("i",Labels(shell.Palette));Assert.LessOrEqual(Labels(shell.Palette).Length,16);
+            PressText("OK");Assert.AreEqual("acb",entry.Value);Assert.AreEqual(1,committed);Assert.False(shell.Palette.KeypadVisible);
+        }
 
         [Test]
         public void PaletteFollowsTheLeftControllerAndShowsSpacesByDefault()
@@ -234,6 +245,163 @@ namespace InventorXrSo.Tests
             AssertLabelsNeverTruncated(shell.Palette, 15);
             CollectionAssert.Contains(Labels(shell.Palette), "Annulla");
             AssertPaletteFits(shell.Palette);
+        }
+
+        [Test]
+        public void SketchProfilesFitEveryPageAndKeepAllCommandsAtEveryOfferedSize()
+        {
+            var catalog = Catalog(out _);
+            var p = new Provider();
+            p.TabList.Add(new XrTab("schizzo", "Schizzo", PaletteProfile.Sketch));
+            p.TabList.AddRange(SketchCommandCatalog.Tabs);
+            p.TabList.AddRange(SketchRibbon.Tabs.Where(t => !p.TabList.Any(x => x.Id == t.Id)));
+            PaletteView palette = null;
+            p.All.AddRange(SketchRibbon.Actions(() => palette));
+            var shell = Shell(catalog); palette = shell.Palette;
+            catalog.SetActive(p);
+            foreach (var size in new[] { new Vector2(280, 190), new Vector2(320, 220), new Vector2(360, 250) })
+            {
+                palette.SetSketchSize(size.x, size.y);
+                palette.ShowTabGroup(SketchCommandCatalog.Tabs.Select(t => t.Id).ToArray(), true);
+                var seen = new HashSet<string>();
+                foreach (var tab in SketchCommandCatalog.Tabs)
+                {
+                    palette.ShowTab(tab.Id);
+                    for (int page = 0; page < palette.PageCount; page++)
+                    {
+                        foreach (var a in catalog.PalettePage(tab.Id, palette.Layout, palette.Page)) seen.Add(a.Id);
+                        Canvas.ForceUpdateCanvases();
+                        LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)palette.Canvas.transform);
+                        var root = (RectTransform)palette.Canvas.transform;
+                        foreach (var button in palette.GetComponentsInChildren<Button>(false))
+                        {
+                            var rect = (RectTransform)button.transform;
+                            Assert.GreaterOrEqual(rect.rect.height, 15 - .01f, button.name);
+                            var corners = new Vector3[4]; rect.GetWorldCorners(corners);
+                            foreach (var corner in corners)
+                            {
+                                var local = root.InverseTransformPoint(corner);
+                                Assert.True(root.rect.Contains(new Vector2(local.x, local.y)), button.name + " outside canvas");
+                            }
+                            var label = button.GetComponentInChildren<TextMeshProUGUI>(true);
+                            label.ForceMeshUpdate();
+                            Assert.False(label.enableAutoSizing, label.text);
+                            Assert.LessOrEqual(label.textBounds.size.x, rect.rect.width + .1f, label.text);
+                            Assert.LessOrEqual(label.textBounds.size.y, rect.rect.height + .1f, label.text);
+                        }
+                        palette.SelectPage(1);
+                    }
+                }
+                Assert.True(SketchCommandCatalog.Commands.All(c => seen.Contains(c.Id)), "Every native command stays reachable");
+                palette.ClearTabGroup();
+            }
+        }
+
+        [Test]
+        public void NestedGroupsRestoreTheParentTabAndSizeChangesDoNotChangeTheHandPose()
+        {
+            var catalog = Catalog(out _);
+            var p = new Provider();
+            p.TabList.Add(new XrTab("schizzo", "Schizzo", PaletteProfile.Sketch));
+            p.TabList.AddRange(SketchCommandCatalog.Tabs);
+            var shell = Shell(catalog); catalog.SetActive(p);
+            var palette = shell.Palette;
+            palette.ShowTabGroup(new[] { SketchCommandCatalog.TabPrefix + "Crea" }, true);
+            palette.ShowTabGroup(new[] { SketchCommandCatalog.FamilyPrefix + "Arco" }, true);
+            Assert.True(palette.TryLeaveGroup());
+            Assert.AreEqual(SketchCommandCatalog.TabPrefix + "Crea", palette.CurrentTab);
+            Assert.True(palette.TryLeaveGroup()); Assert.AreEqual("schizzo", palette.CurrentTab);
+            var pose = palette.transform.localPosition;
+            palette.SetSketchSize(360, 250); Assert.AreEqual(pose, palette.transform.localPosition);
+            var world = palette.transform.position;
+            palette.PinToBench(); _anchor.transform.position += Vector3.right;
+            Assert.AreEqual(world, palette.transform.position);
+            palette.ReattachToHand(); Assert.AreSame(_anchor.transform, palette.transform.parent);
+            Assert.AreEqual(pose, palette.transform.localPosition);
+        }
+
+        [Test]
+        public void LostLeftTrackingUsesTheBenchFrameAndPreservesTextInputAndHandPreferences()
+        {
+            var shell = Shell(Catalog(out _));
+            var palette = shell.Palette;
+            var frame = WorkbenchFrame.FromHead(new InventorXrSo.Core.Backend.CadPoint(1, 1.6, 2), 90, 0.9);
+            palette.SetHandPose(new Vector3(-0.08f, 0.07f, 0.03f), Quaternion.Euler(30, 0, 0));
+            var offset = palette.HandOffset; var rotation = palette.HandRotation;
+            var text = new TextEntry("expression", "d1 + 2 mm", 2048);int commits = 0;text.Committed += () => commits++;
+            palette.ShowTextKeypad(text, "Espressione");text.Type('+');
+            string buffer = text.Buffer;string tab = palette.CurrentTab;
+            palette.SetHandTracking(false, frame);
+            Assert.True(palette.TrackingFallback);Assert.False(palette.Pinned);Assert.IsNull(palette.transform.parent);
+            Assert.AreEqual(0.965f, palette.transform.position.y, 1e-5);
+            Assert.AreEqual(1.4f, palette.transform.position.x, 1e-5);
+            Assert.AreEqual(2.405f, palette.transform.position.z, 1e-5);
+            foreach (var size in new[] { new Vector2(280,190), new Vector2(320,220), new Vector2(360,250) })
+            {
+                palette.SetSketchSize(size.x,size.y);
+                var corners = new Vector3[4];((RectTransform)palette.transform).GetWorldCorners(corners);
+                Assert.True(corners.All(p => p.y >= frame.DeskY + .00999), "No palette corner may intersect the calibrated bench.");
+            }
+            var world = palette.transform.position;var orientation = palette.transform.rotation;
+            _anchor.transform.SetPositionAndRotation(Vector3.one * 10, Quaternion.Euler(80, 40, 20));
+            palette.SetHandTracking(false, frame);
+            Assert.AreEqual(world, palette.transform.position);Assert.AreEqual(orientation, palette.transform.rotation);
+            Assert.AreEqual(buffer, text.Buffer);Assert.AreEqual(tab, palette.CurrentTab);Assert.True(palette.KeypadVisible);Assert.AreEqual(0, commits);
+            palette.SetHandTracking(true, null);
+            Assert.False(palette.TrackingFallback);Assert.AreSame(_anchor.transform, palette.transform.parent);
+            Assert.AreEqual(offset, palette.transform.localPosition);Assert.Less(Quaternion.Angle(rotation, palette.transform.localRotation), 1e-4);
+            Assert.AreEqual(buffer, text.Buffer);Assert.AreEqual(0, commits);
+        }
+
+        [Test]
+        public void ExplicitBenchPinSurvivesTrackingChangesAndReattachWaitsForTheHand()
+        {
+            var shell = Shell(Catalog(out _));var palette = shell.Palette;
+            var frame = WorkbenchFrame.FromHead(new InventorXrSo.Core.Backend.CadPoint(0, 1.6, 0), 0, null);
+            palette.PinToBench();var world = palette.transform.position;
+            palette.SetHandTracking(false, frame);_anchor.transform.position = Vector3.one * 5;
+            Assert.True(palette.Pinned);Assert.False(palette.TrackingFallback);Assert.AreEqual(world, palette.transform.position);
+            palette.ReattachToHand();Assert.False(palette.Pinned);Assert.True(palette.TrackingFallback);Assert.IsNull(palette.transform.parent);
+            palette.SetHandPose(new Vector3(-0.08f, 0.06f, 0.02f), Quaternion.Euler(60, 0, 0));
+            world = palette.transform.position;palette.PinToBench();palette.SetHandTracking(true, null);
+            Assert.True(palette.Pinned);Assert.AreEqual(world, palette.transform.position);
+            palette.ReattachToHand();Assert.AreSame(_anchor.transform, palette.transform.parent);
+            Assert.AreEqual(palette.HandOffset, palette.transform.localPosition);
+        }
+
+        [Test]
+        public void ShellFallbackBeforeRecenterDoesNotFollowTheHeadAndUsesARecenteredFrameWhenAvailable()
+        {
+            var shell = Shell(Catalog(out _));var input = _anchor.AddComponent<InventorXrSo.Xr.Input.XrInput>();
+            WorkbenchFrame frame = null;_head.transform.position = new Vector3(0, 1.6f, 0);
+            bool held = false;
+            shell.BindTracking(() => input.PaletteTracked, _head.transform, () => frame, () => held);
+            shell.UpdatePaletteTracking();var fallback = shell.Palette.transform.position;
+            _head.transform.position += Vector3.right;_head.transform.rotation = Quaternion.Euler(0, 80, 0);
+            shell.UpdatePaletteTracking();Assert.AreEqual(fallback, shell.Palette.transform.position);
+            frame = WorkbenchFrame.FromHead(new InventorXrSo.Core.Backend.CadPoint(0, 1.6, 0), 0, .8);
+            shell.UpdatePaletteTracking();Assert.AreEqual(.8375f, shell.Palette.transform.position.y, 1e-5);
+            input.Poll(new InventorXrSo.Xr.Input.XrInputFrame { PaletteTracked = true, PenTracked = true }, 0);
+            held = true;shell.UpdatePaletteTracking();Assert.True(shell.Palette.TrackingFallback, "Recovery must not move the palette during a press.");
+            held = false;
+            shell.UpdatePaletteTracking();Assert.AreSame(_anchor.transform, shell.Palette.transform.parent);
+        }
+
+        [Test]
+        public void UnchangedShellRefreshDoesNotRecreateButtonsButEnablementStillUpdates()
+        {
+            var catalog = Catalog(out var p);
+            bool enabled = true;
+            p.All.Add(new XrAction("dynamic", "Dinamica", ActionCatalog.DocumentTab, () => enabled, () => { }, () => "Spenta"));
+            var shell = Shell(catalog);
+            int count = shell.Palette.RebuildCount;
+            var before = shell.Palette.GetComponentsInChildren<Button>(false);
+            for (int i = 0; i < 100; i++) shell.Refresh();
+            Assert.AreEqual(count, shell.Palette.RebuildCount);
+            CollectionAssert.AreEqual(before, shell.Palette.GetComponentsInChildren<Button>(false));
+            enabled = false; shell.Refresh();
+            Assert.Greater(shell.Palette.RebuildCount, count);
+            Assert.False(shell.Palette.GetComponentsInChildren<Button>(false).Single(b => b.name == "Dinamica").interactable);
         }
 
         [Test]

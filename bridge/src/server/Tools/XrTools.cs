@@ -23,6 +23,21 @@ namespace Bimwright.Ipt.Server.Tools;
 [McpServerToolType]
 public sealed class XrTools
 {
+    [McpServerTool(Name = "inventor_get_sketch_image_xr"), Description("Read an opaque native sketch image at document_id and expected_revision. Returns a bounded PNG asset owned by the authenticated caller, native semantic corner frame and dimensions. The source is the current Inventor bitmap, not the stored original import. Transparency masks are unsupported. Read-only CAD query; experimental.")]
+    public async Task<string> SketchImage(string document_id, string expected_revision, string sketch_id, string image_id, CancellationToken ct = default)
+    {
+        try
+        {
+            if (_sketchImages == null) return Error(InventorErrorCodes.API_ERROR, "Sketch image asset service is unavailable.");
+            return (await _sketchImages.GetAsync(_caller.Client, document_id, expected_revision, sketch_id, image_id, ct).ConfigureAwait(false)).ToString(Formatting.None);
+        }
+        catch (InventorGatewayException ex) { return ex.ToErrorJson().ToString(Formatting.None); }
+        catch (ArgumentException) { return Error(InventorErrorCodes.INVALID_ARGUMENT, "Sketch image request is invalid."); }
+    }
+
+    [McpServerTool(Name = "inventor_get_sketch_editor_xr"), Description("S1: read a native 2D sketch snapshot by opaque sketch_id from the Design context. Requires document_id and expected_revision. Returns versioned native entity references, curve strokes in mm, points, text, dimensions, constraints and native solver status. Constraints include binding_state (complete/unavailable), related_entities (entity_id,type,subpart in this snapshot) when complete, and optional annotation_mm from a native anchor. These associations are view data, not new edit references. partial and unavailable_reason explicitly report incomplete representation. No edits or reconstruction. Experimental.")]
+    public Task<string> SketchEditor(string document_id, string expected_revision, string sketch_id, CancellationToken ct = default)
+        => Call("get_sketch_editor_xr", new JObject { ["document_id"] = document_id, ["expected_revision"] = expected_revision, ["sketch_id"] = sketch_id }, ct);
     [McpServerTool(Name = "inventor_get_assembly_context_xr"), Description("Read revision-bound active assembly occurrences and native DOF axes. Optional occurrence_id selects a direct occurrence and includes face/edge proxy references and geometry in assembly millimetres. No CAD changes. Experimental.")]
     public Task<string> AssemblyContext(string document_id, string expected_revision, string? occurrence_id = null, CancellationToken ct = default)
         => Call("get_assembly_context_xr", new JObject { ["document_id"] = document_id, ["expected_revision"] = expected_revision, ["occurrence_id"] = occurrence_id }, ct);
@@ -126,10 +141,12 @@ public sealed class XrTools
     private readonly InventorMcpConfig _config;
     private readonly ICallerIdentity _caller;
     private readonly MeshCache _meshes;
+    private readonly SketchImageAssets? _sketchImages;
 
-    public XrTools(PluginClient client, AssetStore assets, InventorMcpConfig config, ICallerIdentity caller, MeshCache meshes)
+    public XrTools(PluginClient client, AssetStore assets, InventorMcpConfig config, ICallerIdentity caller, MeshCache meshes, SketchImageAssets? sketchImages = null)
     {
         _client = client; _assets = assets; _config = config; _caller = caller; _meshes = meshes;
+        _sketchImages = sketchImages;
     }
 
     [McpServerTool(Name = "inventor_get_display_mesh"), Description("Tessellate one open part (or every solid body of it) and publish it as a GLB asset: metres, Y-up as in Inventor, one mesh primitive per solid body, and primitive.extras.faces mapping each face to its index range and portable face id, so a client resolves a picked triangle to a face without a round trip. Returns asset_id (a_ + SHA-256 of the bytes: unchanged geometry keeps its id), resource_uri inventor://assets/{id}, asset_url when the HTTP host runs, revision and visual_revision, and per-body counts. document_id defaults to the active document; any open part may be named, including one referenced by an assembly. tolerance_mm (0.01-5, default 0.1) is the chord tolerance; max_triangles (default 500000) refuses larger meshes with MESH_TOO_LARGE instead of truncating. Read-only; experimental tier.")]
