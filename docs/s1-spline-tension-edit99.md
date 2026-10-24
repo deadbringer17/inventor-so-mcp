@@ -40,4 +40,5 @@ snapshot del plugin prima dell'ispezione nativa. Richiede preview/Abort esatto,
 revisioni, conservazione delle identità e pulizia delle fixture. La prova
 del riferimento esterno conserva il vero token di revisione, registrando
 esplicitamente il codice atteso secondo l'ordine di validazione del prodotto.
-Non è stata ancora eseguita: è in coda alla matrice dei punti 98 r2.
+Non è stata ancora eseguita. Al checkpoint richiesto dall'utente il run 98 r2
+è terminato incompleto e non sono state avviate altre suite native.

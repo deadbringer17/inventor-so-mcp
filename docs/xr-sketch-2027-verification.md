@@ -14,8 +14,10 @@ nel producer, ma il verificatore rileva osservazioni mancanti dal report
 del secondo aggiornamento. Corretta la registrazione nella sonda; nuova
 matrice completa da eseguire, nessun PASS offline r3 attribuito.
 La [modifica dei punti spline 98](s1-spline-point-edit98.md) è implementata nel
-plugin sperimentale; prova nativa r2 in corso dopo l'arresto r1 sul confronto
-posizione richiesta/punto risolto di una spline approssimante.
+plugin sperimentale; prova nativa r2 terminata incompleta: 98 casi passati,
+arresto al caso 99 per UnauthorizedAccessException, rifiuti non eseguiti.
+Cleanup e ripristino dell'installazione ordinaria verificati. Il precedente
+r1 si fermava sul confronto richiesta/punto risolto di una spline approssimante.
 La [ricerca tensione 97](s1-spline-tension97.md) completa 60 osservazioni,
 60 Abort esatti e sette alterazioni rifiutate dal verificatore offline.
 La [modifica tensione 99](s1-spline-tension-edit99.md) è implementata nel plugin:

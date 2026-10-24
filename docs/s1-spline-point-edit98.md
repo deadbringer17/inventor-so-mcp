@@ -1,7 +1,7 @@
 # S1 — Modifica dei punti spline nel plugin, incremento 98
 
-23 ottobre 2026. Implementazione sperimentale PC, verifica nativa ancora
-da eseguire. Nessun gate S1 chiuso e nessuna parità completa dichiarata.
+24 ottobre 2026. Implementazione sperimentale PC, matrice nativa incompleta.
+Nessun gate S1 chiuso e nessuna parità completa dichiarata.
 
 `edit_sketch/spline_point_update` modifica il punto nativo esistente tramite
 `SketchPoint.MoveTo`. Non ricrea la spline, non elimina vincoli e non crea
@@ -48,11 +48,20 @@ La sonda r2 registra posizione richiesta, posizione effettiva e residui sia
 per plugin sia per API nativa. Il risultato è confrontato con l'operazione
 nativa indipendente, mantenendo le tolleranze geometriche esistenti: non viene
 più equiparato un fit point risolto al dato di input senza prova nativa.
-Non si dichiara posizionamento esatto rispetto alla richiesta. R2 è in corso.
+Non si dichiara posizionamento esatto rispetto alla richiesta.
+
+R2, run `1219bb6a274847f99ccec7c6b0b5f9cb`, termina con FAIL dopo 98 casi
+passati e 99 avviati su 128. Il caso successivo (Lamiera, metodo 26371,
+aperta, cinque punti, Start) registra `System.UnauthorizedAccessException`,
+HRESULT `0x80070005`; causa non diagnosticata. I rifiuti non sono stati
+eseguiti. Conservati 393 stati raw; nessun PASS dell'intera matrice né del
+verificatore offline. Worker uscito, assenza PID 129656 verificata separatamente,
+manifest e DLL ordinari ripristinati e controllati tramite SHA256.
+Al checkpoint richiesto dall'utente non viene avviato un ulteriore tentativo.
 La matrice deve verificare preview/rollback, prima
 snapshot dopo commit, appartenenza dei punti, confronto con API indipendente,
 estremi/alias di chiusura, tutti i tre metodi fit e budget fino a 64 input.
-Non si attribuisce un esito prima dell'esecuzione completa.
+La parte restante della matrice e il controllo offline rimangono aperti.
 
 Restano da verificare solver, vincoli e dipendenze, maniglie, aggiornamenti
 successivi, persistenza/riapertura, UI/Quest e comportamento fisico.
