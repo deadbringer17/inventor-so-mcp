@@ -1,10 +1,29 @@
 # S1 — Schizzo XR: implementazione e verifica
 
-Aggiornamento: 19 ottobre 2026, Europe/Rome.
+Aggiornamento: 24 ottobre 2026, Europe/Rome.
 Spec: [S1](superpowers/specs/2026-10-06-schizzo-parita-inventor-2027-design.md).
 Piano: [fasi F0–F7](superpowers/plans/2026-10-06-schizzo-parita-inventor-2027.md).
 
 **Implementazione parziale in corso. Nessuna dichiarazione di parità completa.**
+L'[audit PC dei 77 comandi](s1-pc-command-status95.md) conta 54 implementazioni
+parziali e 23 assenti; questi conteggi non sono percentuali di completamento.
+La [chiusura delle spline 96](s1-spline-closure96.md) ha superato la matrice
+nativa 64 casi/14 rifiuti e la verifica offline con otto alterazioni rifiutate.
+Il [lifecycle delle copie curve 95](s1-copy-core-lifecycle95.md) r3 passa
+nel producer, ma il verificatore rileva osservazioni mancanti dal report
+del secondo aggiornamento. Corretta la registrazione nella sonda; nuova
+matrice completa da eseguire, nessun PASS offline r3 attribuito.
+La [modifica dei punti spline 98](s1-spline-point-edit98.md) è implementata nel
+plugin sperimentale; prova nativa r2 terminata incompleta: 98 casi passati,
+arresto al caso 99 per UnauthorizedAccessException, rifiuti non eseguiti.
+Cleanup e ripristino dell'installazione ordinaria verificati. Il precedente
+r1 si fermava sul confronto richiesta/punto risolto di una spline approssimante.
+La [ricerca tensione 97](s1-spline-tension97.md) completa 60 osservazioni,
+60 Abort esatti e sette alterazioni rifiutate dal verificatore offline.
+La [modifica tensione 99](s1-spline-tension-edit99.md) è implementata nel plugin:
+38 test specifici e 1.908 bridge passati, build riuscite; percorso prodotto
+ancora da collaudare in Inventor.
+
 La tavolozza ampliata e le basi dell'editor nativo sono presenti; le nuove
 creazioni sono sperimentali e verificate direttamente sul 2027. I 77 comandi
 del catalogo XR hanno destinazioni raggiungibili. Diciannove creazioni sono
@@ -1366,5 +1385,3 @@ opzioni Formato/Parametri residue; Modifica, Serie e proiezioni associative; imp
 contesti avanzati; storico; runner dedicato e prove Quest. I 38 casi di creazione
 native non chiudono i gate di equivalenza geometrica/topologica/parametrica:
 servono confronti dell'oggetto nativo e un secondo aggiornamento delle dipendenze.
-
-

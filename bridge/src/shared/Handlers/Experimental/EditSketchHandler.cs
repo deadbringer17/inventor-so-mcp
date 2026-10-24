@@ -14,7 +14,7 @@ public sealed class EditSketchHandler : ExperimentalHandler
 {
     internal static readonly string[] SupportedVariants = {
         "line","line_midpoint","rectangle_two_points","rectangle_three_points","rectangle_center_two_points","rectangle_center_three_points","polygon",
-        "circle_center","point","arc_three_points","arc_center","arc_tangent","ellipse","spline_fit","spline_control",
+        "circle_center","point","arc_three_points","arc_center","arc_tangent","ellipse","spline_fit","spline_control","spline_point_update","spline_tension_update",
         "slot_center_to_center","slot_overall","slot_center","slot_three_point_arc","slot_center_arc",
         "format_construction","format_centerline","format_hole_center","transform_move","transform_rotate","transform_stretch","offset_distance","offset_point",
         "pattern_rectangular","pattern_circular","pattern_update","pattern_delete",
@@ -64,6 +64,10 @@ public sealed class EditSketchHandler : ExperimentalHandler
             NativeSketchTexts.Apply(ctx,app,part,sketch,X.Str(p,"sketch_id"),variant.Substring(5),options);
         else if(variant=="arc_tangent")
             NativeSketchTangentArcs.Apply(ctx,app,(global::Inventor.Document)part,sketch,X.Str(p,"sketch_id"),options);
+        else if(variant=="spline_point_update")
+            NativeSketchSplinePointEdits98.Apply(ctx,app,(global::Inventor.Document)part,sketch,X.Str(p,"sketch_id"),options);
+        else if(variant=="spline_tension_update")
+            NativeSketchSplineTensionEdits99.Apply(ctx,app,(global::Inventor.Document)part,sketch,X.Str(p,"sketch_id"),options);
         else if(variant.StartsWith("pattern_",StringComparison.Ordinal))
             NativeSketchPatterns.Apply(ctx,app,(global::Inventor.Document)part,sketch,X.Str(p,"sketch_id"),variant.Substring(8),options);
         else if(variant=="offset_distance" || variant=="offset_point")
@@ -190,19 +194,26 @@ public sealed class EditSketchHandler : ExperimentalHandler
             case "spline_fit":
             case "spline_control":
             {
-                if (options["points_mm"] is not JArray data || data.Count < 2 || data.Count > 64) throw new ArgumentException("Spline needs 2–64 points.");
+                bool control=variant=="spline_control";
+                var request=NativeSplineCreationPolicy96.Parse(options,control);
                 var points = app.TransientObjects.CreateObjectCollection();
-                foreach (var point in data) points.Add(Point(point));
+                foreach (var point in request.PointsMm) points.Add(g.CreatePoint2d(UnitConvert.MmToCm(point.X),UnitConvert.MmToCm(point.Y)));
                 if (variant == "spline_fit")
                 {
                     // The client freezes the snapshot preference in the operation,
                     // so changing application options cannot alter a rendered plan.
-                    var method = options["fit_method"];
-                    if (method?.Type != JTokenType.Integer || !Enum.IsDefined(typeof(SplineFitMethodEnum), (int)method))
+                    int method = request.FitMethod!.Value;
+                    if (!Enum.IsDefined(typeof(SplineFitMethodEnum), method))
                         throw new ArgumentException("Spline fit method must be an explicit native enum value.");
-                    sketch.SketchSplines.Add(points, (SplineFitMethodEnum)(int)method);
+                    var spline=sketch.SketchSplines.Add(points, (SplineFitMethodEnum)method);
+                    if(request.ClosureSpecified)spline.Closed=request.Closed;
+                    if(request.ClosureSpecified&&spline.Closed!=request.Closed)throw new ArgumentException("Native spline closure differs from the requested creator profile.");
                 }
-                else sketch.SketchControlPointSplines.Add(points);
+                else
+                {
+                    var spline=sketch.SketchControlPointSplines.Add(points);
+                    if(request.ClosureSpecified&&spline.IsClosed!=request.Closed)throw new ArgumentException("Native control spline closure differs from the requested creator profile.");
+                }
                 break;
             }
             case "slot_center_to_center":

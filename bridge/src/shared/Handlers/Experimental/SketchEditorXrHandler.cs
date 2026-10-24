@@ -122,9 +122,11 @@ public sealed class SketchEditorXrHandler : ExperimentalHandler
                         case SketchEllipticalArc ellipticalArc:
                             item["start_mm"]=X.Mm2(ellipticalArc.StartSketchPoint.Geometry); item["end_mm"]=X.Mm2(ellipticalArc.EndSketchPoint.Geometry); break;
                         case SketchSpline spline:
+                            item["closed"]=spline.Closed;item["fit_method"]=(int)spline.FitMethod;item["fit_point_count"]=spline.FitPointCount;item["tension"]=spline.Tension;
                             if(spline.StartSketchPoint!=null) item["start_mm"]=X.Mm2(spline.StartSketchPoint.Geometry);
                             if(spline.EndSketchPoint!=null) item["end_mm"]=X.Mm2(spline.EndSketchPoint.Geometry); break;
                         case SketchControlPointSpline spline:
+                            item["closed"]=spline.IsClosed;item["control_point_count"]=spline.ControlPointCount;
                             if(spline.StartSketchPoint!=null) item["start_mm"]=X.Mm2(spline.StartSketchPoint.Geometry);
                             if(spline.EndSketchPoint!=null) item["end_mm"]=X.Mm2(spline.EndSketchPoint.Geometry); break;
                     }
