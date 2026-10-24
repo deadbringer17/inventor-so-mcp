@@ -43,6 +43,7 @@
     <Compile Include="..\..\src\shared\Handlers\Core\FaceFeatureModel.cs" LinkBase="Shared\Handlers\Core" />
     <Compile Include="..\..\src\shared\Handlers\Core\DocumentActivationPolicy.cs" LinkBase="Shared\Handlers\Core" />
     <Compile Include="..\..\src\shared\Handlers\Core\TangentArcGeometry.cs" LinkBase="Shared\Handlers\Core" />
+    <Compile Include="..\S1CurveCopyLifecycleOwnedHost95\OwnedUntouchedParameterRelocation95.cs" LinkBase="OwnedFixturePolicies" />
   </ItemGroup>
 
 </Project>
