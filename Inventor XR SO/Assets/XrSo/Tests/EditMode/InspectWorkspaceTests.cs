@@ -71,6 +71,52 @@ namespace InventorXrSo.Tests
             Poll();
         }
 
+        [Test]
+        public void PresentationUsesLocalMeasurementAndViewAndRejectsTechnicalCommands()
+        {
+            _workspace.SetActivity(InventorXrSo.Core.Experience.Activity.Presentation);
+            var provider = new PresentationWorkspace(_workspace);
+            _catalog.ActivityProbe = () => _workspace.Activity;
+            _catalog.SetActive(provider);
+            Assert.IsNull(_catalog.Find(InspectWorkspace.IdSection));
+            Assert.IsNull(_catalog.Find(InspectWorkspace.IdInterference));
+            Assert.IsNull(_catalog.Find(InspectWorkspace.IdEnter));
+            Assert.IsTrue(_catalog.TryInvoke(InspectWorkspace.IdMeasure));
+            Pick(Vector3.zero); Pick(Vector3.right * 0.02f);
+            Assert.That(Measure.DistanceMm.Value, Is.EqualTo(20).Within(0.01));
+            Assert.IsTrue(_catalog.TryInvoke(InspectWorkspace.IdMeasurePin));
+            Assert.IsTrue(_catalog.TryInvoke(InspectWorkspace.IdScale));
+            Assert.IsTrue(_catalog.TryInvoke(InspectWorkspace.IdScaleTable));
+        }
+
+        [Test]
+        public void VerificationHasLocalBrowserAndSectionOfflineAndLeavingRestoresTheView()
+        {
+            _workspace.SetActivity(InventorXrSo.Core.Experience.Activity.Verification);
+            _catalog.ActivityProbe = () => _workspace.Activity;
+            _catalog.SetActive(new VerificationWorkspace(_workspace));
+            Assert.IsTrue(_catalog.TryInvoke(InspectWorkspace.IdBrowse));
+            Assert.IsTrue(_catalog.TryInvoke(InspectWorkspace.IdSection));
+            Assert.IsTrue(Section.Active);
+            var captured = _catalog.Find(InspectWorkspace.IdSection);
+            _workspace.SetActivity(InventorXrSo.Core.Experience.Activity.Presentation);
+            Assert.IsFalse(Section.Active);
+            Assert.IsFalse(captured.TryInvoke());
+            Assert.IsNull(_catalog.Find(InspectWorkspace.IdSection));
+        }
+
+        [Test]
+        public async Task PresentationOfflineSelectionCanBeClearedWithoutBackend()
+        {
+            _workspace.SetActivity(InventorXrSo.Core.Experience.Activity.Presentation);
+            await _workspace.PickAsync(_view.Instances.First().Bodies.First(), 0, CancellationToken.None);
+            var visuals = _view.GetComponent<SelectionVisuals>();
+            Assert.IsTrue(visuals.HasHighlight);
+            _workspace.ClearSelection();
+            Assert.IsFalse(visuals.HasHighlight);
+            Assert.IsNull(_workspace.SelectedNodeName);
+        }
+
         private GameObject Child(string name) { var go = new GameObject(name); go.transform.SetParent(_root.transform); return go; }
 
         [TearDown]
@@ -169,7 +215,8 @@ namespace InventorXrSo.Tests
             _workspace.SetOnline(false);
             foreach (var id in new[] { InspectWorkspace.IdMeasure, InspectWorkspace.IdSection, InspectWorkspace.IdScale, InspectWorkspace.IdEnvironment,
                 InspectWorkspace.IdSectionOffset, InspectWorkspace.IdSectionAngle, InspectWorkspace.IdSectionReset }) Assert.True(Enabled(id), id + " works offline");
-            foreach (var id in new[] { InspectWorkspace.IdBrowse, InspectWorkspace.IdProperties, InspectWorkspace.IdDocuments })
+            Assert.True(Enabled(InspectWorkspace.IdBrowse), "local scene browser works offline");
+            foreach (var id in new[] { InspectWorkspace.IdProperties, InspectWorkspace.IdDocuments })
             {
                 Assert.False(Enabled(id), id); Assert.False(string.IsNullOrEmpty(Act(id).DisabledReason), id);
                 Assert.False(Act(id).TryInvoke());

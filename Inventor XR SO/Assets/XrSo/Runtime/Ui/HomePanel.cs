@@ -118,6 +118,12 @@ namespace InventorXrSo.Unity.Ui
             return (RectTransform)go.transform;
         }
 
+        public void ShowNotice(string text)
+        {
+            _body.text = text;
+            FitContent();
+        }
+
         public void ShowMessage(string title, string body)
         {
             _title.text = title;
@@ -126,8 +132,29 @@ namespace InventorXrSo.Unity.Ui
             FitContent();
         }
 
+        public void SetActivityCards((string label, string description, Action action)[] cards, Action connection)
+        {
+            SetActions();
+            _actions.GetComponent<GridLayoutGroup>().cellSize = new Vector2(360, 140);
+            foreach (var card in cards)
+            {
+                var button = UiFactory.Button(_actions, card.label, UiFactory.Key, 27, card.action);
+                var title = button.GetComponentInChildren<TextMeshProUGUI>();
+                title.rectTransform.anchorMin = new Vector2(0, 0.53f);
+                title.rectTransform.offsetMin = title.rectTransform.offsetMax = Vector2.zero;
+                var description = UiFactory.Text(button.transform, card.description, 7f);
+                UiFactory.Stretch(description.rectTransform);
+                description.rectTransform.anchorMax = new Vector2(1, 0.53f);
+                description.margin = new Vector4(12, 6, 12, 6);
+                description.alignment = TextAlignmentOptions.Center;
+            }
+            UiFactory.Button(_actions, "Connessione", UiFactory.Key, 26, connection);
+            FitContent();
+        }
+
         public void SetActions(params (string label, Action action)[] actions)
         {
+            _actions.GetComponent<GridLayoutGroup>().cellSize = new Vector2(360, 72);
             var old = new System.Collections.Generic.List<Transform>();
             foreach (Transform child in _actions) old.Add(child);   // not while iterating: DestroyImmediate edits the list
             foreach (var child in old)

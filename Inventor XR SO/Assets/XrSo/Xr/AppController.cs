@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using InventorXrSo.Core.Backend;
+using InventorXrSo.Core.Experience;
 using InventorXrSo.Core.Mcp;
 using InventorXrSo.Core.Navigation;
 using InventorXrSo.Core.Net;
@@ -34,6 +35,11 @@ namespace InventorXrSo.Xr
         [SerializeField] private Transform head;
         [SerializeField] private QrScanner qrScanner;
 
+        private readonly ActivityController _activity = new ActivityController();
+        public Activity CurrentActivity => _activity.Current;
+        private bool _connectionPage;
+        private PresentationWorkspace _presentation;
+        private VerificationWorkspace _verification;
         private HomePanel _home;
         private RealityCaptureWorkspace _capture;
         private HudView _badge;
@@ -109,8 +115,8 @@ namespace InventorXrSo.Xr
             _store = CredentialStores.Create();
             _server = _store.Load();
             ShowHome();
-            if (_server == null) ShowPairing(UiText.NotPaired, UiText.NotPairedBody);
-            else StartSession();
+            if (_server != null) StartSession();
+            else RefreshHome();
         }
 
         private void InitializeUi()
@@ -140,7 +146,8 @@ namespace InventorXrSo.Xr
             _ghost.transform.SetParent(sceneView.transform, false);
             Navigation.Changed += UpdateGhost;
             _contextSwitcher = new ContextWorkspaceSwitcher(Navigation, OpenContext, CloseAuthoring,
-                text => _badge?.Flash(text, 6f), () => _inSession);
+                text => _badge?.Flash(text, 6f), () => _inSession)
+            { CanAuthor = () => CurrentActivity == Activity.Design };
             _backNav = new BackNavigator(Navigation,
                 () => _design.RequiresCadReview || _assembly.RequiresCadReview || _lamiera.RequiresCadReview,
                 () => _session != null && _session.Status == SessionStatus.Online,
@@ -151,10 +158,12 @@ namespace InventorXrSo.Xr
             _assembly.CanEnter = () => !_design.RequiresCadReview && !_lamiera.RequiresCadReview;
             _lamiera.CanEnter = () => !_design.RequiresCadReview && !_assembly.RequiresCadReview;
             _document = new DocumentActions(Navigation, GoBack, SaveDocument, RecenterWorkbench, CalibrateDesk,
-                LeaveSession, LeaveSession, () => _inSession,
-                () => _design.CanEnter() && _lamiera.CanEnter() && _assembly.CanEnter(),
+                OpenConnection, LeaveSession, () => _inSession,
+                () => !ProtectedActivityWork,
                 () => _openDocuments, JumpToDocument);
-            _catalog = new ActionCatalog(_document);
+            _catalog = new ActionCatalog(_document) { ActivityProbe = () => CurrentActivity, ActivityGenerationProbe = () => _activity.Generation };
+            _presentation = new PresentationWorkspace(_inspect);
+            _verification = new VerificationWorkspace(_inspect);
             _document.Changed = _catalog.NotifyChanged;
             _shell = UiShell.Create(left, head, _catalog);
             _document.Attach(_shell.Palette);
@@ -173,6 +182,7 @@ namespace InventorXrSo.Xr
             _input.RestingProbe = AtRest;
             // M9: every key is gated by InputMap in the current state; stick right at rest rotates the view by 15 degrees.
             _input.Dispatcher.StateProbe = CurrentInputState;
+            _input.Dispatcher.ActionAllowed = action => !_connectionPage && ActivityPolicy.AllowsInput(CurrentActivity, action);
             _input.Dispatcher.Invoked += OnInputInvoked;
             _input.BackTapped += _backNav.Tapped;
             _input.BackHeld += GoBack;
@@ -408,6 +418,7 @@ namespace InventorXrSo.Xr
             _assembly.SetOnline(status == SessionStatus.Online);
             _lamiera.SetOnline(status == SessionStatus.Online);
             if (status != SessionStatus.Online) _voice?.NotifyDisconnected();
+            if (status == SessionStatus.Online && _currentScene != null && _activity.Pending.HasValue) RequestActivity(_activity.Pending.Value);
             RefreshHome();
         }
 
@@ -420,10 +431,17 @@ namespace InventorXrSo.Xr
 #endif
             // A revoked token or a failed reconnect must not navigate out of the independent section.
             if (_capture.Active) return;
-            ShowHome();
+            if (!_inSession)
+            {
+                var pending = _activity.Pending;
+                ShowHome();
+                if (pending.HasValue) _activity.Request(pending.Value, false, needsConnection: true);
+            }
+            _connectionPage = true;
+            _home.gameObject.SetActive(true);
             _home.ShowMessage(title, body);
             _home.SetActions((UiText.PairWithQr, StartQr), (UiText.PairWithCode, AskAddress),
-                (UiText.RealityCapture, EnterRealityCapture));
+                (UiText.RealityCapture, EnterRealityCapture), (UiText.ReturnHome, () => { _activity.CancelPending(); LeaveSession(); }));
         }
 
         private PairingClient Pairing() => new PairingClient(trust => new UnityHttpTransport(trust));
@@ -484,6 +502,9 @@ namespace InventorXrSo.Xr
                 if (_lifetime.IsCancellationRequested) return;
                 _store.Save(_server);
                 StartSession();
+                _connectionPage = false;
+                if (_inSession) _home.gameObject.SetActive(false);
+                else RefreshHome();
             }
             catch (OperationCanceledException) { }
             catch (Exception ex) { if (!_lifetime.IsCancellationRequested) ShowPairing(UiText.Error(ex), UiText.NotPairedBody); }
@@ -491,6 +512,8 @@ namespace InventorXrSo.Xr
 
         private void Forget()
         {
+            if (ProtectedActivityWork) { _badge?.Flash("Concludi o annulla il comando prima di scollegare il PC.", 5f); return; }
+            ShowHome();
 #if XR_SO_ACCEPTANCE
             if(_acceptanceBootstrapRequested){BlockAcceptanceBootstrap();return;}
 #endif
@@ -514,6 +537,7 @@ namespace InventorXrSo.Xr
             var transport = new UnityHttpTransport(ServerTrust.Pinned(_server.CertSha256));
             var backend = new InventorBackend(transport, _server,
                 new FileAssetCache(Path.Combine(Application.persistentDataPath, "assets")));
+            backend.ToolAllowed = tool => ActivityPolicy.AllowsTool(CurrentActivity, tool);
             _backend = backend;
             _session = new SessionController(backend, new TaskDelay());
             _selection = new SelectionService(backend);
@@ -523,6 +547,7 @@ namespace InventorXrSo.Xr
             _lamiera.Bind(backend, backend);
             // Voice reuses the backend's transport and the paired server; every workspace exposes its command surface.
             _voiceTarget = WorkspaceVoiceTarget.ForWorkspaces(_lamiera, _design, _assembly, _inspect, _catalog);
+            _voiceTarget.ActivityProbe = () => CurrentActivity;
             _voiceTarget.InSession = _inSession;
             _voice = VoiceRig.Create(head.parent, head, head.GetComponent<Camera>(), transport, _server,
                 _voiceTarget, ray.Controller);
@@ -546,8 +571,8 @@ namespace InventorXrSo.Xr
             if (ct.IsCancellationRequested) return;
             if (session != _session || session.Status != SessionStatus.NeedsPairing) return;
             var reason = session.CertificateChanged ? UiText.CertificateChanged : UiText.TokenRevoked;
-            Forget();
-            ShowPairing(reason, UiText.NotPairedBody);
+            _badge?.Flash(reason + ". Ricollega il PC dalla pagina Connessione.", 8f);
+            if (!_inSession && !_capture.Active) ShowPairing(reason, UiText.NotPairedBody);
         }
 
         private void OnSceneLoaded(LoadedScene scene)
@@ -571,6 +596,7 @@ namespace InventorXrSo.Xr
             UpdateGhost();
             if (scene != null && _inSession && !_placed) Place();
             RefreshOpenDocuments();
+            if (_activity.Pending.HasValue && _session?.Status == SessionStatus.Online) RequestActivity(_activity.Pending.Value);
             _design.RefreshWorkbench();
             _lamiera.RefreshWorkbench();
             _assembly.RefreshWorkbench();
@@ -580,29 +606,33 @@ namespace InventorXrSo.Xr
 
         private void RefreshHome()
         {
-            if (_session == null || _capture.Active) return;
-            var status = UiText.Status(_session.Status);
-            _badge.SetStatus(status);
+            if (_capture.Active) return;
+            var status = _session == null ? UiText.NotPaired : UiText.Status(_session.Status);
+            _badge.SetStatus(ActivityTitle() + " · " + status + "\n" + (_currentScene?.Graph.Root?.Name ?? "Nessun documento") + " · " + (_session?.Document?.Revision ?? "—"));
             if (_inSession) return;
-            var caps = _session.Capabilities;
-            var body = UiText.PcLabel + _server.Host + ":" + _server.Port + "  (" + status + ")\n"
+            if (_connectionPage) return;
+            var caps = _session?.Capabilities;
+            var body = UiText.PcLabel + (_server == null ? "—" : _server.Host + ":" + _server.Port) + "  (" + status + ")\n"
                      + UiText.BackendLabel + UiText.VersionLabel(caps?.ServerVersion) + "\n"
                      + UiText.InventorLabel + (caps?.InventorYear?.ToString() ?? "-") + "\n"
-                     + UiText.DocumentLabel + (_session.Scene?.Graph.Root.Name ?? "-") + " (" + UiText.DocumentKind(_session.Scene?.Graph.Kind ?? caps?.ActiveDocumentKind) + ")";
+                     + UiText.DocumentLabel + (_session?.Scene?.Graph.Root.Name ?? "-") + " (" + UiText.DocumentKind(_session?.Scene?.Graph.Kind ?? caps?.ActiveDocumentKind) + ")";
             var readinessHint = UiText.ReadinessHint(caps);
             if (!string.IsNullOrEmpty(readinessHint)) body += "\n" + readinessHint;
-            if (_session.Scene?.Omitted.Count > 0) body += "\n" + _session.Scene.Omitted.Count + UiText.Omitted;
-            _home.ShowMessage(UiText.AppTitle, body);
-            if (_session.Status == SessionStatus.Online && _session.Scene != null)
-                _home.SetActions((UiText.EnterMixedReality, () => EnterSession(EnvironmentMode.MixedReality)),
-                                 (UiText.EnterStudio, () => EnterSession(EnvironmentMode.StudioVr)),
-                                 (UiText.RealityCapture, EnterRealityCapture),
-                                 (UiText.ForgetPc, Forget));
-            else _home.SetActions((UiText.RealityCapture, EnterRealityCapture), (UiText.ForgetPc, Forget));
+            if (_session?.Scene?.Omitted.Count > 0) body += "\n" + _session.Scene.Omitted.Count + UiText.Omitted;
+            _home.ShowMessage(UiText.AppTitle, body + "\nScegli un’attività. MR/Studio VR si cambiano nella scheda Vista.");
+            _home.SetActivityCards(new (string, string, Action)[] {
+                (UiText.RealityCapture, "Scansiona un oggetto o un ambiente e porta il riferimento in Inventor.", EnterRealityCapture),
+                (UiText.DesignActivity, UiText.DesignActivityBody, () => RequestActivity(Activity.Design)),
+                (UiText.PresentationActivity, UiText.PresentationActivityBody, () => RequestActivity(Activity.Presentation)),
+                (UiText.VerificationActivity, UiText.VerificationActivityBody, () => RequestActivity(Activity.Verification)) }, OpenConnection);
         }
 
         private void ShowHome()
         {
+            if (ProtectedActivityWork) { ReportActivityExitBlocked(); return; }
+            _activity.Request(Activity.Home, false);
+            _connectionPage = false;
+            _document?.CloseList();
             _capture?.Close();
             _inSession = false;
             _picking?.Cancel();
@@ -633,7 +663,11 @@ namespace InventorXrSo.Xr
 
         private void EnterSession(EnvironmentMode mode)
         {
+            if (_inSession) { environment.Set(mode); return; }
+            // Compatibility entry used by older callers; all product entry points request an explicit activity.
+            if (CurrentActivity == Activity.Home) _activity.Request(Activity.Design, false);
             _capture.Close();
+            _inspect.SetActivity(CurrentActivity);
             environment.Set(mode);
             _inSession = true;
             _input.AwaitNeutralInput();
@@ -650,9 +684,13 @@ namespace InventorXrSo.Xr
             _badge.gameObject.SetActive(true);
             sceneView.gameObject.SetActive(true);
             _inspect.SetVisible(true);
-            _design.SetVisible(true);
-            _assembly.SetVisible(true);
-            _lamiera.SetVisible(true);
+            bool authoring = CurrentActivity == Activity.Design;
+            _design.SetVisible(authoring);
+            _assembly.SetVisible(authoring);
+            _lamiera.SetVisible(authoring);
+            _catalog.SetActive(authoring ? (IActionProvider)_inspect : CurrentActivity == Activity.Presentation ? _presentation : (IActionProvider)_verification);
+            _shell.Palette.ClearTabGroup();
+            _catalog.NotifyChanged();
             selectionVisuals.Show(_selection?.Current);
             ray.CanPick = true;
             if (!_placed) Place();
@@ -664,8 +702,10 @@ namespace InventorXrSo.Xr
 
         private void EnterRealityCapture()
         {
+            if (ProtectedActivityWork) { ReportActivityExitBlocked(); return; }
             if (qrScanner != null) qrScanner.Stop();
-            ShowHome(); // Closes drafts, handles, keypads, ghosts and every CAD workspace.
+            ShowHome();
+            _activity.Request(Activity.Capture, false);
             _home.gameObject.SetActive(false);
             environment.Set(EnvironmentMode.MixedReality);
             SetCadVoiceVisible(false);
@@ -745,7 +785,7 @@ namespace InventorXrSo.Xr
         /// <summary>Chiude gli altri workspace di authoring e apre quello del contesto; false se il CAD richiede una verifica.</summary>
         private bool OpenContext(DocContext context)
         {
-            if (_design.RequiresCadReview || _assembly.RequiresCadReview || _lamiera.RequiresCadReview) return false;
+            if (CurrentActivity != Activity.Design || _design.RequiresCadReview || _assembly.RequiresCadReview || _lamiera.RequiresCadReview) return false;
             _design.Close(); _assembly.Close(); _lamiera.Close();
             switch (context)
             {
@@ -778,7 +818,7 @@ namespace InventorXrSo.Xr
         /// Torna al livello superiore: riattiva il documento padre in Inventor; il router riconcilia la pila (Popped) quando
         /// la scena del padre arriva. Non salva. Bloccato con revisione CAD in sospeso.
         /// </summary>
-        public void GoBack() { if (_inSession) _ = _backNav.GoBackAsync(); }
+        public void GoBack() { if (_inSession && CurrentActivity == Activity.Design && !ProtectedActivityWork) _ = _backNav.GoBackAsync(); }
 
         /// <summary>Stato dei controller (spec M9 §3): tastierino > chip/maniglia armati > schizzo > componente selezionato > riposo.</summary>
         private InventorXrSo.Core.Input.InputState CurrentInputState()
@@ -866,7 +906,7 @@ namespace InventorXrSo.Xr
         private async void JumpToDocument(string documentId)
         {
             var backend = _backend;
-            if (backend == null || string.IsNullOrEmpty(documentId)) return;
+            if (ProtectedActivityWork || backend == null || string.IsNullOrEmpty(documentId)) return;
             _contextSwitcher.ExpectJump(documentId);
             try
             {
@@ -879,9 +919,14 @@ namespace InventorXrSo.Xr
 
         private void LeaveSession()
         {
+            if (ProtectedActivityWork)
+            {
+                if (_capture.Active) _capture.ExplainBlockedExit();
+                else _badge?.Flash("Concludi o annulla il comando prima di tornare alla Home.", 5f);
+                return;
+            }
             ShowHome();
-            if (_session == null) ShowPairing(UiText.NotPaired, UiText.NotPairedBody);
-            else RefreshHome();
+            RefreshHome();
         }
 
         private void Place()
@@ -902,13 +947,9 @@ namespace InventorXrSo.Xr
             if (_design.Active || _assembly.Active || _lamiera.Active) return;
             if (_inspect.Measuring) return;
             if (_selecting || body == null) return;
-            if (_session == null || _session.Status != SessionStatus.Online || _session.Scene == null)
-            {
-                _badge.Flash(UiText.OfflineNoSelection);
-                return;
-            }
+            if (_currentScene == null) return;
             _selecting = true;
-            try { await _inspect.PickAsync(body, triangle, _picking.Token); }
+            try { await _inspect.PickAsync(body, triangle, _picking?.Token ?? CancellationToken.None); }
             catch (OperationCanceledException) { }
             catch (Exception) { if (_badge != null) _badge.Flash(UiText.SelectionFailed); }
             finally { _selecting = false; }

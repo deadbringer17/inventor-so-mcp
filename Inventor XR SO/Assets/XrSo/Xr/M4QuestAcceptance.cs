@@ -110,6 +110,7 @@ namespace InventorXrSo.Xr
                 "connected document is the dedicated M4 acceptance fixture");
             Record("PASS; dedicated fixture loaded: " + fixture.Graph.Root.Name);
 
+            app.RequestActivity(InventorXrSo.Core.Experience.Activity.Design);
             Call(app, "EnterSession", EnvironmentMode.StudioVr);
             _ws = Read<AssemblyWorkspace>(app, "_assembly");
             // M9: the router opens Assieme for the fixture assembly (no Spazi action any more).

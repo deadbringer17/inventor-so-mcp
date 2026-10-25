@@ -66,7 +66,7 @@ namespace InventorXrSo.Xr
             _jumpTo = jumpTo ?? throw new ArgumentNullException(nameof(jumpTo));
 
             string Offline() => "Nessuna sessione con Inventor.";
-            string NavBlocked() => _inSession() ? "Controlla prima la modifica CAD non confermata." : Offline();
+            string NavBlocked() => _inSession() ? "Concludi o annulla il comando CAD prima di navigare." : Offline();
             string tab = ActionCatalog.DocumentTab;
             _fixed = new[]
             {
@@ -74,13 +74,13 @@ namespace InventorXrSo.Xr
                     () => _inSession() ? "Nessun documento attivo." : Offline(), new[] { "percorso documento" }),
                 new XrAction(IdBack, "Torna", tab, () => _inSession() && _stack.CanPop && _canNavigate(), _goBack,
                     () => !_inSession() ? Offline() : !_stack.CanPop ? "Sei già al livello più alto." : NavBlocked(), new[] { "indietro" }, icon: "back"),
-                new XrAction(IdSave, "Salva", tab, _inSession, _save, Offline, icon: "save"),
+                new XrAction(IdSave, "Salva dal desktop", tab, _inSession, _save, Offline, icon: "save"),
                 new XrAction(IdDocuments, "Documenti aperti", tab, () => _inSession() && _canNavigate(), OpenDocuments,
                     NavBlocked, new[] { "documenti" }, icon: "documents"),
                 new XrAction(IdRecenter, "Ricentra postazione", tab, _inSession, _recenter, Offline),
                 new XrAction(IdCalibrate, "Calibra piano", tab, _inSession, _calibrate, Offline, new[] { "calibra" }),
                 new XrAction(IdConnection, "Connessione", tab, () => true, _openConnection),
-                new XrAction(IdExit, "Esci", tab, () => true, _leaveSession, null, new[] { "esci dalla sessione" }),
+                new XrAction(IdExit, "Home", tab, () => true, _leaveSession, null, new[] { "esci dalla sessione" }),
             };
         }
 

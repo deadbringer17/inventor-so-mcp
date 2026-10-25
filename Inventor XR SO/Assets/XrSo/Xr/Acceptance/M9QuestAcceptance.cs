@@ -158,6 +158,7 @@ namespace InventorXrSo.Xr
             Record("Dedicated M6 fixture reused by M9 (guard " + FixturePrefix + "): " + fixture.Graph.Root.Name);
             Record("Navigation here is driven like the app does: the active document decides the context; a double Trigger is two SYNTHETIC presses on a real body");
 
+            App.RequestActivity(InventorXrSo.Core.Experience.Activity.Design);
             if (!ReadBoolean(App, "_inSession")) Call(App, "EnterSession", EnvironmentMode.StudioVr);
             BindApp();
             BeginSynthetic();

@@ -25,6 +25,21 @@ namespace InventorXrSo.Tests
 
         private static DocInfo Doc(string id, string kind, bool sm = false) => new DocInfo(id, id + "." + kind, kind, sm);
 
+        [Test] public void DesktopChangesAndReconnectNeverOpenAuthoringOutsideDesign()
+        {
+            bool design = false;
+            _sw.CanAuthor = () => design;
+            _sw.OnDocument(Doc("a", "assembly"));
+            _sw.OnDocument(Doc("p", "part"));
+            _sw.Sync();
+            Assert.IsNull(_active); Assert.AreEqual(0, _opens);
+            Assert.AreEqual("p", _stack.Top.DocumentId);
+            design = true; _sw.Sync();
+            Assert.AreEqual(DocContext.Part, _active);
+            design = false; _sw.Sync();
+            Assert.IsNull(_active); Assert.IsNull(_sw.Opened);
+        }
+
         [Test] public void AssemblyOpensOnlyAssembly()
         {
             _sw.OnDocument(Doc("a", "assembly"));

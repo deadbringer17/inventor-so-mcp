@@ -106,13 +106,10 @@ namespace InventorXrSo.Xr
             await CheckRealityCaptureSection(home, ct);
 
             // Enter the session as the Home button does.
+            App.RequestActivity(InventorXrSo.Core.Experience.Activity.Verification);
             Call(App, "EnterSession", EnvironmentMode.MixedReality);
             Check(ReadBoolean(App, "_inSession"), "EnterSession switched the app into the session");
-            // M9 migration (UNVERIFIED without a device): the active document decides the workspace, so a session on the fixture assembly
-            // opens Assieme and raises the model on the bench. The M1 gates exercise the Ispeziona-only selection path and the 1:1 scene,
-            // so the runner parks the authoring workspace; the router reopens a workspace only on a document change. Context navigation
-            // itself is covered by the M9 runner.
-            Call(App, "CloseAuthoring");
+            // QX: explicit Verifica entry owns Ispeziona selection and the 1:1 scene; document changes cannot open authoring.
             var view = Read<CadSceneView>(App, "sceneView");
             var visuals = Read<SelectionVisuals>(App, "selectionVisuals");
             var environment = Read<EnvironmentModeController>(App, "environment");
@@ -299,6 +296,7 @@ namespace InventorXrSo.Xr
                     "return to Home works");
                 Check(home.InvokeVoiceAction(UiText.RealityCapture) && capture.Active, "repeated entry works");
                 Check(capture.Panel.InvokeVoiceAction(UiText.ReturnHome) && !capture.Active, "repeated return works");
+                App.RequestActivity(InventorXrSo.Core.Experience.Activity.Verification);
                 Call(App, "EnterSession", EnvironmentMode.StudioVr);
                 Check(!capture.Active && view.gameObject.activeSelf && shell.Palette.gameObject.activeSelf && input.enabled && ray.CanPick,
                     "returning to CAD restores its shell and input");

@@ -86,6 +86,15 @@ namespace InventorXrSo.Xr
         /// Its tools are usable while the scene is shown and not <see cref="Suspended"/>.
         /// </summary>
         public bool Active => _visible && !Suspended;
+        private bool _activityAssigned;
+        public InventorXrSo.Core.Experience.Activity Activity { get; private set; } = InventorXrSo.Core.Experience.Activity.Verification;
+        public void SetActivity(InventorXrSo.Core.Experience.Activity activity)
+        {
+            CancelRequests(); EndGrabs(); CloseKeypad(); ClosePicker(false);
+            _measure?.ClearAll(); _section?.SetActive(false); LeaveVerifyView();
+            _selected = null; _lastOccurrence = null;
+            Activity = activity; _activityAssigned = true; Refresh();
+        }
         /// <summary>True during a handle capture or a pending CAD review of an authoring workspace (set by the app controller).</summary>
         public Func<bool> SuspendProbe { get; set; }
         public bool Suspended => SuspendProbe?.Invoke() ?? false;
@@ -254,7 +263,7 @@ namespace InventorXrSo.Xr
         public void SetVisible(bool visible)
         {
             _visible = visible;
-            if (!visible) { EndGrabs(); _measure?.Cancel(); CloseKeypad(); ClosePicker(false); LeaveVerifyView(); }
+            if (!visible) { CancelRequests(); _section?.SetActive(false); EndGrabs(); _measure?.Cancel(); CloseKeypad(); ClosePicker(false); LeaveVerifyView(); }
             else if (_scene != null && TooBig()) SetNotice(OversizeNotice);
             Refresh();
         }
@@ -307,12 +316,18 @@ namespace InventorXrSo.Xr
 
         public async Task PickAsync(CadBody body, int triangle, CancellationToken ct)
         {
-            if (Measuring || !_online || _busy || _scene == null) return;
+            if (!Active || Measuring || _busy || _scene == null || body == null) return;
+            if (!_online || Activity == InventorXrSo.Core.Experience.Activity.Presentation)
+            {
+                _selected = _context.SelectionTarget(body.Instance.OccurrenceId);
+                if (_selected != null) { ShowNodeSelection(_selected); SetNotice(_selected.Name + (!_online ? " · Offline, dati non aggiornati" : "")); Refresh(); }
+                return;
+            }
             var node = _context.SelectionTarget(body.Instance.OccurrenceId);
             if (node == null) { SetNotice("Oggetto fuori dal contesto. Usa Indietro nella scheda Vista."); Refresh(); return; }
             bool doubleAction = node.OccurrenceId == _lastOccurrence && Time.unscaledTime - _lastPickTime < 0.4f;
             _lastPickTime = Time.unscaledTime; _lastOccurrence = node.OccurrenceId;
-            if (doubleAction && _context.Current != node) { Enter(node); return; }
+            if (Activity != InventorXrSo.Core.Experience.Activity.Presentation && doubleAction && _context.Current != node) { Enter(node); return; }
             _selected = node; _info = null;
             bool partContext = _context.Current.DefinitionKind == "part";
             var face = body.Primitive.FaceMap.FaceAtTriangle(triangle)?.FaceId;
@@ -350,7 +365,7 @@ namespace InventorXrSo.Xr
             _visuals.ShowOccurrences(BrowserContext.Descendants(node).Where(n => n.DefinitionKind == "part").Select(n => n.OccurrenceId));
         }
 
-        public void ClearSelection() { _selected = null; _info = null; Refresh(); }
+        public void ClearSelection() { _selected = null; _info = null; _visuals?.Clear(); Refresh(); }
 
         private void OnPointPicked(Vector3 point)
         {
@@ -363,7 +378,7 @@ namespace InventorXrSo.Xr
 
         private void Enter(SceneNode node)
         {
-            if (!_context.Enter(node)) return;
+            if (!Active || Activity == InventorXrSo.Core.Experience.Activity.Presentation || !_context.Enter(node)) return;
             CancelRequests();
             _selection?.ResetLocal(); _selected = null; _info = null; ClosePicker(false);
             SetNotice("Contesto: " + ContextPath());
@@ -380,7 +395,8 @@ namespace InventorXrSo.Xr
 
         private async void SelectNode(SceneNode node)
         {
-            if (!_online || _busy || node.Suppressed) return;
+            if (!Active || _busy || node.Suppressed) return;
+            if (!_online) { _selected = node; _info = null; ShowNodeSelection(node); SetNotice(SelectionSummary()); Refresh(); return; }
             int generation = _generation;
             _busy = true;
             try
@@ -398,7 +414,7 @@ namespace InventorXrSo.Xr
 
         private async void LoadInfo()
         {
-            if (!_online || _backend == null || _scene == null || _documentState == null) return;
+            if (!Active || Activity == InventorXrSo.Core.Experience.Activity.Presentation || !_online || _backend == null || _scene == null || _documentState == null) return;
             int generation = _generation;
             var node = _selected ?? _context.Current;
             try

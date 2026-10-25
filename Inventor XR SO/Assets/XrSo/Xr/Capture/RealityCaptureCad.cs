@@ -39,7 +39,15 @@ namespace InventorXrSo.Xr
         {var context=_cadContext?.Invoke();if(context==null||_reviewClient==null||!_reviewClient.Matches(context.Server)) throw new InvalidOperationException("The paired CAD host changed or is unavailable.");return context;}
         private void HideCadOverlay() {_physicalOverlay=false;_cadOverlay?.Clear();}
         private void ClearCadRegistration()
-        {HideCadOverlay();_cadAlignment=null;_referencePlan=null;_referenceCommitUnconfirmed=false;_referenceDestination=null;_trackingFromScan=null;_physicalIds=null;_physicalPoints.Clear();}
+        {HideCadOverlay();_cadAlignment=null;_referencePlan=null;if(!_referenceCommitUnconfirmed) _referenceDestination=null;_trackingFromScan=null;_physicalIds=null;_physicalPoints.Clear();}
+        private void ShowUnconfirmedReference()
+        {
+            Panel.ShowMessage("Applicazione non confermata", "Il comando potrebbe essere stato eseguito: controlla la parte attiva in Inventor prima di proseguire. Confermare il controllo non ripete il comando e non salva il documento. La scansione resta conservata.");
+            Panel.SetActions(("Ho controllato il CAD", () => {
+                _referenceCommitUnconfirmed = false; _referenceDestination = null;
+                ShowOverview();
+            }));
+        }
         private Task<JObject> CadTool(string name,JObject args=null)
         {CadContext();return _reviewClient.CadToolAsync(name,args??new JObject(),_reviewCancel.Token);}
         private async Task<DocumentState> CurrentCadAsync()

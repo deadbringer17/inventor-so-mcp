@@ -56,6 +56,77 @@ namespace InventorXrSo.Tests
             Call("ShowPairing", UiText.NotPaired, UiText.NotPairedBody);
         }
 
+        [Test]
+        public void UnpairedHomeKeepsFourActivitiesAndPairingRetainsRequestedActivity()
+        {
+            Call("ShowHome"); Call("RefreshHome");
+            foreach (var label in new[] { UiText.RealityCapture, UiText.DesignActivity, UiText.PresentationActivity, UiText.VerificationActivity })
+                Assert.IsTrue(_home.VoiceActions.Any(a => a.label == label), label);
+            Assert.AreEqual(InventorXrSo.Core.Experience.Activity.Home, _app.CurrentActivity);
+            Assert.IsFalse(_app.RequestActivity(InventorXrSo.Core.Experience.Activity.Presentation));
+            Assert.AreEqual(InventorXrSo.Core.Experience.Activity.Presentation, Read<InventorXrSo.Core.Experience.ActivityController>("_activity").Pending);
+            Assert.IsTrue(_home.VoiceActions.Any(a => a.label == UiText.PairWithQr));
+        }
+
+        [Test]
+        public void PresentationAndVerificationPreserveActivityOnDesktopChangeAndReturnHomeWithoutAuthoring()
+        {
+            var scene = CadSceneViewTests.BoltScene();
+            // OnSceneLoaded normally has an active session token; this fixture deliberately remains offline.
+            typeof(AppController).GetField("_run", Private).SetValue(_app, new System.Threading.CancellationTokenSource());
+            typeof(AppController).GetField("_currentScene", Private).SetValue(_app, scene);
+            _view.Show(scene); _app.GetComponent<InspectWorkspace>().SetScene(scene);
+            foreach (var activity in new[] { InventorXrSo.Core.Experience.Activity.Presentation, InventorXrSo.Core.Experience.Activity.Verification })
+            {
+                Assert.IsTrue(_app.RequestActivity(activity));
+                Assert.AreEqual(activity, _app.CurrentActivity);
+                Assert.IsFalse(_app.GetComponent<DesignWorkspace>().Active);
+                Assert.IsFalse(_app.GetComponent<AssemblyWorkspace>().Active);
+                Assert.IsFalse(_app.GetComponent<LamieraWorkspace>().Active);
+                _environment.Set(EnvironmentMode.StudioVr);
+                Assert.AreEqual(activity, _app.CurrentActivity);
+                var catalog = Read<ActionCatalog>("_catalog");
+                Assert.IsNull(catalog.Find("doc.save"));
+                Assert.IsTrue(catalog.TryInvoke("doc.exit"));
+                Assert.AreEqual(InventorXrSo.Core.Experience.Activity.Home, _app.CurrentActivity);
+                Assert.AreSame(scene, Read<InventorXrSo.Core.Session.LoadedScene>("_currentScene"));
+            }
+        }
+
+        [Test]
+        public void CaptureUnconfirmedCommitCannotBeClearedByHomeOrReviewNavigation()
+        {
+            _home.InvokeVoiceAction(UiText.RealityCapture);
+            typeof(RealityCaptureWorkspace).GetField("_referenceCommitUnconfirmed", Private).SetValue(_capture, true);
+            Assert.IsFalse(_app.RequestActivity(InventorXrSo.Core.Experience.Activity.Home));
+            Assert.IsTrue(_capture.Active);
+            typeof(RealityCaptureWorkspace).GetMethod("CloseReview", Private).Invoke(_capture, null);
+            Assert.IsTrue(_capture.BlocksActivityExit);
+            Call("LeaveSession");
+            Assert.IsTrue(_capture.Panel.VoiceActions.Any(a => a.label == "Ho controllato il CAD"));
+            Assert.IsTrue(_capture.Panel.InvokeVoiceAction("Ho controllato il CAD"));
+            Assert.IsFalse(_capture.BlocksActivityExit);
+            Call("LeaveSession");
+            Assert.AreEqual(InventorXrSo.Core.Experience.Activity.Home, _app.CurrentActivity);
+        }
+
+        [Test]
+        public void EnvironmentEntryDoesNotReplaceAnOpenAuthoringProvider()
+        {
+            var scene = CadSceneViewTests.BoltScene();
+            typeof(AppController).GetField("_currentScene", Private).SetValue(_app, scene);
+            _view.Show(scene);
+            _app.GetComponent<DesignWorkspace>().SetScene(scene);
+            _app.GetComponent<InspectWorkspace>().SetScene(scene);
+            Call("RouteCurrentScene");
+            Assert.IsTrue(_app.RequestActivity(InventorXrSo.Core.Experience.Activity.Design));
+            var catalog = Read<ActionCatalog>("_catalog");
+            Assert.AreSame(_app.GetComponent<AssemblyWorkspace>(), catalog.Active);
+            Call("EnterSession", EnvironmentMode.StudioVr);
+            Assert.AreSame(_app.GetComponent<AssemblyWorkspace>(), catalog.Active);
+            Assert.AreEqual(InventorXrSo.Core.Experience.Activity.Design, _app.CurrentActivity);
+        }
+
         private GameObject Child(string name, Transform parent = null)
         {
             var go = new GameObject(name);

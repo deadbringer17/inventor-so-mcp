@@ -63,6 +63,19 @@ namespace InventorXrSo.Tests
             return catalog;
         }
         [Test]
+        public void ReadOnlyActivityDoesNotRouteFixedVoiceOrOpenToAnAuthoringSurface()
+        {
+            var design = new Surface { Active = true };
+            var assembly = new Surface { Active = true, Occurrences = new[] { new KeyValuePair<string, string>("part", "Pezzo") } };
+            var target = new WorkspaceVoiceTarget(null, design, assembly)
+            { InSession = true, ActivityProbe = () => InventorXrSo.Core.Experience.Activity.Presentation };
+            Assert.IsFalse(target.IsEnabled(CommandIds.Fillet));
+            Assert.IsFalse(target.Invoke(CommandIds.Fillet));
+            Assert.IsFalse(target.Invoke("open:pezzo"));
+            Assert.IsNull(design.LastInvoked); Assert.IsNull(assembly.Opened);
+        }
+
+        [Test]
         public void Catalog_actions_resolve_by_label_and_synonym_and_apply_is_never_voiced()
         {
             var provider = new Provider();
@@ -110,7 +123,7 @@ namespace InventorXrSo.Tests
             Assert.IsTrue(target.TryResolveAction("torna", out var action));
             Assert.AreEqual("act:doc.back", action.Id);
             Assert.IsTrue(target.Invoke(action.Id));
-            Assert.IsTrue(target.TryResolveAction("salva", out var save));
+            Assert.IsTrue(target.TryResolveAction("salva dal desktop", out var save));
             Assert.IsTrue(target.Invoke(save.Id));
             Assert.IsTrue(target.TryResolveAction("connessione", out var connection));
             Assert.IsTrue(target.Invoke(connection.Id));

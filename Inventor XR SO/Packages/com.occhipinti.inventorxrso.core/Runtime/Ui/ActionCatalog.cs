@@ -24,6 +24,12 @@ namespace InventorXrSo.Core.Ui
         TabState TabState { get; }
     }
 
+    /// <summary>An activity composes a shared service: do not also register its source's actions a second time.</summary>
+    public interface IComposedActionProvider
+    {
+        IActionProvider Source { get; }
+    }
+
     /// <summary>
     /// Azioni del workspace attivo, dei fornitori condivisi (Ispeziona, Vista) e della scheda fissa "Documento".
     /// Con <see cref="ContextProbe"/> le schede si compongono dal contesto (<see cref="ContextTabs"/>, M9 §2): una scheda
@@ -72,6 +78,19 @@ namespace InventorXrSo.Core.Ui
 
         /// <summary>Contesto del workspace aperto (Assieme, Parte, Lamiera); null senza workspace di authoring. Attiva la composizione.</summary>
         public Func<DocContext?> ContextProbe { get; set; }
+        public Func<InventorXrSo.Core.Experience.Activity> ActivityProbe { get; set; }
+        public Func<int> ActivityGenerationProbe { get; set; }
+        private bool Allowed(XrAction action) => ActivityProbe == null || InventorXrSo.Core.Experience.ActivityPolicy.AllowsAction(ActivityProbe(), action.Id);
+        private XrAction Guard(XrAction action)
+        {
+            if (ActivityProbe == null) return action;
+            int generation = ActivityGenerationProbe?.Invoke() ?? 0;
+            bool Current() => generation == (ActivityGenerationProbe?.Invoke() ?? 0) && Allowed(action);
+            return new XrAction(action.Id, action.Label, action.Tab,
+            () => Current() && action.Enabled, () => { if (Current()) action.TryInvoke(); },
+            () => Allowed(action) ? action.DisabledReason : "Comando non disponibile in questa attività.",
+            action.Synonyms, action.Kind, action.Icon, () => action.IsOn, action.VoiceInvokes);
+        }
         public DocContext? CurrentContext => ContextProbe?.Invoke();
 
         /// <summary>Fornitore incluso in ogni contesto (Ispeziona, Vista). I suoi id non devono collidere.</summary>
@@ -101,6 +120,9 @@ namespace InventorXrSo.Core.Ui
         {
             get
             {
+                if (ActivityProbe != null && ActivityProbe() != InventorXrSo.Core.Experience.Activity.Design)
+                    return InventorXrSo.Core.Experience.ActivityPolicy.Tabs(ActivityProbe()).Select(FindTab)
+                        .Where(t => t != null && HasActions(t.Id)).ToArray();
                 var probe = ContextProbe;
                 if (probe == null)
                     return Providers().SelectMany(p => p.Tabs).Where(t => !t.Hidden).GroupBy(t => t.Id).Select(g => g.First()).ToArray();
@@ -127,13 +149,13 @@ namespace InventorXrSo.Core.Ui
         private IEnumerable<IActionProvider> Providers()
         {
             if (_active != null) yield return _active;
-            foreach (var p in _shared) if (!ReferenceEquals(p, _active)) yield return p;
+            foreach (var p in _shared) if (!ReferenceEquals(p, _active) && !ReferenceEquals(p, (_active as IComposedActionProvider)?.Source)) yield return p;
             yield return _document;
         }
 
         private IEnumerable<IActionProvider> Others(IActionProvider active)
         {
-            foreach (var p in _shared) if (!ReferenceEquals(p, active)) yield return p;
+            foreach (var p in _shared) if (!ReferenceEquals(p, active) && !ReferenceEquals(p, (active as IComposedActionProvider)?.Source)) yield return p;
             yield return _document;
         }
 
@@ -162,7 +184,7 @@ namespace InventorXrSo.Core.Ui
                 if (measure != null) list.Add(measure);
             }
             if (list.Count > MaxContext) throw new InvalidOperationException($"Anello {selection}: {list.Count} azioni, massimo {MaxContext}.");
-            return list.ToArray();
+            return list.Where(Allowed).Select(Guard).ToArray();
         }
 
         public XrAction Find(string id) => All().FirstOrDefault(a => a.Id == id);
@@ -181,7 +203,7 @@ namespace InventorXrSo.Core.Ui
             return new VoiceMatch(VoiceMatchKind.NotFound, null, Array.Empty<XrAction>(), "");
         }
 
-        private IEnumerable<XrAction> All() => Providers().SelectMany(p => p.Actions);
+        private IEnumerable<XrAction> All() => Providers().SelectMany(p => p.Actions).Where(Allowed).Select(Guard);
 
         /// <summary>
         /// La voce vede solo cio che e raggiungibile nel contesto: le azioni dei fornitori condivisi in una scheda che il
@@ -194,7 +216,7 @@ namespace InventorXrSo.Core.Ui
             {
                 bool filter = ContextProbe != null && !ReferenceEquals(p, _active) && !ReferenceEquals(p, _document);
                 foreach (var a in p.Actions)
-                    if (!filter || visible.Contains(a.Tab) || a.Tab.StartsWith("_", StringComparison.Ordinal) || IsGroupTab(a.Tab)) yield return a;
+                    if (Allowed(a) && (!filter || visible.Contains(a.Tab) || a.Tab.StartsWith("_", StringComparison.Ordinal) || IsGroupTab(a.Tab))) yield return Guard(a);
             }
         }
 

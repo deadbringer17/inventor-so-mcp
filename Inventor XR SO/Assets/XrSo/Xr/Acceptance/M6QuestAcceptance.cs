@@ -134,6 +134,7 @@ namespace InventorXrSo.Xr
             _assemblyDocId = fixture.Graph.DocumentId;
             Record("PASS; dedicated fixture loaded: " + fixture.Graph.Root.Name);
 
+            App.RequestActivity(InventorXrSo.Core.Experience.Activity.Design);
             if (!ReadBoolean(App, "_inSession")) Call(App, "EnterSession", EnvironmentMode.StudioVr);
             _inspect = Read<InspectWorkspace>(App, "_inspect");
             _design = Read<DesignWorkspace>(App, "_design");

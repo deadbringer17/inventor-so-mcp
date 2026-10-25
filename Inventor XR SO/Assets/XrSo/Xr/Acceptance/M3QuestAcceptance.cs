@@ -65,6 +65,7 @@ namespace InventorXrSo.Xr
             Record("Dedicated fixture loaded: " + fixture.Graph.Root.Name);
 
             // ---- M9: the active document is the part, so the context router opens Progettazione by itself (no Spazi action any more)
+            App.RequestActivity(InventorXrSo.Core.Experience.Activity.Design);
             Call(App, "EnterSession", EnvironmentMode.StudioVr);
             _inspect = Read<InspectWorkspace>(App, "_inspect");
             _design = Read<DesignWorkspace>(App, "_design");

@@ -114,6 +114,7 @@ namespace InventorXrSo.Xr
 
             // ---- M5-01: Lamiera is primary and opens through the Spazi action (by id, like the palette; SYNTHETIC tap, not a hand)
             if (!ReadBoolean(App, "_inSession"))
+                App.RequestActivity(InventorXrSo.Core.Experience.Activity.Design);
                 Call(App, "EnterSession", EnvironmentMode.StudioVr);
             _ws = Read<LamieraWorkspace>(App, "_lamiera");
             Check(_ws != null, "AppController owns a Lamiera workspace");

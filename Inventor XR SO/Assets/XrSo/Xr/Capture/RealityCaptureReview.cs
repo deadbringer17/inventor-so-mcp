@@ -256,11 +256,7 @@ namespace InventorXrSo.Xr
         }
         private void ShowReviewError()
         {
-            if(_referenceCommitUnconfirmed)
-            {
-                Panel.ShowMessage("Applicazione non confermata","La risposta del PC non conferma l’esito. Il comando potrebbe essere stato eseguito: controlla la parte attiva in Inventor prima di ripetere l’importazione. Nessun nuovo tentativo o salvataggio automatico è stato effettuato. La scansione resta conservata.");
-                Panel.SetActions(("Vista scansione",ShowReview),(UiText.RealityCapture,ShowOverview));return;
-            }
+            if(_referenceCommitUnconfirmed) { ShowUnconfirmedReference(); return; }
             Panel.ShowMessage("Revisione non completata","Verifica il collegamento al PC, la versione dei vincoli e il supporto selezionato. La scansione caricata resta disponibile.");
             Panel.SetActions(("Riprova elenco",()=>ReviewAction(ListReviewsAsync)),("Vista scansione",()=>{if(_scanReview!=null) ShowReview();else ShowOverview();}),(UiText.RealityCapture,ShowOverview));
         }

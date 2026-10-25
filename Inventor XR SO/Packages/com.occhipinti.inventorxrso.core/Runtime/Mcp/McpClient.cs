@@ -32,6 +32,7 @@ namespace InventorXrSo.Core.Mcp
         }
 
         public string SessionId => _sessionId;
+        public Func<string, bool> ToolAllowed { get; set; }
 
         public async Task InitializeAsync(CancellationToken ct)
         {
@@ -49,6 +50,8 @@ namespace InventorXrSo.Core.Mcp
         /// <param name="timeout">Whole-request timeout; null keeps the transport default. A request that runs out of time throws <see cref="McpException"/> with code TIMEOUT.</param>
         public async Task<JObject> CallToolAsync(string name, JObject arguments, CancellationToken ct, TimeSpan? timeout = null)
         {
+            ct.ThrowIfCancellationRequested();
+            if (ToolAllowed?.Invoke(name) == false) throw new McpException("ACTIVITY_FORBIDDEN", "Comando non disponibile in questa attività: " + name);
             JObject result;
             try { result = await RequestAsync("tools/call", new JObject { ["name"] = name, ["arguments"] = arguments ?? new JObject() }, ct, timeout); }
             catch (TransportTimeoutException ex) { throw new McpException("TIMEOUT", name + " did not answer in time: " + ex.Message); }
