@@ -73,11 +73,23 @@ public static class ToolContracts
     private static Contract XQ(string name, string[] docs, string remote = "JSON over MCP") =>
         new() { Name = name, Tier = Experimental, Access = "query", Documents = docs, Verification = Pending, Remote = remote };
 
+    private static Contract Capture(string suffix,bool query=false)=>new() { Name="inventor_reality_capture_"+suffix,Tier=Experimental,
+        Access=query?"query":"artifact",Documents=None,Verification="software/synthetic only; physical capture and validation pending",
+        Validators=new[] {"bearer token ownership","immutable raw hashes","constraint version","bounded isolated worker"},
+        Rollback="raw immutable; partial worker output withheld; previous solve revisions preserved",
+        ExternalEffects=query?"none":"token-owned local capture data only; no CAD writes",Remote="JSON control; authenticated binary /capture/v1 artifacts" };
+
     private static readonly Contract[] All =
     {
         // ---- Production: server-side discovery and target selection ----
         Meta("inventor_list_available_targets"), Meta("inventor_get_current_target"), Meta("inventor_switch_target"),
         Meta("inventor_get_capabilities"), Meta("inventor_get_tool_schema"),
+
+        Capture("create_session"),Capture("get_session",true),Capture("add_constraint"),Capture("remove_constraint"),
+        Capture("list_constraints",true),Capture("set_artifact"),Capture("start_solve"),Capture("get_solution",true),
+        Capture("get_quality",true),Capture("cancel_solve"),Capture("export",true),
+        Capture("get_review",true),Capture("fit_primitive"),Capture("remove_primitive"),
+        Capture("get_alignment",true),Capture("align_to_cad"),Capture("create_reference"),
 
         // ---- Production: verified queries ----
         Q("inventor_health", None), Q("inventor_list_open_documents", None), Q("inventor_get_document_info", PAD),

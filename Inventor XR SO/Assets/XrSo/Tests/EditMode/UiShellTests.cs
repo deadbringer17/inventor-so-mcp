@@ -136,6 +136,27 @@ namespace InventorXrSo.Tests
         }
 
         [Test]
+        public void HiddenCadShellStaysHiddenWhenAnAsyncPreviewOrCatalogUpdateArrives()
+        {
+            var catalog = Catalog(out _);
+            var provider = new Provider();
+            provider.All.Add(A(CommitIds.Apply, "Applica", ActionCatalog.CommitTab));
+            var shell = Shell(catalog);
+            catalog.SetActive(provider);
+            shell.Palette.ShowKeypad(new NumericEntry("h", QuantityUnit.Millimeters, 20, 1, 1000));
+            shell.SetVisible(false);
+            Assert.IsFalse(shell.Palette.KeypadVisible);
+            provider.Bar.Update(new CommitBarInputs(true, false, false, false, true, false, null), 0);
+            Assert.IsFalse(shell.CommitBar.gameObject.activeSelf, "a delayed preview cannot reopen the confirm bar");
+            catalog.NotifyChanged();
+            Assert.IsFalse(shell.Palette.gameObject.activeSelf);
+            Assert.IsFalse(shell.CommitBar.gameObject.activeSelf);
+            shell.SetVisible(true);
+            Assert.IsTrue(shell.Palette.gameObject.activeSelf);
+            Assert.IsTrue(shell.CommitBar.gameObject.activeSelf);
+        }
+
+        [Test]
         public void CommitBarShowsOnlyTheAllowedButtonsAndTheRecovery()
         {
             var catalog = Catalog(out _);

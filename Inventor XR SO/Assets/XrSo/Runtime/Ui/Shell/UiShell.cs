@@ -17,6 +17,7 @@ namespace InventorXrSo.Unity.Ui
         private Transform _head;
         private Func<WorkbenchFrame> _benchFrame;
         private WorkbenchFrame _initialFallbackFrame;
+        private bool _visible = true;
 
         public ActionCatalog Catalog { get; private set; }
         public PaletteView Palette { get; private set; }
@@ -45,7 +46,16 @@ namespace InventorXrSo.Unity.Ui
                 if (_bar != null) _bar.Changed += RenderBar;
             }
             Palette.Render(Catalog);
+            Palette.gameObject.SetActive(_visible);
             RenderBar();
+        }
+
+        /// <summary>The CAD canvases are separate roots: hiding this component alone does not hide them.</summary>
+        public void SetVisible(bool visible)
+        {
+            _visible = visible;
+            if (!visible) Palette.HideKeypad();
+            Refresh();
         }
 
         public void PlaceCommitBar(Vector3 position, Quaternion rotation) => CommitBar.transform.SetPositionAndRotation(position, rotation);
@@ -79,7 +89,11 @@ namespace InventorXrSo.Unity.Ui
 
         private void LateUpdate() => UpdatePaletteTracking();
 
-        private void RenderBar() => CommitBar.Render(_bar, Catalog);
+        private void RenderBar()
+        {
+            CommitBar.Render(_bar, Catalog);
+            if (!_visible) CommitBar.gameObject.SetActive(false);
+        }
 
         private void OnDestroy()
         {

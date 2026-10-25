@@ -55,6 +55,17 @@ public static class HttpHost
         }
         services.AddSingleton(tokens);
         services.TryAddSingleton<ISpeechEngine>(_ => ExternalProcessSpeechEngine.FromConfig(config));
+        if (config.EnableExperimental)
+        {
+            services.TryAddSingleton(_ => new Capture.CaptureTransferStore(
+                CaptureDirectory(config)));
+            services.AddHostedService<Capture.CaptureRetentionService>();
+            services.TryAddSingleton(_=>Capture.CaptureWorkerSettings.Default());
+            services.TryAddSingleton<Capture.ICaptureWorker,Capture.CaptureWorkerProcess>();
+            services.TryAddSingleton<Capture.CaptureReconstructionService>();
+            services.AddHostedService(sp=>sp.GetRequiredService<Capture.CaptureReconstructionService>());
+            services.AddSingleton<Bimwright.Ipt.Server.RealityCapture.ICaptureControl,Capture.HttpCaptureControl>();
+        }
         services.AddSingleton(new VoiceEndpoint.Settings(config.VoiceDiagnostics));
         services.AddHttpContextAccessor();
         services.AddSingleton<ICallerIdentity, HttpCallerIdentity>();
@@ -132,10 +143,21 @@ public static class HttpHost
             .RequireAuthorization()
             .RequireRateLimiting(RatePolicy);
         VoiceEndpoint.Map(app);
+        if (config.EnableExperimental) Capture.CaptureEndpoint.Map(app);
         if (options?.ImportResources is { } imports)
             Imports.ImportResourceEndpoint.MapImportResources(app, imports);
         MapViewer(app);
         return app;
+    }
+
+    private static string CaptureDirectory(InventorMcpConfig config)
+    {
+        if(Environment.GetEnvironmentVariable("INVENTOR_SO_CAPTURE_ROOT") is {Length:>0} configured) return Path.GetFullPath(configured);
+        // A host with an isolated/custom asset root must not recover the production capture directory during tests or embedding.
+        if(!string.Equals(Path.GetFullPath(config.AssetDirectory),Path.GetFullPath(new InventorMcpConfig().AssetDirectory),
+            OperatingSystem.IsWindows()?StringComparison.OrdinalIgnoreCase:StringComparison.Ordinal))
+            return Path.Combine(Path.GetDirectoryName(Path.GetFullPath(config.AssetDirectory))!,"RealityCapture","v1");
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"InventorSO","RealityCapture","v1");
     }
 
     /// <summary>

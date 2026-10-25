@@ -248,6 +248,8 @@ public static class CadBatchCommandCatalog
             new[] { "body_indices:integer[]" }, new[] { "dx_mm:number", "dy_mm:number", "dz_mm:number" }),
 
         // Work geometry and parameters
+        X("create_reality_reference", "RC4 bounded native point-cloud 3D sketch, fixed work geometry, estimated and known parameters, persistent scan-to-CAD provenance. No B-Rep. Requires owned atomic preview/commit.",
+            new[] { "reference:object (owned capture payload, mm, max 2000 points/32 primitives)" }, None),
         X("create_work_point", "Fixed work point at x,y,z mm.",
             new[] { "x_mm:number", "y_mm:number", "z_mm:number" }, new[] { "name:string" }),
         X("create_ucs", "User coordinate system from an origin and two orthogonal axis directions.",

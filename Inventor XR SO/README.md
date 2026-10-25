@@ -6,6 +6,22 @@ M2 aggiunge l'ambiente di ispezione: Browser gerarchico, breadcrumb, proprietà 
 
 Riferimenti: [spec prodotto](inventor_meta_product.md), [design M1](../docs/superpowers/specs/2026-09-26-inventor-xr-so-m1-design.md), [piano C1–C9](../docs/superpowers/plans/2026-09-26-inventor-xr-so-m1.md), [verifica e collaudo](../docs/xr-m1-verification.md).
 
+## Reality Capture — acquisizione, revisione e riferimento sperimentali RC1–RC4
+
+Reality Capture dispone ora del codice per acquisizione RGB locale Oggetto/Area, delimitazione, avvio esplicito, pausa/stop, selezione per qualità, raw con posa/intrinseci/hash, recupero sessioni e trasferimento riprendibile al PC associato. Richiede MRUK **207.0.0**, fissato nel manifest, e il permesso camera del visore. I raw restano nel percorso dati privato dell’app; una sessione di un avvio precedente può essere verificata e trasferita, ma non riutilizza il tracking per continuare l’acquisizione.
+
+Sul PC gli endpoint `/capture/v1/sessions` sono sperimentali (`--enable-experimental`). Storage predefinito `%LOCALAPPDATA%/InventorSO/RealityCapture/v1`, configurabile con `INVENTOR_SO_CAPTURE_ROOT`; retention di sette giorni, ownership per token e quote indipendenti dagli asset CAD. Un trasferimento interrotto riprende ripetendo **Trasferisci al PC** dalla sessione locale.
+
+È presente anche la **pipeline sparsa sperimentale sul PC**: worker locale separato, controlli MCP, triangolazione RGB multi-view, bundle adjustment con quote pesate, marker/barra misurati, report e GLB/PLY/OBJ. Può essere compilata e verificata con `scripts/test-reality-capture-pc.ps1`, senza Quest o Inventor. Il pacchetto sperimentale include il worker; per l’uso standalone vedere il [design RC2 PC](../docs/superpowers/specs/2026-10-24-reality-capture-rc2-pc-design.md).
+
+La sessione locale offre **Revisioni PC** dopo il trasferimento: nuovo solve, stato/annullamento, riapertura di revisioni, viewer separato dal CAD e selezione dei punti col Trigger. Da **Selezione / fitting** si stimano punti, assi, piani, cerchi e cilindri su supporti scelti manualmente. Le misure restano in mm anche con la vista ridotta; RMS del fitting e incertezza non stimata sono distinti. **Vincoli noti** permette quote esterne con incertezza, attivazione/disattivazione e un nuovo solve. **Esporta** salva GLB in metri oppure PLY/OBJ in mm, con metadati, nella cartella privata `RealityCapture/exports` del visore.
+
+Da **Riferimento Inventor / overlay** si registra la scansione su tre coordinate CAD corrispondenti oppure piano/asse/origine. **Nuova parte riferimento** crea una `.ipt` vuota nel workspace, esegue una preview nativa annullata e propone **Applica riferimento**; **Salva riferimento** è separato. La parte contiene uno schizzo 3D con la point cloud, work geometry, parametri e metadati persistenti. La mesh GLB/PLY/OBJ resta separata; nessuna conversione in B-Rep. Per annullamento o errore della preview la parte vuota creata resta nel workspace.
+
+Il **confronto CAD ridotto** usa una copia senza input CAD. L’**overlay 1:1** richiede tre nuovi riferimenti fisici del controller nella sessione corrente; non riusa pose precedenti. L’origine del controller non è una punta calibrata. Perdita tracking, recenter o cambio CAD/PC eliminano la registrazione o la vista. Richiede host e add-in sperimentali; [design RC4](../docs/superpowers/specs/2026-10-25-reality-capture-rc4-inventor-design.md).
+
+**Ricostruzione densa, dataset fisico controllato, collaudo nativo della reference part e prove Quest restano aperti.** Qualità delle immagini, punti a due viste e volume selezionato non costituiscono copertura geometrica o validazione dimensionale. Nessun collaudo sul Quest è stato eseguito per questa estensione. Stato e limiti: [verbale Reality Capture](../docs/xr-reality-capture-verification.md), [design RC3](../docs/superpowers/specs/2026-10-24-reality-capture-rc3-review-design.md).
+
 ## Prerequisiti
 
 - Unity **6000.6.3f1** con Android Build Support, SDK, NDK e OpenJDK; pacchetti fissati in `Packages/manifest.json`.
@@ -166,9 +182,29 @@ con collegamento alla specifica e ai probe riproducibili.
 
 ## Limiti attuali
 
+### Reality Capture — sezione indipendente RC0
+
+La Home offre **Reality Capture** accanto alle modalità CAD MR/VR e anche senza
+PC associato o documento aperto. La sezione attiva il passthrough e nasconde
+modello, tavolozza, barra di conferma, HUD e legenda CAD; sospende input, selezione
+e voce Inventor. **Torna alla Home** o il pulsante menu riportano alla scelta
+iniziale. Un cambio di connessione del PC non interrompe questa sezione.
+
+Il perimetro originario RC0 comprendeva soltanto ingresso e informazioni, senza
+acquisizione e senza nuovi pacchetti. L’estensione RC1 descritta sopra aggiunge
+MRUK e il codice di acquisizione locale. RC2 dispone della pipeline sparsa sul PC;
+RC3 aggiunge il viewer di revisione e i fitting manuali; la ricostruzione densa
+e il collaudo fisico restano aperti.
+Non occorre rigenerare la scena.
+[Design](../docs/superpowers/specs/2026-10-24-reality-capture-independent-section-design.md),
+[piano completo RC0–RC4](../docs/superpowers/plans/2026-10-24-reality-capture.md)
+e [verifiche](../docs/xr-reality-capture-verification.md).
+
+### Altri limiti
+
 Massimo 200 definizioni, con avviso sui componenti omessi; mesh oltre il limite backend sono omesse. Nessuna voce; modifica CAD disponibile in M3, con collaudo completato. Le misure M2 coprono la distanza tra due punti sulla mesh: angoli, raggi e distanze minime esatte B-Rep restano estensioni successive. Fit to room usa lo spazio impostato, senza scansione della stanza. Il Browser segue il scene graph (documenti/occurrence), non espone ancora l'albero completo delle feature. Le credenziali sono cifrate con Android Keystore sul visore; nell'Editor sono un file di sviluppo in chiaro sotto `Application.persistentDataPath`.
 
-La scansione mantiene il percorso WebCamTexture del piano M1, con entrambi i permessi CAMERA e HEADSET_CAMERA; non aggiunge MRUK. La [guida Meta alla migrazione](https://developers.meta.com/horizon/documentation/unity/unity-pca-migration-from-webcamtexture/) descrive anche il percorso MRUK, che richiede il solo HEADSET_CAMERA. Fotocamera, pairing e riutilizzo delle credenziali Keystore sono stati verificati sul Quest 3; gli esiti e le verifiche residue sono nel [verbale di collaudo](../docs/xr-m1-verification.md).
+La scansione **QR** mantiene il percorso WebCamTexture del piano M1, con entrambi i permessi CAMERA e HEADSET_CAMERA. Reality Capture usa invece MRUK con HEADSET_CAMERA. La [guida Meta alla migrazione](https://developers.meta.com/horizon/documentation/unity/unity-pca-migration-from-webcamtexture/) descrive le differenze tra i due percorsi. Fotocamera QR, pairing e riutilizzo delle credenziali Keystore sono stati verificati sul Quest 3; gli esiti e le verifiche residue sono nel [verbale di collaudo](../docs/xr-m1-verification.md). Queste prove precedenti non validano la nuova acquisizione Reality Capture.
 ## M8 grapics
 
 Tema HIVE/EnerBot applicato ai primitivi uGUI/TMP, Home, voce e workspace:

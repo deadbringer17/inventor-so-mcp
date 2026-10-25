@@ -1,8 +1,10 @@
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using Bimwright.Ipt.Server;
 using Bimwright.Ipt.Shared.Contracts;
+using ModelContextProtocol.Server;
 
 namespace Bimwright.Ipt.Tests;
 
@@ -122,8 +124,13 @@ public sealed class ExperimentalSourceTests
         var covered = typeof(ExperimentalSourceTests).GetMethod(nameof(ExperimentalToolsReachAnExperimentalHandler))!
             .GetCustomAttributes(typeof(InlineDataAttribute), false).Cast<InlineDataAttribute>()
             .Select(a => (string)a.GetData(null!).First()[0]).ToHashSet();
+        // Capture is host-owned computation, not an Inventor wire command. Its registration/tier is checked explicitly.
+        var capture=typeof(Bimwright.Ipt.Server.Tools.RealityCaptureTools).GetMethods()
+            .Select(m=>m.GetCustomAttribute<McpServerToolAttribute>()?.Name).Where(n=>n!=null).ToHashSet();
+        Assert.Equal(17,capture.Count);
+        foreach(var name in capture) Assert.Equal(ToolContracts.Experimental,SoToolPolicy.TierOf(name!));
         // The release package is composed server-side from verified exports; it has no handler of its own.
-        foreach (var tool in SoToolPolicy.Experimental.Where(t => t != "inventor_build_release_package"))
+        foreach (var tool in SoToolPolicy.Experimental.Where(t => t != "inventor_build_release_package" && !capture.Contains(t)))
             Assert.True(covered.Contains(tool), tool + " is experimental but not mapped to a handler in this test");
     }
 

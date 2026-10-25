@@ -34,6 +34,29 @@ namespace InventorXrSo.Tests
         private static XrInputFrame F() => new XrInputFrame { PenTracked = true, PaletteTracked = true };
 
         [Test]
+        public void SectionEntryDiscardsStaleGesturesAndWaitsForNeutralBeforeNewCadInput()
+        {
+            var held = F(); held.PenTrigger = held.PenGrip = held.PaletteGrip = held.PaletteTrigger = true;
+            held.X = held.Y = held.A = true;
+            held.PaletteStick = Vector2.one;
+            _input.Poll(held, 0);
+            _log.Clear();
+            _input.AwaitNeutralInput();
+            _input.Poll(held, 2);
+            Assert.IsEmpty(_log);
+            Assert.IsFalse(_input.PenHeld);
+            Assert.IsFalse(_input.TwoHand);
+            Assert.IsFalse(_input.Precision);
+            Assert.Zero(_input.BackHoldProgress);
+            _input.Poll(F(), 3);
+            Assert.IsEmpty(_log, "returning to neutral must not release an old CAD gesture");
+            var stroke = F(); stroke.PenTrigger = true;
+            _input.Poll(stroke, 4);
+            _input.Poll(F(), 5);
+            CollectionAssert.AreEqual(new[] { "press", "release" }, _log);
+        }
+
+        [Test]
         public void GripPressedInTheSameFrameAsTheTriggerIsAlreadyHeldWhenThePressFires()
         {
             bool gripHeldAtPress = false;
