@@ -22,6 +22,7 @@ Perimetro: prima consegna del [piano](superpowers/plans/2026-10-25-quattro-esper
 | Android QA con `XR_SO_ACCEPTANCE` | non ricostruito per F0 | **PASS**, APK Development ARM64, 95.027.483 byte |
 | Android ordinario, senza runner | non ricostruito per F0 | **PASS**, APK release ARM64, 57.141.704 byte |
 | Quest sintetico su fixture Inventor | nessun dispositivo collegato | **NOT COVERED** |
+| Meta XR Simulator desktop + HTTPS FakeAddIn | aggiunto dopo la tranche | **PASS sintetico**, 31 controlli e cinque screenshot; [verbale](xr-meta-simulator-verification.md) |
 | Prova fisica persona/controller | non eseguita | **NOT COVERED** |
 
 Ispezione dei pacchetti: libreria `lib/arm64-v8a/libil2cpp.so` presente in entrambi; metadati `QxQuestAcceptance` presenti soltanto nel QA. Build conclusa con exit code 0. Hash SHA-256 completi in `manifest.json` e `package-inspection.json`.

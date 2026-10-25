@@ -13,7 +13,9 @@
     "Unity.TextMeshPro",
     "Unity.XR.Management",
     "Unity.XR.Management.Editor",
-    "Unity.XR.Oculus"
+    "Unity.XR.Oculus",
+    "Unity.XR.OpenXR",
+    "Unity.XR.OpenXR.Editor"
   ],
   "includePlatforms": [
     "Editor"

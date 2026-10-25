@@ -142,7 +142,7 @@ namespace InventorXrSo.Unity.Ui
                 var title = button.GetComponentInChildren<TextMeshProUGUI>();
                 title.rectTransform.anchorMin = new Vector2(0, 0.53f);
                 title.rectTransform.offsetMin = title.rectTransform.offsetMax = Vector2.zero;
-                var description = UiFactory.Text(button.transform, card.description, 7f);
+                var description = UiFactory.Text(button.transform, card.description, 14f);
                 UiFactory.Stretch(description.rectTransform);
                 description.rectTransform.anchorMax = new Vector2(1, 0.53f);
                 description.margin = new Vector4(12, 6, 12, 6);

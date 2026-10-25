@@ -1,5 +1,14 @@
 # Contesto Unity — Inventor XR SO
 
+Aggiornamento operativo del 25 ottobre 2026 sul branch `nuova_ux`: F0–F4 sono
+implementati ([esiti](xr-quattro-esperienze-verification.md)). Home mantiene
+connessione e documento e offre Capture, Disegno, Presentazione e Verifica;
+l'authoring segue il contesto documento soltanto in Disegno. È stato aggiunto
+OpenXR 1.18.0 per Standalone e il percorso Editor
+`Tools~/Invoke-Simulator.ps1`, con Meta XR Simulator 207.1 e HTTPS FakeAddIn.
+Android mantiene Oculus. [Verbale del simulatore](xr-meta-simulator-verification.md).
+L'analisi statica sottostante descrive il punto di partenza precedente ai lavori.
+
 <!-- unity-onboarding:generated:start -->
 
 Analisi statica: 25 ottobre 2026. Commit: `0e81660c03a00916b2963f784e81e6b100a33fd2`.

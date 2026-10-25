@@ -227,6 +227,23 @@ Lamiera apre la modifica della feature. Misura e Sezione sono nel gruppo
 [Spec M9](../docs/superpowers/specs/2026-10-04-m9-navigazione-contesto-design.md),
 [verbale](../docs/xr-m9-verification.md): collaudo Quest e prova fisica aperti.
 
+## Test desktop senza visore: Meta XR Simulator
+
+È disponibile un percorso automatico in Play Mode con il runtime Meta XR Simulator
+e il server HTTPS FakeAddIn. Dalla radice del repository, con l'Editor chiuso:
+
+```powershell
+& 'Inventor XR SO/Tools~/Invoke-Simulator.ps1' -Output 'artifacts/meta-xr-simulator/nuova-prova'
+```
+
+Richiede Unity 6000.6.3f1, .NET 8 SDK, `metavr` e Meta XR Simulator installati.
+Il wrapper compila la fixture, usa OpenXR soltanto su Standalone e imposta il
+runtime nell'ambiente del processo. Android conserva Oculus. Log, JSON e cinque
+screenshot documentano i controlli sintetici; il pairing reale non viene modificato.
+`-RuntimeManifest` consente un percorso runtime diverso; `-SetupOnly` configura
+soltanto il profilo. [Esiti, installazione locale e limiti](../docs/xr-meta-simulator-verification.md).
+Questa prova non copre Inventor COM, acquisizione reale o prestazioni Quest.
+
 ## M10 icone Inventor
 
 Migrazione software estesa ai sei fornitori Progettazione, Lamiera, Assieme,

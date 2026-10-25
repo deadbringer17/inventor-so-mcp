@@ -54,6 +54,7 @@ namespace InventorXrSo.Xr
         private SelectionService _selection;
         private CancellationTokenSource _run;
         private bool _inSession;
+        private bool _quitting;
         private bool _placed;
         private string _documentId;
         private CancellationTokenSource _picking;
@@ -106,13 +107,22 @@ namespace InventorXrSo.Xr
             qrScanner = scanner;
         }
 
+#if UNITY_EDITOR
+        // Scoped by the simulator runner; never reads or overwrites a real pairing during an automated Editor run.
+        public static Func<ICredentialStore> EditorCredentialStoreFactory { get; set; }
+#endif
+
         private void Start()
         {
             InitializeUi();
 #if XR_SO_ACCEPTANCE
             if(TryStartAcceptanceBootstrap()) return;
 #endif
-            _store = CredentialStores.Create();
+            _store =
+#if UNITY_EDITOR
+                EditorCredentialStoreFactory?.Invoke() ??
+#endif
+                CredentialStores.Create();
             _server = _store.Load();
             ShowHome();
             if (_server != null) StartSession();
@@ -359,6 +369,8 @@ namespace InventorXrSo.Xr
             return target;
         }
 
+        private void OnApplicationQuit() { _quitting = true; StopSession(); }
+
         private void OnDestroy()
         {
             _lifetime.Cancel();
@@ -376,15 +388,18 @@ namespace InventorXrSo.Xr
         private void StopSession()
         {
             if (_voice != null) { Destroy(_voice.gameObject); _voice = null; }
-            _inspect?.Bind(null, null);
-            _design?.Bind(null);
-            _assembly?.Bind(null);
-            _lamiera?.Bind(null, null);
+            // During scene shutdown other roots (mesh, section and cursor) may already be destroyed.
+            if (!_quitting && sceneView != null)
+            {
+                if (_inspect != null) _inspect.Bind(null, null);
+                if (_design != null) _design.Bind(null);
+                if (_assembly != null) _assembly.Bind(null);
+                if (_lamiera != null) _lamiera.Bind(null, null);
+            }
             _currentScene = null;
             _sceneByDocument.Clear();
             _dirty.Clear();
-            _contextSwitcher?.Clear();
-            ClearGhost();
+            if (!_quitting && sceneView != null) { _contextSwitcher?.Clear(); ClearGhost(); }
             if (_session != null)
             {
                 _session.StatusChanged -= OnStatusChanged; _session.SceneLoaded -= OnSceneLoaded;
