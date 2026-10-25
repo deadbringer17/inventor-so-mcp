@@ -10,6 +10,7 @@ using InventorXrSo.Core.Experience;
 using InventorXrSo.Core.Mcp;
 using InventorXrSo.Core.Pairing;
 using InventorXrSo.Core.Session;
+using InventorXrSo.Core.Verify;
 using InventorXrSo.Core.Ui;
 using InventorXrSo.Unity.Scene;
 using InventorXrSo.Unity.Ui;
@@ -24,7 +25,7 @@ using Activity = InventorXrSo.Core.Experience.Activity;
 
 namespace InventorXrSo.Editor
 {
-    /// <summary>Real Meta XR runtime and rendered Main scene; CAD is explicitly the HTTPS FakeAddIn fixture.</summary>
+    /// <summary>Rendered Main scene on Meta XR; isolated HTTPS FakeAddIn or explicitly guarded native M7 fixture.</summary>
     [InitializeOnLoad]
     public static class XrSoSimulatorSmoke
     {
@@ -33,6 +34,8 @@ namespace InventorXrSo.Editor
         private static readonly JObject Result = new JObject { ["input"] = "synthetic", ["cad"] = "HTTPS FakeAddIn", ["checks"] = new JArray() };
         private static string Output => SessionState.GetString(OutputKey, "");
         private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
+        private static string LiveCredentialsPath => Environment.GetEnvironmentVariable("XR_SO_SIMULATOR_LIVE_CREDENTIALS");
+        private static bool Native => !string.IsNullOrEmpty(LiveCredentialsPath);
 
         static XrSoSimulatorSmoke()
         {
@@ -53,6 +56,14 @@ namespace InventorXrSo.Editor
 
         private static ICredentialStore StartFixture()
         {
+            if (Native)
+            {
+                var json = File.ReadAllText(LiveCredentialsPath);
+                var settings = JObject.Parse(json);
+                if ((string)settings["fixture_name"] != "XR_M7_Quest_Acceptance.iam" || string.IsNullOrEmpty((string)settings["document_id"]))
+                    throw new InvalidOperationException("Only the dedicated native M7 fixture is accepted.");
+                return new Credentials(PairedServer.FromJson(json));
+            }
             string dll = Path.GetFullPath("Tests~/XrSo.TestHost/bin/Debug/net8.0/XrSo.TestHost.dll");
             if (!File.Exists(dll)) throw new FileNotFoundException("Build XrSo.TestHost first.", dll);
             var info = new ProcessStartInfo("dotnet", "\"" + dll + "\" --state \"" + Path.Combine(Output, "testhost") + "\"")
@@ -120,6 +131,7 @@ namespace InventorXrSo.Editor
 
         private static async void Run()
         {
+            Result["cad"] = Native ? "HTTPS Inventor 2027 / native M7 fixture" : "HTTPS FakeAddIn";
             try
             {
                 await Until(() => XRSettings.isDeviceActive, "OpenXR runtime connection", 60);
@@ -137,6 +149,14 @@ namespace InventorXrSo.Editor
                 var backend = Read<InventorBackend>(app, "_backend");
                 var view = Read<CadSceneView>(app, "sceneView");
                 var before = await backend.GetDocumentStateAsync(CancellationToken.None);
+                Result["cad"] = Native ? "HTTPS Inventor 2027 / native M7 fixture" : "HTTPS FakeAddIn";
+                Result["document_id"] = before.DocumentId; Result["revision_before"] = before.Revision;
+                if (Native)
+                {
+                    var settings = JObject.Parse(File.ReadAllText(LiveCredentialsPath));
+                    Check(before.DocumentId == (string)settings["document_id"] && view.Instances.Count == 4,
+                        "native fixture identity and four occurrences");
+                }
                 Check(app.CurrentActivity == Activity.Home, "connection preserves Home");
                 foreach (var label in new[] { UiText.RealityCapture, UiText.DesignActivity, UiText.PresentationActivity, UiText.VerificationActivity })
                     Check(home.VoiceActions.Any(a => a.label == label), "Home card " + label);
@@ -165,6 +185,7 @@ namespace InventorXrSo.Editor
                 Check(catalog.TryInvoke(InspectWorkspace.IdSection), "Verification section enabled");
                 Check(catalog.TryInvoke(InspectWorkspace.IdBrowse), "Verification browser opens");
                 await Task.Delay(500); await Screenshot("03-verification");
+                if (Native) await VerifyNative(inspect, catalog);
                 Check(catalog.TryInvoke(DocumentActions.IdExit), "Verification returns Home");
                 Check(home.InvokeVoiceAction(UiText.DesignActivity), "Design UI callback");
                 await Until(() => app.GetComponent<AssemblyWorkspace>().Active, "assembly authoring in Design");
@@ -177,13 +198,16 @@ namespace InventorXrSo.Editor
                 Check(capture.Panel.InvokeVoiceAction(UiText.ReturnHome), "Capture returns Home without recording");
                 var after = await backend.GetDocumentStateAsync(CancellationToken.None);
                 Check(before.DocumentId == after.DocumentId && before.Revision == after.Revision, "fixture CAD revision unchanged");
-                Result["status"] = "PASS_SYNTHETIC_META_XR_SIMULATOR";
+                Result["revision_after"] = after.Revision;
+                Result["status"] = Native ? "PASS_SYNTHETIC_META_XR_SIMULATOR_NATIVE_CAD" : "PASS_SYNTHETIC_META_XR_SIMULATOR";
                 File.WriteAllText(Path.Combine(Output, "pass.marker"), "synthetic simulator only");
             }
             catch (Exception error) { Result["status"] = "FAIL"; Result["error"] = error.ToString(); Debug.LogException(error); }
             finally
             {
-                Result["not_covered"] = new JArray("native Inventor COM", "Android/Keystore", "camera acquisition", "physical input/ergonomics", "Quest GPU performance");
+                Result["not_covered"] = Native
+                    ? new JArray("native CAD authoring/commit", "Android/Keystore", "camera acquisition", "physical input/ergonomics", "Quest GPU performance")
+                    : new JArray("native Inventor COM", "Android/Keystore", "camera acquisition", "physical input/ergonomics", "Quest GPU performance");
                 File.WriteAllText(Path.Combine(Output, "result.json"), Result.ToString());
                 AppController.EditorCredentialStoreFactory = null;
                 var app = UnityEngine.Object.FindFirstObjectByType<AppController>();
@@ -191,6 +215,47 @@ namespace InventorXrSo.Editor
                 if (_host != null) { _host.StandardInput.Close(); _host.Dispose(); _host = null; }
                 EditorApplication.ExitPlaymode();
             }
+        }
+
+        private static async Task SelectNative(InspectWorkspace inspect, ActionCatalog catalog, string name)
+        {
+            await Until(() => !Read<bool>(inspect, "_busy") && catalog.Find(InspectWorkspace.IdBrowse)?.Enabled == true, "browser ready");
+            Check(catalog.TryInvoke(InspectWorkspace.IdBrowse), "native browser opens for " + name);
+            var pick = inspect.Actions.FirstOrDefault(a => a.Id.StartsWith(InspectWorkspace.IdPickPrefix, StringComparison.Ordinal) && a.Label == name);
+            Check(pick != null && pick.TryInvoke(), "native browser selects " + name);
+            await Until(() => inspect.SelectedNodeName == name && !Read<bool>(inspect, "_busy"), "native selection " + name);
+        }
+
+        private static async Task VerifyNative(InspectWorkspace inspect, ActionCatalog catalog)
+        {
+            var session = Read<VerifySession>(inspect, "_verifySession");
+            Check(catalog.TryInvoke(InspectWorkspace.IdInterference), "native interference UI callback");
+            await Until(() => session.Interference.Status != VerifyStatus.Running, "native interference", 90);
+            Check(session.Interference.Status == VerifyStatus.Done, "native interference completed: " + session.Interference.ErrorCode);
+            var interference = session.Interference.Result;
+            Check(interference.Count == 1 && Math.Abs(interference.TotalVolumeMm3 - 2000) < 0.1, "native interference is one pair / 2000 mm3");
+            Check(interference.Pairs[0].AName == "M7_A" && interference.Pairs[0].BName == "M7_B", "native interference identifies A/B");
+            Result["interference_mm3"] = interference.TotalVolumeMm3;
+            await Task.Delay(200); await Screenshot("06-native-interference");
+            inspect.Back();
+            await SelectNative(inspect, catalog, "M7_A");
+            Check(catalog.TryInvoke(InspectWorkspace.IdDistance), "native distance first selection");
+            await SelectNative(inspect, catalog, "M7_C");
+            Check(catalog.TryInvoke(InspectWorkspace.IdDistance), "native distance second selection");
+            await Until(() => session.Distance.Status != VerifyStatus.Running, "native distance", 90);
+            Check(session.Distance.Status == VerifyStatus.Done && Math.Abs(session.Distance.Result.DistanceMm - 30) < 0.01,
+                "native minimum distance is 30 mm");
+            Result["distance_mm"] = session.Distance.Result.DistanceMm;
+            Check(session.Distance.Result.HasPoints, "native distance includes Inventor endpoints");
+            await Screenshot("07-native-distance");
+            Check(catalog.TryInvoke(InspectWorkspace.IdHealth), "native health UI callback");
+            await Until(() => session.Health.Status != VerifyStatus.Running, "native health", 90);
+            Check(session.Health.Status == VerifyStatus.Done, "native health completed: " + session.Health.ErrorCode);
+            var health = session.Health.Result;
+            Check(health.Issues.Any(i => i.Name == "M7_Sick"), "native health reports M7_Sick");
+            Check(health.Unconstrained.Count == 1 && health.Unconstrained[0].Name == "M7_D", "native health reports only D unconstrained");
+            Check(health.BomIssues.Any(i => i.Code == "DESCRIPTION_MISSING"), "native BOM reports missing description");
+            await Screenshot("08-native-health");
         }
     }
 }

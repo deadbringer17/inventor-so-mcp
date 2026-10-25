@@ -5,7 +5,7 @@
 
 ## Esito osservato
 
-`artifacts/meta-xr-simulator/run06/result.json` (confermato anche da run05):
+`artifacts/meta-xr-simulator/run07/result.json` (confermato anche da run05/run06):
 **PASS_SYNTHETIC_META_XR_SIMULATOR**, 31 controlli, cinque screenshot della scena
 Main effettivamente renderizzata in Play Mode, uscita con codice 0.
 Il runtime OpenXR e il dispositivo testa sono attivi; una precedente interrogazione
@@ -33,7 +33,7 @@ del workspace Assieme è verificata dallo stato runtime.
 Il ciclo ha rilevato e permesso di correggere eccezioni di cleanup su sezione e
 cursore già distrutti. Il runner controlla anche le eccezioni dell'app durante
 l'uscita da Play Mode e rimuove il marker PASS in caso di errore. Run05 non ne
-riporta; run06 conferma l'esito con il wrapper definitivo. Il log Unity contiene ancora diagnostica nativa `JobTempAlloc` alla
+riporta; run06 e run07 confermano l'esito con i wrapper definitivi. Il log Unity contiene ancora diagnostica nativa `JobTempAlloc` alla
 chiusura dell'Editor: origine non isolata, nessuna prestazione certificata.
 Le descrizioni Home sono state ingrandite dopo l'ispezione delle immagini.
 
@@ -47,7 +47,57 @@ non costituiscono prove di regressione; l'esecuzione completa citata è l'unica
 usata per il conteggio finale. I 1.355 test Core e le build APK rimangono le
 evidenze della precedente tranche F0–F4, prima dell'aggiunta del simulatore.
 
-## Riproduzione
+## Estensione con Inventor reale
+
+Il run `artifacts/meta-xr-simulator/native04/` (confermato anche da native03) ha completato
+**PASS_SYNTHETIC_META_XR_SIMULATOR_NATIVE_CAD**: 49 controlli, otto screenshot,
+codice di uscita 0. Unity usa lo stesso runtime Meta; il CAD arriva dall'host HTTPS
+di produzione e dall'add-in dentro Inventor 2027. La fixture dedicata è
+`XR_M7_Quest_Acceptance.iam`, creata dal programma `QuestAcceptanceFixtures`.
+
+| Controllo aggiuntivo | Risultato nativo |
+|---|---|
+| Identità | document ID della fixture e quattro occorrenze |
+| Interferenza, azione UI Verifica | una coppia M7_A/M7_B, 2.000 mm³ |
+| Distanza, due selezioni nel browser | M7_A/M7_C: 30 mm, con estremi restituiti da Inventor |
+| Salute, azione UI Verifica | vincolo M7_Sick in errore; solo M7_D non vincolato |
+| BOM | avviso DESCRIPTION_MISSING |
+| Invarianti | revisione iniziale/finale identica; ispezioni native prima/dopo identiche, dirty=false |
+| Ripristino | due documenti fixture chiusi senza salvare; nessun documento precedente da riattivare |
+
+Le otto immagini includono Home, Presentazione, Verifica, Disegno, Capture e
+i risultati di interferenza, distanza e salute. La misura locale Presentazione
+rimane sintetica; la distanza di 30 mm è invece calcolata da Inventor.
+L'ispezione prima/dopo è indipendente da Unity e controlla pose, volume, vincoli
+e dirty flag. Il wrapper confronta i due log e considera fallita la corsa se
+lo stato cambia o il ripristino non riesce.
+
+Host solo su loopback, porta libera assegnata per la corsa, certificato ECDSA
+P-256 e token temporanei; il client conserva il pinning SHA-256. Le credenziali
+sono caricate in memoria dal client da un file temporaneo, senza modificare il pairing
+persistente. Il `finally` arresta il solo host creato dalla prova ed elimina i
+quattro file temporanei di configurazione/credenziali/certificato. I manifest di
+fixture sono isolati nella cartella di ogni run. Inventor resta aperto.
+
+I tentativi `native01` e `native02` non sono PASS: il primo si è fermato nella
+creazione del certificato, il secondo nella connessione TLS prima di caricare
+la scena CAD. Entrambi hanno ripristinato la fixture; i log sono conservati.
+Il generatore finale usa curva ed estensioni del certificato compatibili con il
+percorso del progetto, senza disabilitare la verifica TLS.
+
+Riproduzione con una sola istanza Inventor 2027 aperta, add-in SO caricato e tier
+sperimentale abilitato, ed Editor Unity chiuso:
+
+```powershell
+& 'Inventor XR SO/Tools~/Invoke-SimulatorLive.ps1' -Output 'artifacts/meta-xr-simulator/prova-nativa'
+```
+
+È un sottocaso nativo di F0–F4/M7 in un simulatore desktop: non è il runner
+Android sul Quest né il collaudo completo di M7. Authoring/preview/applica CAD,
+stale/scope/focus completi, riconnessione e cambio documento nativi restano
+fuori da questa corsa. Non sono stati modificati codice bridge o scena Main.
+
+## Riproduzione FakeAddIn
 
 Requisiti: Unity 6000.6.3f1, .NET 8 SDK, Meta CLI `metavr` nel PATH e runtime
 [Meta XR Simulator Windows](https://developers.meta.com/vr/downloads/package/meta-xr-simulator-windows/).
@@ -91,9 +141,11 @@ frame XR; il wrapper usa l'Editor con Game view.
 
 ## Limiti e gate aperti
 
-Questa prova aggiunge copertura d'integrazione desktop ai test Core/EditMode di
-[F0–F4](xr-quattro-esperienze-verification.md). Restano **NOT COVERED**: Inventor
-COM reale, APK/Android/Keystore, fotocamere e acquisizione, microfono, tracking e
+Queste prove aggiungono copertura d'integrazione desktop ai test Core/EditMode di
+[F0–F4](xr-quattro-esperienze-verification.md). Il percorso FakeAddIn non copre
+COM; quello nativo copre soltanto i sottocasi della tabella precedente.
+Restano **NOT COVERED**: authoring/commit CAD nativi, APK/Android/Keystore,
+fotocamere e acquisizione, microfono, tracking e
 controller fisici, ergonomia/leggibilità nel visore e prestazioni GPU Quest.
 Non chiude i gate Quest QX o quelli storici delle milestone. Meta XR Simulator
 fornisce un runtime XR desktop, non esegue l'APK come un emulatore Android.

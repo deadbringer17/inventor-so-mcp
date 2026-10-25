@@ -1,7 +1,8 @@
 param(
     [switch]$SetupOnly,
     [string]$RuntimeManifest,
-    [string]$Output
+    [string]$Output,
+    [string]$LiveCredentials
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -27,19 +28,24 @@ if (-not $RuntimeManifest) {
     }
 }
 if (-not (Test-Path -LiteralPath $RuntimeManifest)) { throw 'Meta XR Simulator is missing. Install the official simulator or pass -RuntimeManifest.' }
+if ($LiveCredentials -and -not (Test-Path -LiteralPath $LiveCredentials)) { throw 'Live fixture credentials file is missing.' }
 if (-not $SetupOnly) {
     $marker = Join-Path $Output 'pass.marker'
     if (Test-Path -LiteralPath $marker) { Remove-Item -LiteralPath $marker }
-    & dotnet build (Join-Path $projectRoot 'Tests~/XrSo.TestHost/XrSo.TestHost.csproj') --nologo *> (Join-Path $Output 'testhost-build.log')
-    if ($LASTEXITCODE -ne 0) { throw 'HTTPS fixture build failed; see testhost-build.log.' }
+    if (-not $LiveCredentials) {
+        & dotnet build (Join-Path $projectRoot 'Tests~/XrSo.TestHost/XrSo.TestHost.csproj') --nologo *> (Join-Path $Output 'testhost-build.log')
+        if ($LASTEXITCODE -ne 0) { throw 'HTTPS fixture build failed; see testhost-build.log.' }
+    }
 }
 $simExe = Join-Path (Split-Path -Parent $RuntimeManifest) 'MetaXRSimulator.exe'
 & metavr xrsim app launch --app-path $simExe *> (Join-Path $Output 'frontend-launch.log')
 if ($LASTEXITCODE -ne 0) { throw 'Meta XR Simulator frontend did not start; see frontend-launch.log.' }
 $previousRuntime = $env:XR_RUNTIME_JSON
+$previousLiveCredentials = $env:XR_SO_SIMULATOR_LIVE_CREDENTIALS
 try {
     # Process scope only. Never replace the system-wide Quest Link/OpenXR runtime.
     $env:XR_RUNTIME_JSON = [System.IO.Path]::GetFullPath($RuntimeManifest)
+    $env:XR_SO_SIMULATOR_LIVE_CREDENTIALS = if ($LiveCredentials) { [System.IO.Path]::GetFullPath($LiveCredentials) } else { $null }
     $method = if ($SetupOnly) { 'InventorXrSo.Editor.XrSoSimulator.ConfigureBatch' } else { 'InventorXrSo.Editor.XrSoSimulator.RunSmokeBatch' }
     # A real Game view is required to pump XR frames. Batch mode can create an OpenXR instance without rendering a session.
     $unity = 'C:/Program Files/Unity/Hub/Editor/6000.6.3f1/Editor/Unity.exe'
@@ -50,5 +56,5 @@ try {
     if (-not $SetupOnly -and $resultCode -eq 0 -and -not (Test-Path -LiteralPath $marker)) {
         throw 'Unity exited without completing the simulator checks; see unity.log.'
     }
-} finally { $env:XR_RUNTIME_JSON = $previousRuntime }
+} finally { $env:XR_RUNTIME_JSON = $previousRuntime; $env:XR_SO_SIMULATOR_LIVE_CREDENTIALS = $previousLiveCredentials }
 exit $resultCode

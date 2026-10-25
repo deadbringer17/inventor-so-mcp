@@ -23,6 +23,7 @@ Perimetro: prima consegna del [piano](superpowers/plans/2026-10-25-quattro-esper
 | Android ordinario, senza runner | non ricostruito per F0 | **PASS**, APK release ARM64, 57.141.704 byte |
 | Quest sintetico su fixture Inventor | nessun dispositivo collegato | **NOT COVERED** |
 | Meta XR Simulator desktop + HTTPS FakeAddIn | aggiunto dopo la tranche | **PASS sintetico**, 31 controlli e cinque screenshot; [verbale](xr-meta-simulator-verification.md) |
+| Meta XR Simulator desktop + Inventor 2027 nativo | estensione del collaudo | **PASS sintetico**, 49 controlli, otto screenshot, interferenza/distanza/salute/BOM; fixture e revisione invariati, ripristino riuscito; [verbale](xr-meta-simulator-verification.md) |
 | Prova fisica persona/controller | non eseguita | **NOT COVERED** |
 
 Ispezione dei pacchetti: libreria `lib/arm64-v8a/libil2cpp.so` presente in entrambi; metadati `QxQuestAcceptance` presenti soltanto nel QA. Build conclusa con exit code 0. Hash SHA-256 completi in `manifest.json` e `package-inspection.json`.
@@ -39,7 +40,7 @@ Log, XML/TRX e APK sono conservati in `artifacts/qx-f0-f4/` (cartella ignorata d
 | QX-04 | Find, palette, ring, voce e azioni obsolete; MCP spy; chiamate dirette preview/history | runner QX + audit/revisione nativa e comandi fisici |
 | QX-05 | suite esistenti Core/EditMode; runner migrati e compilati nella build QA | riesecuzione dei runner storici per i sottocasi |
 | QX-06 | misure/scala Presentazione e browser/sezione Verifica offline; reset al cambio attività | runner Quest e controllo fisico |
-| QX-07 | regressioni M7 esistenti, provider dedicato; runner M7 migrato | M7 su Inventor reale e Quest |
+| QX-07 | regressioni M7 esistenti, provider dedicato; runner M7 migrato; analisi native M7 attraversate in Meta XR Simulator | M7 completo su Quest e prova fisica; scope/stale/focus non esercitati dal nuovo smoke desktop |
 | QX-15/16 | nessuna prestazione o ergonomia certificata dai test PC | benchmark/leggibilità/comprensione con Quest e persona |
 
 QX-08–14 non sono consegnati da F0–F4: esploso/smontaggio (F5), passaggio Capture guidato (F6), pose e movimenti (F7). F8 conserva l’accettazione complessiva. Nessun gate M1–M10, S1 o RC viene chiuso da questo verbale.

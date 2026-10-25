@@ -7,6 +7,9 @@ l'authoring segue il contesto documento soltanto in Disegno. È stato aggiunto
 OpenXR 1.18.0 per Standalone e il percorso Editor
 `Tools~/Invoke-Simulator.ps1`, con Meta XR Simulator 207.1 e HTTPS FakeAddIn.
 Android mantiene Oculus. [Verbale del simulatore](xr-meta-simulator-verification.md).
+`Tools~/Invoke-SimulatorLive.ps1` estende la prova al CAD nativo: prepara,
+ispeziona e ripristina la fixture M7; interferenza, distanza, salute e BOM
+sono eseguite tramite il workspace Verifica e l'host HTTPS di produzione.
 L'analisi statica sottostante descrive il punto di partenza precedente ai lavori.
 
 <!-- unity-onboarding:generated:start -->

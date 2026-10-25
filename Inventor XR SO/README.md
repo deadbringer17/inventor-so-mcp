@@ -244,6 +244,19 @@ screenshot documentano i controlli sintetici; il pairing reale non viene modific
 soltanto il profilo. [Esiti, installazione locale e limiti](../docs/xr-meta-simulator-verification.md).
 Questa prova non copre Inventor COM, acquisizione reale o prestazioni Quest.
 
+Per usare il simulatore contro Inventor reale, aprire una sola istanza di
+Inventor 2027 con add-in SO e tier sperimentale abilitato, poi eseguire:
+
+```powershell
+& 'Inventor XR SO/Tools~/Invoke-SimulatorLive.ps1' -Output 'artifacts/meta-xr-simulator/prova-nativa'
+```
+
+Il wrapper prepara la fixture M7 dedicata, usa un host HTTPS su loopback con
+certificato e credenziali temporanei e ripristina la fixture nel `finally`.
+Verifica anche interferenza, distanza minima e salute/BOM attraverso le azioni
+di Verifica. Documenti dell'utente e pairing persistente non vengono salvati
+o sovrascritti. Questa resta una prova desktop con input sintetico.
+
 ## M10 icone Inventor
 
 Migrazione software estesa ai sei fornitori Progettazione, Lamiera, Assieme,
