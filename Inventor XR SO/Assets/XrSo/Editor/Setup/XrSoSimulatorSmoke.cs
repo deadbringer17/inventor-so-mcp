@@ -232,6 +232,24 @@ namespace InventorXrSo.Editor
                 var after = await backend.GetDocumentStateAsync(CancellationToken.None);
                 Check(before.DocumentId == after.DocumentId && before.Revision == after.Revision, "fixture CAD revision unchanged");
                 Result["revision_after"] = after.Revision;
+                if (!Native)
+                {
+                    var session = Read<SessionController>(app, "_session");
+                    Check(home.InvokeVoiceAction(UiText.RealityCapture), "Capture reopens before owned HTTPS failure");
+                    _host.StandardInput.Close();
+                    await Until(() => _host.HasExited, "owned HTTPS fixture shutdown");
+                    _host.Dispose(); _host = null;
+                    await Until(() => session.Status != SessionStatus.Online, "Capture detects lost HTTPS host", 60);
+                    Check(capture.Active && !home.gameObject.activeSelf && app.CurrentActivity == Activity.Capture,
+                        "Capture activity remains open after real HTTPS fixture loss");
+                    Check(!view.gameObject.activeSelf, "offline Capture keeps CAD hidden");
+                    Check(capture.Panel.InvokeVoiceAction(UiText.CaptureNewObject), "offline Object volume setup");
+                    Check(!capture.Panel.InvokeVoiceAction(UiText.CaptureStart), "offline camera needs volume confirmation");
+                    Check(capture.Panel.InvokeVoiceAction(UiText.Cancel), "offline setup cancels before camera access");
+                    Check(capture.Panel.InvokeVoiceAction(UiText.ReturnHome), "offline Capture returns Home");
+                    Result["network_failure"] = "owned HTTPS FakeAddIn stopped; no reconnect certified";
+                    await Screenshot("09-capture-offline");
+                }
                 Result["status"] = Native ? "PASS_SYNTHETIC_META_XR_SIMULATOR_NATIVE_CAD" : "PASS_SYNTHETIC_META_XR_SIMULATOR";
                 File.WriteAllText(Path.Combine(Output, "pass.marker"), "synthetic simulator only");
             }

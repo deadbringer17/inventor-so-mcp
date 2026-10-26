@@ -11,6 +11,7 @@ $Output = [IO.Path]::GetFullPath($Output)
 New-Item -ItemType Directory -Path $Output -Force | Out-Null
 $results = [Collections.Generic.List[object]]::new()
 foreach ($runner in $Runners) {
+    if (Test-Path -LiteralPath (Join-Path $Output 'stop.request')) { break }
     $runOutput = Join-Path $Output ($runner + '-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
     @{ runner = $runner; state = 'running'; output = $runOutput } | ConvertTo-Json | Set-Content (Join-Path $Output 'progress.json')
     Write-Output "[SimulatorSuite] Starting $runner"
@@ -28,7 +29,7 @@ foreach ($runner in $Runners) {
 $failed = @($results | Where-Object { $_.exit_code -ne 0 })
 $partial = @($results | Where-Object { $_.evidence.verdict -like 'PARTIAL*' })
 $withGaps = @($results | Where-Object { $_.evidence.not_covered.Count -gt 0 })
-@{ state = 'finished'; runs = $results.Count; failures = $failed.Count; partial_runs = $partial.Count;
+@{ state = $(if ($results.Count -lt $Runners.Count) { 'stopped' } else { 'finished' }); runs = $results.Count; failures = $failed.Count; partial_runs = $partial.Count;
     runs_with_not_covered = $withGaps.Count; coverage = 'Inspect every runner not_covered list; exit code 0 does not mean all gates are covered.';
     input = 'synthetic'; platform = 'Meta XR Simulator / Unity Editor'; physical_test = 'excluded' } |
     ConvertTo-Json | Set-Content (Join-Path $Output 'progress.json')

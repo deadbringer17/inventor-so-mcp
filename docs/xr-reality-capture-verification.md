@@ -1,5 +1,21 @@
 # Reality Capture — verifiche
 
+Aggiornamento **26 ottobre 2026**, branch `codex/reality-capture`: eseguiti i
+14 runner disponibili in Meta XR Simulator, con input sintetico e fixture
+Inventor dedicate. Le corse finali selezionate totalizzano 9.393 asserzioni;
+M9 e S1 conservano il verdetto PARTIAL. Suite Core/backend/worker/EditMode:
+4.431 PASS. Riferimento RC4 nativo: 37 asserzioni PASS con preview/rollback,
+commit, Undo/Redo e salvataggio/riapertura; corretto il set di attributi del
+documento (`CopyWithOwner=false`). La perdita reale dell’host HTTPS FakeAddIn
+lascia Capture navigabile, con CAD nascosto. Camera, tracking, metrologia e
+overlay fisici restano aperti. Copertura, correzioni, crash Unity di una corsa
+precedente, esclusioni software e ripristino sono distinti nel
+[verbale del simulatore](xr-reality-capture-simulator-verification.md).
+Le sezioni seguenti conservano gli esiti storici; non attribuiscono un PASS
+Quest hardware alle nuove corse desktop.
+
+
+
 Aggiornamento 26 ottobre 2026: nel [collaudo esteso](xr-simulator-full-collaudo.md)
 M1 esegue i casi locali/review sintetici in Meta XR Simulator e QX verifica
 offline/riconnessione e guardie Capture. La sonda RC4 su Inventor reale passa

@@ -6,6 +6,7 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $repoRoot = Split-Path -Parent $projectRoot
 if (-not $Output) { $Output = Join-Path $repoRoot ('artifacts/meta-xr-simulator/live-' + (Get-Date -Format 'yyyyMMdd-HHmmss')) }
 $Output = [IO.Path]::GetFullPath($Output)
+if (Test-Path -LiteralPath (Join-Path $Output 'native-cleanup.json')) { throw 'Choose a new output folder; previous native evidence is immutable.' }
 New-Item -ItemType Directory -Path $Output -Force | Out-Null
 $privateDirectory = Join-Path ([IO.Path]::GetTempPath()) ('xrso-simulator-live-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $privateDirectory | Out-Null

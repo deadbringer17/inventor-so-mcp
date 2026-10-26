@@ -73,6 +73,23 @@ namespace InventorXrSo.Editor
             }
         }
 
+        public static void BuildSimulatorApksBatch()
+        {
+            try
+            {
+                var args = Environment.GetCommandLineArgs();
+                int index = Array.IndexOf(args, "-simulatorApkOutput");
+                if (index < 0 || index + 1 >= args.Length) throw new ArgumentException("Pass a new -simulatorApkOutput directory.");
+                string output = Path.GetFullPath(args[index + 1]);
+                if (Directory.Exists(output)) throw new IOException("APK evidence directory already exists.");
+                Directory.CreateDirectory(output);
+                Build(true, true, Path.Combine(output, "InventorXrSo-simulator-acceptance.apk"));
+                Build(false, false, Path.Combine(output, "InventorXrSo-simulator-ordinary.apk"));
+                EditorApplication.Exit(0);
+            }
+            catch (Exception ex) { Debug.LogException(ex); EditorApplication.Exit(1); }
+        }
+
         public static void BuildM8ApksBatch()
         {
             try

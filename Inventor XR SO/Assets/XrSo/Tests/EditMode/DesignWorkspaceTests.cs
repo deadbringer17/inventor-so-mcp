@@ -154,6 +154,39 @@ namespace InventorXrSo.Tests
             Assert.AreEqual(1,_backend.Commits); Assert.False(_view.GetComponent<DesignPreviewView>().IsShowing);
             Assert.AreEqual(CommitBarPhase.Applied,_workspace.CommitBar.Phase,"MarkApplied after a successful apply");
         }
+        [Test] public void SameRevisionSceneRefreshRestoresCurrentPreviewBeforeApply()
+        {
+            SketchOnXy();
+            var preview = _view.GetComponent<DesignPreviewView>();
+            var plan = Field<DesignSession>("_session").Preview.PlanId;
+            int requests = _backend.Previews;
+            _view.Show(_scene); // A queued scene snapshot can arrive after the preview was rendered.
+            Assert.False(preview.IsShowing);
+            _workspace.SetScene(_scene);
+            Assert.True(preview.IsShowing, "Apply must not stay enabled while its preview has disappeared");
+            Assert.AreEqual(plan, preview.PlanId);
+            Assert.True(Enabled(CommitIds.Apply));
+            Assert.AreEqual(requests, _backend.Previews, "a same-revision redraw reuses the validated plan");
+            _workspace.SetDocumentState(new DocumentState("doc_bolt", "r2", "v2"));
+            Assert.False(preview.IsShowing);
+            Assert.False(Enabled(CommitIds.Apply), "a changed revision must discard the old plan");
+            Assert.Zero(_backend.Commits);
+        }
+
+        [Test] public void FailedSceneRedrawCannotKeepApplyFromAnEarlierRendering()
+        {
+            SketchOnXy();
+            Assert.True(Enabled(CommitIds.Apply));
+            _view.Show(_scene);
+            var unavailable = _view.gameObject.AddComponent<DesignPreviewView>(); // Renderer has not initialized.
+            SetField("_previewView", unavailable);
+            _workspace.SetScene(_scene);
+            Assert.False(unavailable.IsShowing);
+            Assert.False(Enabled(CommitIds.Apply));
+            Assert.AreEqual(DesignStatus.Error, Field<DesignSession>("_session").Status);
+            Assert.Zero(_backend.Commits);
+        }
+
         [Test] public void HistoryIsAvailableFromFeatureTabAndOfflineRemovesRemoteActions()
         {
             Do(Undo); Assert.AreEqual(1,_backend.HistoryCalls);

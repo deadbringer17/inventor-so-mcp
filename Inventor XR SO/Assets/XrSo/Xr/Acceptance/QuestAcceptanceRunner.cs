@@ -117,6 +117,19 @@ namespace InventorXrSo.Xr
 
         protected void Record(string message)
         {
+            // Older runners log gate lines directly instead of calling Pass/NotCovered.
+            string prefix = message.StartsWith("NOT COVERED [", StringComparison.Ordinal) ? "NOT COVERED ["
+                : message.StartsWith("PASS [", StringComparison.Ordinal) ? "PASS [" : null;
+            if (prefix != null)
+            {
+                int end = message.IndexOf(']', prefix.Length);
+                if (end > prefix.Length)
+                {
+                    string gate = message.Substring(prefix.Length, end - prefix.Length);
+                    var gates = prefix[0] == 'N' ? NotCoveredGates : _passedGates;
+                    if (!gates.Contains(gate)) gates.Add(gate);
+                }
+            }
             var line = DateTime.UtcNow.ToString("O") + " " + Tag + " " + message;
             Debug.Log(line);
             if (string.IsNullOrEmpty(LogPath)) return;
