@@ -12,10 +12,51 @@ Capture prima dell’integrazione. La PR #14 di `nuova_ux` risulta già integrat
 in `main` (`87bb820`): questo branch incorpora quel main, preserva le quattro
 attività e aggiunge le correzioni alla preview e ai runner. I conteggi e gli
 APK delle tabelle seguenti appartengono al checkpoint Capture; non vengono
-riattribuiti automaticamente alla versione integrata. Verifica post-integrazione
-in corso, con evidenze separate e descrizione finale nella PR.
+riattribuiti automaticamente alla versione integrata.
 
-## Evidenze finali
+Verifica della versione integrata `8dee978`, con evidenze separate in
+`artifacts/reality-capture/pr-integration-20261026-112241/`:
+
+| Livello | Esito | Evidenza |
+|---|---|---|
+| Core XR | 1.355 PASS | `core.trx` |
+| Backend, corsa finale | 1.926 PASS | `backend-final.trx` |
+| Capture.Worker | 16 PASS | `pc/worker.trx` |
+| Unity EditMode Android | 1.165 PASS, zero fail/skip | `editmode.xml` |
+| Smoke con quattro attività e Capture offline | 38 controlli PASS, exit 0 | `fake-offline/result.json`, `pass.marker`, PNG e log |
+
+Le quattro suite totalizzano **4.462 PASS** nella selezione finale. Il backend
+ha avuto prima due fallimenti distinti: cancellazione del piano non propagata
+(`pc/backend.trx`) e timeout di 20 secondi dell’host pairing
+(`backend-repeat.trx`). Entrambi passano nelle ripetizioni mirate
+(`backend-cancellation-targeted.trx`, `backend-pairing-targeted.trx`) e nella
+successiva corsa completa. I sorgenti backend coincidono con `main`; la causa
+dell’intermittenza resta da isolare e i fallimenti originali sono conservati.
+Non viene introdotto un fix backend in questa PR.
+
+Lo smoke usa input sintetico e HTTPS FakeAddIn, arresta realmente il proprio
+host e verifica che Capture rimanga utilizzabile offline. Non certifica COM
+nativo, acquisizione camera, Android/Keystore, ergonomia o GPU Quest.
+Il log conserva gli avvisi JobTempAlloc, senza attribuirne la causa ai fix.
+
+### APK della versione integrata
+
+`BuildQxApksBatch` e `Inspect-SimulatorPackages.ps1` terminano con exit 0;
+`package-inspection.json` conferma ARM64 IL2CPP per entrambi, tutti i **16**
+nomi dei runner (QX incluso) nei metadati QA e **zero** nell’ordinario.
+È un’ispezione del pacchetto, non un’esecuzione sul dispositivo.
+
+| APK | Byte | SHA-256 |
+|---|---:|---|
+| QA Development | 95.733.591 | `28BD4F936C839BF5DDB64C5C5EA98E7B2DCF0CB3D7729DBE8DA586A8D518BFB6` |
+| Ordinario | 58.004.712 | `24D4C6546635005D203BD278816729EEE59BDAAC927AFA267940C7AFA272F69C` |
+
+Log: `apks.log`; pacchetti: `apks/`, nella radice post-integrazione.
+`integration-summary.json` e `source-manifest.json` conservano conteggi e hash
+delle sorgenti. Le modifiche generate a font/settings sono ripristinate a fine
+verifica; le istruzioni locali dell’utente rimangono escluse dai commit.
+
+## Evidenze finali del checkpoint Capture precedente
 
 Radice: `artifacts/reality-capture/simulator-20261026-065832/`.
 `summary.json` seleziona le corse finali e ricava i gate anche dai log testuali:
