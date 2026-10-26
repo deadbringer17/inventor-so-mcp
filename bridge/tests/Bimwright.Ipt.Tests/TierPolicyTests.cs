@@ -63,12 +63,29 @@ public sealed class TierPolicyTests
     [Fact]
     public void EveryContractNamesARegisteredTool()
     {
-        var registered = Program.ResolveToolTypesForRegistration(new InventorMcpConfig { Toolsets = { "all" }, EnableSendCode = true })
+        var configs=new[] {
+            new InventorMcpConfig { Toolsets = { "all" }, EnableSendCode = true },
+            new InventorMcpConfig { Toolsets = { "all" }, EnableSendCode = true,EnableExperimental=true,Transport="http" }
+        };
+        var registered = configs.SelectMany(Program.ResolveToolTypesForRegistration).Distinct()
             .SelectMany(t => t.GetMethods())
             .Select(m => m.GetCustomAttribute<McpServerToolAttribute>()?.Name)
             .Where(n => n != null).ToHashSet();
         foreach (var contract in ToolContracts.Contracts)
             Assert.True(registered.Contains(contract.Name), "contract without a tool: " + contract.Name);
+    }
+
+    [Fact]
+    public void CaptureToolsAreExperimentalHttpOnlyAndRemovedInReadOnlyMode()
+    {
+        var type=typeof(Bimwright.Ipt.Server.Tools.RealityCaptureTools);
+        Assert.DoesNotContain(type,Program.ResolveToolTypesForRegistration(new InventorMcpConfig {EnableExperimental=true}));
+        Assert.DoesNotContain(type,Program.ResolveToolTypesForRegistration(new InventorMcpConfig {Transport="http"}));
+        Assert.Contains(type,Program.ResolveToolTypesForRegistration(new InventorMcpConfig {Transport="http",EnableExperimental=true}));
+        Assert.DoesNotContain(type,Program.ResolveToolTypesForRegistration(new InventorMcpConfig {Transport="http",EnableExperimental=true,ReadOnly=true}));
+        foreach(var method in type.GetMethods())
+            if(method.GetCustomAttribute<McpServerToolAttribute>()?.Name is { } name)
+            {Assert.Equal(ToolContracts.Experimental,SoToolPolicy.TierOf(name));Assert.Empty(ToolContracts.Find(name)!.Documents);}
     }
 
     [Fact]

@@ -1,4 +1,4 @@
-#if XR_SO_ACCEPTANCE
+#if XR_SO_ACCEPTANCE || UNITY_EDITOR
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -64,7 +64,7 @@ namespace InventorXrSo.Xr
                     for (int i = 0; i < 90; i++) await NextFrame(ct);
                     report.samples[phase] = await Capture(icons ? "M10-icons" : "M8-text-control-" + phase, display, ct);
                 }
-                File.WriteAllText(Path.Combine(Application.persistentDataPath, "m10-acceptance-performance.json"), JsonUtility.ToJson(report, true));
+                File.WriteAllText(Path.Combine(Environment.GetEnvironmentVariable("XR_SO_SIMULATOR_OUTPUT") ?? Application.persistentDataPath, "m10-acceptance-performance.json"), JsonUtility.ToJson(report, true));
                 return report;
             }
             finally { palette.Render(original); palette.ShowTab(tab); palette.Canvas.gameObject.SetActive(visible); }

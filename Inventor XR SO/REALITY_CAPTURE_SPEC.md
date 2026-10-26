@@ -877,6 +877,30 @@ Questo consente di misurare realmente la qualità della scansione.
 
 # 24. UI Reality Capture
 
+Aggiornamento di navigazione del 24 ottobre 2026: l'ingresso **Reality Capture**
+compare nella stessa Home che propone **Realtà mista**, **Studio virtuale** e
+**Dimentica PC**, ed è disponibile anche senza PC associato o documento aperto.
+È una sezione indipendente dell'applicazione, con passthrough e strumenti propri:
+entrando vengono sospesi e nascosti strumenti, input, selezione e voce CAD.
+Il comando **Torna alla Home** e il pulsante menu permettono di uscire dalla sezione.
+Gli eventi della connessione Inventor non devono sostituirne l'interfaccia.
+Dettagli e perimetro RC0: [design della sezione indipendente](../docs/superpowers/specs/2026-10-24-reality-capture-independent-section-design.md).
+
+Avanzamento software RC3 del 24 ottobre: **Revisioni PC** integra solve locale,
+riapertura e viewer indipendente, selezione di punti, fitting manuali di
+punto/asse/piano/cerchio/cilindro, quote note, residui ed export con unità.
+I fitting sono stime su supporti scelti dall’operatore; l’RMS non è incertezza
+metrologica, che resta non stimata. I punti a due viste indicano debole supporto
+osservativo, non copertura geometrica. Annotazioni e vincoli sono versionati
+senza alterare raw e solve precedenti. [Design e gate RC3](../docs/superpowers/specs/2026-10-24-reality-capture-rc3-review-design.md).
+Run Quest, oggetti reali e validazione dimensionale indipendente restano aperti;
+RC4 dispone ora del codice di riferimento Inventor e overlay (25 ottobre):
+matrice LH→RH versionata, nuova parte workspace con point cloud 3D, work
+geometry e parametri, preview/commit e confronto CAD separato. Overlay 1:1
+solo dopo tre nuovi riferimenti fisici; tracking/recenter e cambi CAD/PC lo
+invalidano. La mesh resta un artefatto separato, senza conversione B-Rep.
+Collaudo nativo Inventor e Quest aperti; [design RC4](../docs/superpowers/specs/2026-10-25-reality-capture-rc4-inventor-design.md).
+
 Menu principale:
 
 ```text

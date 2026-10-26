@@ -1,5 +1,17 @@
 {
   "dependencies": {
+    "com.meta.xr.mrutilitykit": {
+      "version": "207.0.0",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "com.unity.ai.navigation": "1.1.4",
+        "com.unity.nuget.newtonsoft-json": "3.0.2",
+        "com.meta.xr.sdk.core": "207.0.0",
+        "com.unity.textmeshpro": "3.0.6"
+      },
+      "url": "https://npm.developer.oculus.com"
+    },
     "com.meta.xr.sdk.core": {
       "version": "207.0.0",
       "depth": 0,
@@ -22,6 +34,15 @@
       "dependencies": {
         "com.unity.nuget.newtonsoft-json": "3.2.1"
       }
+    },
+    "com.unity.ai.navigation": {
+      "version": "2.0.14",
+      "depth": 1,
+      "source": "registry",
+      "dependencies": {
+        "com.unity.modules.ai": "1.0.0"
+      },
+      "url": "https://packages.unity.com"
     },
     "com.unity.burst": {
       "version": "2.0.0",
@@ -72,7 +93,7 @@
     },
     "com.unity.inputsystem": {
       "version": "1.20.0",
-      "depth": 2,
+      "depth": 1,
       "source": "registry",
       "dependencies": {
         "com.unity.modules.uielements": "1.0.0"
@@ -171,6 +192,14 @@
         "com.unity.modules.jsonserialize": "1.0.0"
       }
     },
+    "com.unity.textmeshpro": {
+      "version": "5.0.0",
+      "depth": 1,
+      "source": "builtin",
+      "dependencies": {
+        "com.unity.ugui": "2.0.0"
+      }
+    },
     "com.unity.ugui": {
       "version": "2.6.0",
       "depth": 0,
@@ -234,6 +263,20 @@
       "dependencies": {
         "com.unity.xr.management": "4.4.0",
         "com.unity.modules.androidjni": "1.0.0"
+      },
+      "url": "https://packages.unity.com"
+    },
+    "com.unity.xr.openxr": {
+      "version": "1.18.0",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "com.unity.modules.xr": "1.0.0",
+        "com.unity.inputsystem": "1.6.3",
+        "com.unity.xr.core-utils": "2.3.0",
+        "com.unity.xr.management": "4.4.0",
+        "com.unity.modules.androidjni": "1.0.0",
+        "com.unity.xr.legacyinputhelpers": "2.1.2"
       },
       "url": "https://packages.unity.com"
     },

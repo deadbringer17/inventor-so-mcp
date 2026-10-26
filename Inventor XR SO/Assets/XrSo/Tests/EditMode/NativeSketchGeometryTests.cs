@@ -13,6 +13,16 @@ namespace InventorXrSo.Tests
         private GameObject _model;
         [SetUp] public void Setup() => _model = new GameObject("native model");
         [TearDown] public void Cleanup() => UnityEngine.Object.DestroyImmediate(_model);
+        [Test]
+        public void CursorCleanupToleratesRendererDestroyedBeforeNativeEditor()
+        {
+            var view = _model.AddComponent<DesignGeometryView>();
+            view.Initialize(null);
+            var cursor = _model.GetComponentsInChildren<LineRenderer>().Single(l => l.name == "Sketch cursor");
+            UnityEngine.Object.DestroyImmediate(cursor.gameObject);
+            Assert.DoesNotThrow(() => view.Cursor(null, default, null, SketchShape.Line));
+        }
+
         private static NativeSketchSnapshot Snapshot(bool constraint=false) => NativeSketchSnapshot.Parse(new JObject
         {
             ["schema_version"] = 1, ["document_id"] = "doc", ["revision"] = "r1", ["sketch_id"] = "ent_sketch",

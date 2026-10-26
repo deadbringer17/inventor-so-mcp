@@ -1,11 +1,13 @@
-#if XR_SO_ACCEPTANCE
+#if XR_SO_ACCEPTANCE || UNITY_EDITOR
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using InventorXrSo.Core.Backend;
+using InventorXrSo.Core.Capture;
 using InventorXrSo.Core.Pairing;
 using InventorXrSo.Core.Selection;
 using InventorXrSo.Core.Session;
@@ -15,6 +17,7 @@ using InventorXrSo.Unity.Scene;
 using InventorXrSo.Unity.Ui;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 namespace InventorXrSo.Xr
 {
@@ -23,6 +26,7 @@ namespace InventorXrSo.Xr
     {
         internal static readonly string[] ReflectedMembers =
         {
+            "AppController._verification",
             "AppController._session",
             "AppController._store",
             "AppController._server",
@@ -32,10 +36,17 @@ namespace InventorXrSo.Xr
             "AppController._selection",
             "AppController._selecting",
             "AppController._inSession",
+            "AppController._capture",
+            "AppController._shell",
+            "AppController._input",
+            "AppController._voice",
+            "AppController._legend",
+            "AppController.ray",
             "AppController.sceneView",
             "AppController.selectionVisuals",
             "AppController.environment",
             "AppController.RefreshHome",
+            "AppController.LeaveSession",
             "AppController.EnterSession",
             "AppController.CloseAuthoring",
             "AppController.OnPicked",
@@ -83,8 +94,8 @@ namespace InventorXrSo.Xr
             Call(App, "RefreshHome");
             var home = Read<HomePanel>(App, "_home");
             Check(home != null, "Home panel exists");
-            var title = Read<Text>(home, "_title").text;
-            var body = Read<Text>(home, "_body").text;
+            var title = Read<TMP_Text>(home, "_title").text;
+            var body = Read<TMP_Text>(home, "_body").text;
             Check(title == UiText.AppTitle, "Home title is the app title");
             Check(body.Contains(UiText.PcLabel + server.Host + ":" + server.Port), "Home shows the PC address");
             Check(body.Contains(UiText.BackendLabel + UiText.VersionLabel(caps.ServerVersion)), "Home shows the backend version");
@@ -94,14 +105,13 @@ namespace InventorXrSo.Xr
                 "Home shows the fixture document name and type");
             Pass("M1-DoD3", "Home shows PC, backend, Inventor year, document '" + fixture.Graph.Root.Name + "' and type " + UiText.DocumentKind(fixture.Graph.Kind));
 
+            await CheckRealityCaptureSection(home, ct);
+
             // Enter the session as the Home button does.
+            App.RequestActivity(InventorXrSo.Core.Experience.Activity.Verification);
             Call(App, "EnterSession", EnvironmentMode.MixedReality);
             Check(ReadBoolean(App, "_inSession"), "EnterSession switched the app into the session");
-            // M9 migration (UNVERIFIED without a device): the active document decides the workspace, so a session on the fixture assembly
-            // opens Assieme and raises the model on the bench. The M1 gates exercise the Ispeziona-only selection path and the 1:1 scene,
-            // so the runner parks the authoring workspace; the router reopens a workspace only on a document change. Context navigation
-            // itself is covered by the M9 runner.
-            Call(App, "CloseAuthoring");
+            // QX: explicit Verifica entry owns Ispeziona selection and the 1:1 scene; document changes cannot open authoring.
             var view = Read<CadSceneView>(App, "sceneView");
             var visuals = Read<SelectionVisuals>(App, "selectionVisuals");
             var environment = Read<EnvironmentModeController>(App, "environment");
@@ -184,7 +194,8 @@ namespace InventorXrSo.Xr
             Check(environment.Mode == EnvironmentMode.MixedReality, "session started in Mixed Reality");
             var eye = Read<Camera>(environment, "eye");
             Check(eye != null && eye.backgroundColor.a < 0.01f, "Mixed Reality clears the camera to a transparent background");
-            Check(inspect.Active && ReferenceEquals(Read<ActionCatalog>(App, "_catalog").Active, inspect), "Ispeziona is the workspace on the palette");
+            Check(inspect.Active && ReferenceEquals(Read<ActionCatalog>(App, "_catalog").Active, Read<VerificationWorkspace>(App, "_verification"))
+                && App.CurrentActivity == InventorXrSo.Core.Experience.Activity.Verification, "Verifica composes the active inspection tools on the palette");
             Record("Environment switched by invoking the action '" + InspectWorkspace.IdEnvironment + "' by id (synthetic input)");
             RunAction(InspectWorkspace.IdEnvironment);
             Check(environment.Mode == EnvironmentMode.StudioVr && eye.backgroundColor.a > 0.99f, "action switched to Studio VR with an opaque studio background");
@@ -243,6 +254,144 @@ namespace InventorXrSo.Xr
                 return true;
             }
             return false;
+        }
+
+        private async Task CheckRealityCaptureSection(HomePanel home, CancellationToken ct)
+        {
+            Record("RC0 navigation uses SYNTHETIC UI callbacks on the dedicated M1 fixture; no physical gesture or image acquisition.");
+            var capture = Read<RealityCaptureWorkspace>(App, "_capture");
+            var shell = Read<UiShell>(App, "_shell");
+            var input = Read<InventorXrSo.Xr.Input.XrInput>(App, "_input");
+            var voice = Read<InventorXrSo.Xr.Voice.VoiceRig>(App, "_voice");
+            var view = Read<CadSceneView>(App, "sceneView");
+            var ray = Read<ControllerRay>(App, "ray");
+            var revision = Session.Scene.Graph.Revision;
+            try
+            {
+                Check(home.InvokeVoiceAction(UiText.RealityCapture), "Home exposes the Reality Capture entry");
+                Check(capture.Active && !home.gameObject.activeSelf && !ReadBoolean(App, "_inSession"), "independent section is open");
+                Check(Read<EnvironmentModeController>(App, "environment").Mode == EnvironmentMode.MixedReality, "capture selects passthrough");
+                Check(!view.gameObject.activeSelf && !shell.Palette.gameObject.activeSelf && !shell.CommitBar.gameObject.activeSelf
+                    && !shell.Hud.gameObject.activeSelf, "CAD scene and canvases are hidden");
+                Check(!input.enabled && !ray.CanPick && !Read<InspectWorkspace>(App, "_inspect").Active,
+                    "CAD semantic input, picking and inspect tools are suspended");
+                Check(voice == null || !voice.gameObject.activeSelf && !voice.Panel.gameObject.activeSelf,
+                    "CAD voice and its detached panel are suspended");
+                Check(!Read<ControllerLegend>(App, "_legend").Shown, "CAD controller legend is hidden");
+                Read<ActionCatalog>(App, "_catalog").NotifyChanged();
+                Call(App, "RefreshHome");
+                await Task.Delay(200, ct);
+                Check(capture.Active && !home.gameObject.activeSelf && !shell.Palette.gameObject.activeSelf
+                    && !shell.CommitBar.gameObject.activeSelf, "CAD refresh does not reopen its UI");
+                Check(capture.Panel.InvokeVoiceAction(UiText.CaptureReferences), "capture has its own references page");
+                Check(capture.Panel.InvokeVoiceAction(UiText.RealityCapture), "references return to capture overview");
+                Check(capture.Panel.InvokeVoiceAction(UiText.CaptureNewObject), "RC1 object setup is available");
+                Check(!capture.Panel.InvokeVoiceAction(UiText.CaptureStart), "RC1 cannot record before volume confirmation");
+                Check(capture.Panel.InvokeVoiceAction(UiText.Cancel), "RC1 volume setup cancels without camera access");
+                await CheckRealityCaptureStorage(ct);
+                await CheckRealityCaptureReviewSynthetic(capture,ct);
+                await CaptureScreenshot("reality-capture", ct);
+                Pass("RC0-01", "paired Home opens capture by synthetic UI callback; unpaired entry is covered by EditMode only");
+                Pass("RC0-02", "passthrough selected; CAD scene, palette, confirm bar, HUD and legend hidden");
+                Pass("RC0-03", "CAD semantic input, picking and voice suspended; capture's own UI callbacks available");
+                Pass("RC0-04", "catalog and Home refresh preserve capture; network failures are covered by EditMode only");
+                Check(capture.Panel.InvokeVoiceAction(UiText.ReturnHome) && !capture.Active && home.gameObject.activeSelf,
+                    "return to Home works");
+                Check(home.InvokeVoiceAction(UiText.RealityCapture) && capture.Active, "repeated entry works");
+                Check(capture.Panel.InvokeVoiceAction(UiText.ReturnHome) && !capture.Active, "repeated return works");
+                App.RequestActivity(InventorXrSo.Core.Experience.Activity.Verification);
+                Call(App, "EnterSession", EnvironmentMode.StudioVr);
+                Check(!capture.Active && view.gameObject.activeSelf && shell.Palette.gameObject.activeSelf && input.enabled && ray.CanPick,
+                    "returning to CAD restores its shell and input");
+                Check(Session.Scene.Graph.Revision == revision, "section navigation does not change the CAD revision");
+                Pass("RC0-05", "Home/capture/Home/CAD transitions restore shell and input without changing CAD revision");
+                NotCovered("RC1-camera", "real RGB acquisition, native timestamp/pose alignment, permission denial and tracking need a separate device run; synthetic storage is not camera evidence");
+                NotCovered("RC2-transfer", "the M1 runner does not upload scans; resumable transfer and token isolation have separate HTTPS software tests");
+                NotCovered("RC2-physical-reconstruction", "RGB reconstruction and metrology on physical objects have not been exercised by this runner; PC synthetic software tests are separate evidence");
+                NotCovered("RC3-physical", "scan readability, physical point picking and dimensional repeatability require device and independent physical controls");
+                NotCovered("RC4-live-CAD", "RC4 native reference creation is implemented but not exercised by this M1 navigation/renderer fixture");
+                NotCovered("RC0-physical", "physical menu/trigger, readability, passthrough and tracking require a physical test");
+            }
+            finally { Call(App, "LeaveSession"); }
+        }
+
+        private async Task CheckRealityCaptureReviewSynthetic(RealityCaptureWorkspace capture,CancellationToken ct)
+        {
+            Record("RC3 viewer uses a SYNTHETIC triangle/point fixture in memory; no camera, PC solve or dimensional validation is exercised.");
+            var scan=capture.OpenSyntheticReviewFixture();
+            var fixture=InventorXrSo.Xr.Capture.ScanReviewFixture.Create();
+            scan.SelectIds(new[]{"p0","p1"});
+            Check(scan.Selected.Count==2 && Math.Abs(ScanGeometry.Distance(fixture.Points[0].Position,fixture.Points[1].Position)-1000)<1e-6,"RC3 original scan coordinates retain millimetres despite display reduction");
+            var target=scan.transform.TransformPoint(scan.DisplayPoint(fixture.Points[2].Position));
+            var syntheticRay=new Ray(target-Vector3.forward,Vector3.forward);
+            Check(!capture.ProcessReviewRay(syntheticRay,true,true,false,true) && !scan.Selected.Contains("p2"),"RC3 synthetic UI hit prevents click-through");
+            Check(capture.ProcessReviewRay(syntheticRay,true,true,false,false) && scan.Selected.Contains("p2"),"RC3 synthetic input selects original point ID without CAD picking");
+            scan.SelectWeak();Check(scan.Selected.Count==2 && !scan.Selected.Contains("p1"),"RC3 weak observation selection uses two-view support, not a coverage claim");
+            var plane=ScanGeometry.Fit("qa_plane","plane",fixture.Points);
+            Check(plane.FitRms<1e-6 && plane.Uncertainty==null,"RC3 fitting scatter remains distinct from unknown measurement uncertainty");
+            var source=fixture.Points.Select(p=>p.Position).ToArray();var basis=ScanRegistration.ScanToCadBasis;basis[3]=120;basis[7]=230;basis[11]=340;
+            var targets=source.Select(p=>ScanRegistration.Point(basis,p)).ToArray();var registration=ScanRegistration.ThreePoints(source,targets);
+            Check(ScanRegistration.Residuals(registration,source,targets).Max()<1e-6,"RC4-01 SYNTHETIC LH scan to RH CAD registration preserves millimetres without scale fitting");
+            var inverse=ScanRegistration.Inverse(registration);var fourth=new[]{25d,35,45};
+            Check(ScanGeometry.Distance(fourth,ScanRegistration.Point(inverse,ScanRegistration.Point(registration,fourth)))<1e-6,"RC4-01 SYNTHETIC inverse registration retains an off-plane point");
+            var cadCopyObject=new GameObject("RC4 SYNTHETIC comparison of dedicated fixture");
+            try
+            {
+                var copy=cadCopyObject.AddComponent<InventorXrSo.Xr.Capture.CaptureCadOverlayView>();
+                copy.Show(Session.Scene,Matrix4x4.TRS(scan.transform.position,scan.transform.rotation,Vector3.one*.25f));
+                Check(copy.DocumentId==Session.Scene.Graph.DocumentId && cadCopyObject.GetComponentsInChildren<Collider>().Length==0 && cadCopyObject.GetComponentsInChildren<CadBody>().Length==0,"RC4-05 SYNTHETIC CAD copy has no native picking or edit state");
+                copy.Clear();Check(!cadCopyObject.activeSelf,"RC4-07 SYNTHETIC comparison cleanup removes its rendering");
+            }
+            finally {UnityEngine.Object.Destroy(cadCopyObject);}
+            Pass("RC4-software-synthetic","registration basis/inverse and read-only rendering of the dedicated CAD fixture exercised; no native import or physical alignment");
+            NotCovered("RC4-native-reference","native reference preview/commit/save requires its own experimental Inventor fixture; PC stand-in transaction tests are separate evidence");
+            NotCovered("RC4-physical-overlay","controller origin placement, 1:1 registration, tracking loss/recenter and as-designed/as-built accuracy require the physical device run");
+            Check(!Read<ControllerRay>(App,"ray").CanPick && !Read<CadSceneView>(App,"sceneView").gameObject.activeSelf,"RC3 scan leaves CAD input and scene suspended");
+            await CaptureScreenshot("rc3-review-synthetic",ct);
+            Check(capture.Panel.InvokeVoiceAction(UiText.RealityCapture) && !scan.gameObject.activeSelf,"RC3 leaving review clears its geometry");
+            Pass("RC3-viewer-synthetic","independent viewer, original point IDs, synthetic ray picking, mm measures, weak support selection, fitting uncertainty and cleanup exercised in memory");
+            NotCovered("RC3-PC-review", "token-owned annotations, revision CAS, export and solve rerun are covered by PC HTTPS tests, not this in-memory device fixture");
+        }
+
+        private async Task CheckRealityCaptureStorage(CancellationToken ct)
+        {
+            string root = Path.Combine(Application.temporaryCachePath,"rc1-synthetic-" + Guid.NewGuid().ToString("N"));
+            Record("RC1 storage uses SYNTHETIC RGB/quality/pose in a temporary sandbox; no headset camera or geometric coverage is exercised.");
+            try
+            {
+                await Task.Run(() =>
+                {
+                    long free = long.MaxValue;
+                    var store = new LocalScanStore(root,10000000,0,() => free);
+                    var session = new ScanSession(Guid.NewGuid().ToString("N"),CaptureMode.Object,"synthetic-runner","1",
+                        DateTimeOffset.UtcNow,new CaptureVolume(CaptureTransform.Identity,600,600,600),CaptureTransform.Identity);
+                    var recorder = new ScanRecorder(store,session);
+                    var intrinsics = new CaptureIntrinsics(16,16,12,12,8,8);
+                    var quality = new CaptureQuality(120,0.01,100,0.3);
+                    CaptureFrame Frame(long timestamp,double x,bool tracked = true)
+                    {
+                        var matrix = CaptureTransform.Identity.Values; matrix[3] = x;
+                        return new CaptureFrame(timestamp,"synthetic-left",intrinsics,new CaptureTransform(matrix),
+                            new CaptureTransform(matrix),CaptureTransform.Identity,quality,tracked);
+                    }
+                    var pixels = new byte[16*16*3];
+                    recorder.Start();
+                    if (!recorder.Record(Frame(1000000,0),pixels)) throw new InvalidOperationException("Synthetic first frame rejected.");
+                    recorder.Pause();
+                    if (recorder.Record(Frame(2000000,100),pixels)) throw new InvalidOperationException("Paused recorder accepted a frame.");
+                    recorder.Start();
+                    if (!recorder.Record(Frame(2000000,100),pixels)) throw new InvalidOperationException("Synthetic resume failed.");
+                    free = 1;
+                    if (recorder.Record(Frame(3000000,200),pixels) || recorder.State != CaptureState.Interrupted || recorder.LastReason != "storage_full")
+                        throw new InvalidOperationException("Storage exhaustion did not stop capture.");
+                    var reopened = new LocalScanStore(root,10000000,0,() => long.MaxValue);
+                    if (reopened.Verify(session.SessionId) != 2 || reopened.GetStatus(session.SessionId).State != CaptureState.Interrupted)
+                        throw new InvalidOperationException("Raw recovery or hashes failed.");
+                },ct);
+                Pass("RC1-raw-synthetic", "temporary raw frames retain hashes, metadata and sequence after reopen; no real image input");
+                Pass("RC1-lifecycle-synthetic", "pause rejects frames, explicit resume preserves baseline, storage exhaustion interrupts without losing saved raw");
+            }
+            finally { if (Directory.Exists(root)) await Task.Run(() => Directory.Delete(root,true)); }
         }
 
         /// <summary>Invokes a declared action by id through the catalog, the same path as palette, ring and voice.</summary>

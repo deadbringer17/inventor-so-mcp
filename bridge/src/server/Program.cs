@@ -67,6 +67,7 @@ internal static partial class Program
         if (toolType == typeof(InsightTools)) return mcp.WithTools<InsightTools>();
         if (toolType == typeof(PlanningTools)) return mcp.WithTools<PlanningTools>();
         if (toolType == typeof(ReleaseTools)) return mcp.WithTools<ReleaseTools>();
+        if (toolType == typeof(RealityCaptureTools)) return mcp.WithTools<RealityCaptureTools>();
 
         throw new InvalidOperationException("Unsupported MCP tool type: " + toolType.FullName);
     }
@@ -101,6 +102,7 @@ internal static partial class Program
         Add("insight",         typeof(InsightTools));
         Add("planning",        typeof(PlanningTools));
         Add("export",          typeof(ReleaseTools));
+        if(cfg.Transport=="http" && cfg.EnableExperimental) Add("reality_capture",typeof(RealityCaptureTools));
         return types;
     }
 }

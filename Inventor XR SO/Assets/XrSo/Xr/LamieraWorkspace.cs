@@ -100,6 +100,7 @@ namespace InventorXrSo.Xr
         private const float ZoomRatePerSecond = 1.5f;
 
         public bool Active { get; private set; }
+        public bool BlocksActivityExit => RequiresCadReview || Active && (InDraftScreen || NativeEditorOpen || _featureEdit != null || InputArmed);
         public bool RequiresCadReview => _reviewAfterRebind || _pendingMutations > 0 || _session?.Status == DesignStatus.Committing || _session?.Status == DesignStatus.RefreshRequired;
         /// <summary>M9: Misura (Ispeziona) is armed and owns the trigger: the workspace does not pick or capture.</summary>
         public Func<bool> PickSuppressed { get; set; }
@@ -334,6 +335,10 @@ namespace InventorXrSo.Xr
             UpdateBar();
             ActiveChanged?.Invoke(false);
             if (was) Closed?.Invoke();
+            // Routing a newly opened part closes the inactive authoring workspaces.
+            // Its subtype read may still be pending: restart discovery so a sheet
+            // can promote the initial Part route to Lamiera without a CAD revision.
+            if (CanEnter?.Invoke() != false) EnsureSheetContext();
         }
 
         private void CancelReads()

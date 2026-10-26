@@ -42,6 +42,23 @@ namespace InventorXrSo.Editor
             catch (Exception ex) { Debug.LogException(ex); EditorApplication.Exit(1); }
         }
 
+        /// <summary>Separate QX outputs; does not overwrite an existing installed or ordinary build artifact.</summary>
+        public static void BuildQxApksBatch()
+        {
+            try
+            {
+                var args = Environment.GetCommandLineArgs();
+                int index = Array.IndexOf(args, "-qxOutput");
+                if (index < 0 || index + 1 >= args.Length) throw new ArgumentException("Explicit -qxOutput directory required.");
+                var output = Path.GetFullPath(args[index + 1]);
+                Directory.CreateDirectory(output);
+                Build(true, true, Path.Combine(output, "InventorXrSo-qx-acceptance.apk"));
+                Build(false, false, Path.Combine(output, "InventorXrSo-qx-ordinary.apk"));
+                EditorApplication.Exit(0);
+            }
+            catch (Exception ex) { Debug.LogException(ex); EditorApplication.Exit(1); }
+        }
+
         public static void BuildApkBatch()
         {
             try

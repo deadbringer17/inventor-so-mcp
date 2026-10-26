@@ -52,6 +52,8 @@ namespace InventorXrSo.Xr.Input
 
         /// <summary>Current state (priority keypad > armed/handle > sketch > component > rest). Set by AppController.</summary>
         public Func<InputState> StateProbe { get; set; }
+        public Func<InputAction, bool> ActionAllowed { get; set; }
+        private bool Allowed(InputAction action) => ActionAllowed?.Invoke(action) != false;
 
         public InputState State => StateProbe != null ? StateProbe() : InputState.Rest;
 
@@ -84,7 +86,7 @@ namespace InventorXrSo.Xr.Input
         public bool InvokeSecondary(Key key)
         {
             var binding = Binding(key);
-            if (binding == null || binding.Secondary == InputAction.None) return false;
+            if (binding == null || binding.Secondary == InputAction.None || !Allowed(binding.Secondary)) return false;
             Invoked?.Invoke(binding.Secondary, 0);
             return true;
         }
@@ -94,7 +96,7 @@ namespace InventorXrSo.Xr.Input
             var binding = Binding(key);
             if (binding == null) return;
             if (suggestOnly && binding.Action != InputAction.Suggest) return;
-            Invoked?.Invoke(binding.Action, arg);
+            if (Allowed(binding.Action)) Invoked?.Invoke(binding.Action, arg);
         }
 
         // XrInput.Back fires on X away from rest: the Back chain (Annulla in the keypad). A Rest binding (Suggest) still means Back here.
@@ -102,7 +104,8 @@ namespace InventorXrSo.Xr.Input
         {
             var binding = Binding(Key.X);
             if (binding == null) return;
-            Invoked?.Invoke(binding.Action == InputAction.Suggest ? InputAction.Back : binding.Action, 0);
+            var action = binding.Action == InputAction.Suggest ? InputAction.Back : binding.Action;
+            if (Allowed(action)) Invoked?.Invoke(action, 0);
         }
     }
 }

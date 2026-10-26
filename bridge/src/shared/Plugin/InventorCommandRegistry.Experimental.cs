@@ -67,6 +67,7 @@ public static partial class InventorCommandRegistry
         add(new DeleteDimensionHandler());
 
         // Batch commands: solid features, work geometry, parameters, document state
+        add(new CreateRealityReferenceHandler());
         add(new SweepHandler());
         add(new LoftHandler());
         add(new ShellHandler());

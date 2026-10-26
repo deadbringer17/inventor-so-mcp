@@ -1,4 +1,4 @@
-#if XR_SO_ACCEPTANCE
+#if XR_SO_ACCEPTANCE || UNITY_EDITOR
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -158,6 +158,7 @@ namespace InventorXrSo.Xr
             Record("Dedicated M6 fixture reused by M9 (guard " + FixturePrefix + "): " + fixture.Graph.Root.Name);
             Record("Navigation here is driven like the app does: the active document decides the context; a double Trigger is two SYNTHETIC presses on a real body");
 
+            App.RequestActivity(InventorXrSo.Core.Experience.Activity.Design);
             if (!ReadBoolean(App, "_inSession")) Call(App, "EnterSession", EnvironmentMode.StudioVr);
             BindApp();
             BeginSynthetic();
@@ -599,9 +600,9 @@ namespace InventorXrSo.Xr
             Check(ordered.SequenceEqual(expected.Where(t => tabs.Contains(t))), context + ": the main tabs keep the spec order (" + string.Join(", ", ordered) + ")");
 
             // Ispeziona group: Misura, Sezione (+ Visibilita, Verifica in Assieme), left stick scrolls it, X leaves it.
-            var group = ContextTabs.InspectGroup(context);
-            Check(group.Contains("misura") && group.Contains("sezione") && group.Contains("visibilita") == (context == DocContext.Assembly)
-                && group.Contains("verifica") == (context == DocContext.Assembly), context + ": the Ispeziona group has the tabs of the spec");
+            var group = ContextTabs.InspectGroup(context).Where(t => t == "misura" || t == "sezione").ToArray();
+            Check(group.SequenceEqual(new[] { "misura", "sezione" }) && Catalog.Palette("visibilita").Count == 0 && Catalog.Palette("verifica").Count == 0,
+                context + ": Design keeps measure/section while analysis and visibility belong to Verifica");
             foreach (var id in group) Check(Catalog.Palette(id).Count > 0, context + ": group tab '" + id + "' holds actions");
             if (_shell.Palette.CurrentTab != ContextTabs.Inspect) _shell.Palette.ShowTab(ContextTabs.Inspect);
             RunAction(InspectWorkspace.IdGroupOpen);
@@ -902,6 +903,12 @@ namespace InventorXrSo.Xr
             await CheckUnsupportedFeatureAsync(ct);
 
             // M9-04: Torna from the Documento tab.
+            if (_lamiera.FeatureEdit != null)
+            {
+                Check(!ActionEnabled(DocumentActions.IdBack), "open feature tab protects document navigation");
+                await EnsureRestAsync(ct);
+                Check(_lamiera.FeatureEdit == null, "synthetic X closes the feature tab before navigation");
+            }
             Check(ActionEnabled(DocumentActions.IdBack), "Torna is enabled one level down");
             var stateBefore = await BaselineAsync(ct);
             RunAction(DocumentActions.IdBack);

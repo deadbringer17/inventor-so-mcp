@@ -1,4 +1,4 @@
-#if XR_SO_ACCEPTANCE
+#if XR_SO_ACCEPTANCE || UNITY_EDITOR
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -19,10 +19,8 @@ namespace InventorXrSo.Xr
     /// <summary>
     /// Opt-in, fixture-scoped M7 acceptance runner (Ispeziona, engineering verification). Every action is invoked by id through the
     /// catalog: SYNTHETIC input. Interference, distance and health run against the real Inventor fixture.
-    /// M9 migration (UNVERIFIED without a device): Ispeziona is no longer a workspace of its own but the tool provider of every context,
-    /// and the fixture assembly opens Assieme by itself (the active document decides the context). Components are therefore selected
-    /// through the Assieme "Componenti" list (the selection Visibilita and Verifica act on, see InspectWorkspace.ExternalSelection)
-    /// instead of Esplora; every Ispeziona action is still invoked by id. The M7 gates (M7-01..M7-05, M7-07) keep their assertions.
+    /// QX migration: Verifica composes the shared inspection services. Components are selected from Esplora,
+    /// without opening Assieme. The native fixture and M7 analysis assertions keep their original scope.
     /// </summary>
     internal sealed class M7QuestAcceptance : QuestAcceptanceRunner
     {
@@ -64,11 +62,13 @@ namespace InventorXrSo.Xr
             var fixture = await WaitForFixture(ct);
             RequireFixture();
             Check(fixture.Graph.Kind == "assembly", "fixture scene is the assembly");
+            App.RequestActivity(InventorXrSo.Core.Experience.Activity.Verification);
             Call(App, "EnterSession", EnvironmentMode.MixedReality);
             var assembly = Read<AssemblyWorkspace>(App, "_assembly");
             Check(assembly != null, "AppController owns the Assieme workspace");
-            await WaitUntil(() => assembly.Active && !ReadBoolean(assembly, "_busy") && Read<AssemblyContext>(assembly, "_context") != null, ct);
-            Record("M9: the fixture assembly opened Assieme by itself; Ispeziona tools act on the component selected there");
+            Check(App.CurrentActivity == InventorXrSo.Core.Experience.Activity.Verification && !assembly.Active,
+                "QX: fixture opened Verifica meccanica without authoring");
+            Record("QX: M7 runs through Verifica meccanica; component selection uses the local scene browser");
             var inspect = Inspect;
             var view = Read<CadSceneView>(App, "sceneView");
             var context = Read<BrowserContext>(inspect, "_context");
@@ -217,20 +217,14 @@ namespace InventorXrSo.Xr
         }
 
         /// <summary>
-        /// The Assieme "Componenti" list, then the component by name: the palette path of M9 (synthetic). Ispeziona follows that selection
-        /// on its next frame, so the Visibilita and Verifica actions become enabled once it has been taken over.
+        /// The Verifica scene browser selects the occurrence by name through the same palette action as the user (synthetic).
         /// </summary>
         private async Task SelectComponentAsync(AssemblyWorkspace assembly, string name, CancellationToken ct)
         {
-            await WaitUntil(() => !ReadBoolean(assembly, "_busy") && Catalog.Find(AssemblyWorkspace.IdComponents)?.Enabled == true, ct);
-            RunAction(AssemblyWorkspace.IdComponents);
-            XrAction Find() => assembly.Actions.FirstOrDefault(a => a.Id.StartsWith(AssemblyWorkspace.IdPickPrefix, StringComparison.Ordinal) && a.Label.Contains(name));
-            // The list is filled by an asynchronous backend read: wait for the entry instead of reading it on the same frame.
-            for (int i = 0; i < 150 && Find() == null; i++) await Task.Delay(200, ct);
-            var action = Find();
-            Check(action != null && action.Enabled && action.TryInvoke(), "Assieme lists " + name + " (entries: "
-                + string.Join(" | ", assembly.Actions.Where(a => a.Id.StartsWith(AssemblyWorkspace.IdPickPrefix, StringComparison.Ordinal)).Select(a => a.Label + (a.Enabled ? "" : " [off]"))) + ")");
-            await WaitUntil(() => Read<AssemblyOccurrence>(assembly, "_occurrence")?.Name?.Contains(name) == true && !ReadBoolean(assembly, "_busy"), ct);
+            await WaitUntil(() => !ReadBoolean(Inspect, "_busy") && Catalog.Find(InspectWorkspace.IdBrowse)?.Enabled == true, ct);
+            RunAction(InspectWorkspace.IdBrowse);
+            PickRow(name);
+            await WaitUntil(() => Inspect.SelectedNodeName?.Contains(name) == true && !ReadBoolean(Inspect, "_busy"), ct);
             await WaitUntil(() => Catalog.Find(InspectWorkspace.IdHide)?.Enabled == true, ct);
         }
 

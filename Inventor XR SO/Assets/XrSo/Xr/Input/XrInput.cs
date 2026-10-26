@@ -16,6 +16,7 @@ namespace InventorXrSo.Xr.Input
         private XrInputFrame _last;
         private bool _penStickX, _penStickY, _paletteStickX;
         private bool _penNeedsRelease;
+        private bool _awaitNeutral;
         private float _xDownAt = -1;
         private bool _xRest, _xHeld;
         private Action<int> _flickH, _flickV;
@@ -62,8 +63,29 @@ namespace InventorXrSo.Xr.Input
 
         private void Update() { if (Source != null) Poll(Source.Read(), Time.unscaledTime); }
 
+        /// <summary>Section changes cannot carry a held gesture or key into the CAD workspace.</summary>
+        public void AwaitNeutralInput()
+        {
+            _last = default;
+            PenHeld = PenGripHeld = Precision = TwoHand = false;
+            _penStickX = _penStickY = _paletteStickX = false;
+            _penNeedsRelease = true;
+            _xRest = _xHeld = false;
+            _xDownAt = -1;
+            BackHoldProgress = 0;
+            _awaitNeutral = true;
+        }
+
         public void Poll(XrInputFrame f, float time)
         {
+            if (_awaitNeutral)
+            {
+                PenTracked = f.PenTracked; PaletteTracked = f.PaletteTracked;
+                if (f.PenTrigger || f.PenGrip || f.PaletteTrigger || f.PaletteGrip || f.X || f.A || f.Y
+                    || f.PenStick.sqrMagnitude > ZoomDeadZone * ZoomDeadZone
+                    || f.PaletteStick.sqrMagnitude > ZoomDeadZone * ZoomDeadZone) return;
+                _awaitNeutral = false;
+            }
             bool paletteLost = _last.PaletteTracked && !f.PaletteTracked;
             if (_last.PenTracked && !f.PenTracked || paletteLost) TrackingLost?.Invoke();
             PenTracked = f.PenTracked; PaletteTracked = f.PaletteTracked;

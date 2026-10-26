@@ -1,0 +1,7 @@
+<linker>
+  <!-- Capture DTO setters and constructors are reached through Newtonsoft JSON on IL2CPP. -->
+  <assembly fullname="InventorXrSo.Core">
+    <type fullname="InventorXrSo.Core.Capture.ScanPoint" preserve="all" />
+    <type fullname="InventorXrSo.Core.Capture.ScanPrimitive" preserve="all" />
+  </assembly>
+</linker>

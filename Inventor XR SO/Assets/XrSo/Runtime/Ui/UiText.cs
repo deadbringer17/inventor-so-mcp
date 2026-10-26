@@ -9,6 +9,12 @@ namespace InventorXrSo.Unity.Ui
     /// <summary>Every user-visible string (MVP language: Italian).</summary>
     public static class UiText
     {
+        public const string DesignActivity = "Disegno e modifica";
+        public const string PresentationActivity = "Presentazione";
+        public const string VerificationActivity = "Verifica meccanica";
+        public const string DesignActivityBody = "Crea e modifica parti, lamiere e assiemi.";
+        public const string PresentationActivityBody = "Esplora il modello e misura. Movimenti in una fase successiva.";
+        public const string VerificationActivityBody = "Esplora e analizza. Smontaggio ed esploso in una fase successiva.";
         public const string AppTitle = "Inventor XR SO";
         public const string NotPaired = "Nessun PC associato";
         public const string NotPairedBody = "Scansiona il QR di associazione mostrato sul PC oppure inserisci il codice a 6 cifre.";
@@ -35,6 +41,20 @@ namespace InventorXrSo.Unity.Ui
         public const string TokenRevoked = "Il PC non riconosce più questo visore. Associa di nuovo il PC.";
         public const string EnterMixedReality = "Entra · Realtà mista";
         public const string EnterStudio = "Entra · Studio virtuale";
+        public const string RealityCapture = "Reality Capture";
+        public const string CaptureHomeBody = "Acquisizione locale di oggetti e aree reali. Nessuna immagine viene registrata prima di Avvia.\n\nTrasferisci i raw al PC associato e apri Revisioni PC per ricostruire, rivedere, misurare ed esportare. Funzioni sperimentali: nessuna copertura geometrica o precisione dimensionale dichiarata.";
+        public const string CaptureNewObject = "Nuovo oggetto";
+        public const string CaptureNewArea = "Nuova area";
+        public const string CaptureOpen = "Sessioni locali";
+        public const string CaptureStart = "Avvia acquisizione";
+        public const string CapturePause = "Pausa";
+        public const string CaptureResume = "Riprendi";
+        public const string CaptureStop = "Termina acquisizione";
+        public const string CaptureObjects = "Oggetti e aree";
+        public const string CaptureObjectsBody = "Oggetto: acquisizione da più angolazioni attorno a un componente.\nArea: acquisizione di macchinari e ambienti con riferimenti distribuiti.\n\nIl modulo di acquisizione registra immagini reali su Quest dopo la conferma del volume e Avvia. La qualità dei frame non è copertura geometrica.";
+        public const string CaptureReferences = "Riferimenti fisici";
+        public const string CaptureReferencesBody = "Kit con marker e dimensioni realmente misurate, barre dimensionali e quote note: distanze, diametri e distanza tra piani.\n\nAlcune misure saranno riservate alla verifica indipendente della ricostruzione.";
+        public const string ReturnHome = "Torna alla Home";
         public const string ForgetPc = "Dimentica PC";
         public const string Home = "Home";
         public const string Offline = "Offline · sola lettura";
