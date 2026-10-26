@@ -335,6 +335,10 @@ namespace InventorXrSo.Xr
             UpdateBar();
             ActiveChanged?.Invoke(false);
             if (was) Closed?.Invoke();
+            // Routing a newly opened part closes the inactive authoring workspaces.
+            // Its subtype read may still be pending: restart discovery so a sheet
+            // can promote the initial Part route to Lamiera without a CAD revision.
+            if (CanEnter?.Invoke() != false) EnsureSheetContext();
         }
 
         private void CancelReads()
