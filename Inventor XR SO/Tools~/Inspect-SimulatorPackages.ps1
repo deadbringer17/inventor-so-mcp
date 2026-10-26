@@ -9,7 +9,7 @@ if (Test-Path -LiteralPath $OutputJson) { throw 'Choose a new inspection report 
 $runnerNames = @('QuestAcceptanceRunner','M1QuestAcceptance','M2QuestAcceptance','M3QuestAcceptance',
     'M4QuestAcceptance','M5QuestAcceptance','M6QuestAcceptance','M7QuestAcceptance','M8QuestAcceptance',
     'M9QuestAcceptance','M9NestedQuestAcceptance','M9FlexQuestAcceptance','M9HiddenQuestAcceptance',
-    'M10QuestAcceptance','S1QuestAcceptance')
+    'M10QuestAcceptance','QxQuestAcceptance','S1QuestAcceptance')
 $packages = foreach ($item in @(@{kind='qa';path=$QaApk},@{kind='ordinary';path=$OrdinaryApk})) {
     $apk = Get-Item -LiteralPath $item.path
     $zip = [IO.Compression.ZipFile]::OpenRead($apk.FullName)

@@ -71,6 +71,16 @@ namespace InventorXrSo.Tests
             Poll(f);
         }
 
+        [Test]
+        public void ActivityGuardBlocksSecondaryAuthoringButKeepsViewInput()
+        {
+            _input.Dispatcher.ActionAllowed = action => action != InputAction.DoubleSelect;
+            Assert.IsFalse(_input.Dispatcher.InvokeSecondary(Key.Trigger));
+            Rest(); Drive(Key.Y);
+            CollectionAssert.Contains(_log, "Fit:0");
+            Assert.IsFalse(_log.Exists(s => s.StartsWith("DoubleSelect:")));
+        }
+
         // ---- the whole table: every state x key routes to InputMap's action, unbound keys do nothing
 
         [Test]

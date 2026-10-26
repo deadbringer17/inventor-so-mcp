@@ -15,6 +15,16 @@ Le sezioni seguenti conservano gli esiti storici; non attribuiscono un PASS
 Quest hardware alle nuove corse desktop.
 
 
+
+Aggiornamento 26 ottobre 2026: nel [collaudo esteso](xr-simulator-full-collaudo.md)
+M1 esegue i casi locali/review sintetici in Meta XR Simulator e QX verifica
+offline/riconnessione e guardie Capture. La sonda RC4 su Inventor reale passa
+37 asserzioni: preview/rollback, commit, cinque primitive, provenienza e quote,
+Undo/Redo, salvataggio e riapertura. Evidenza: `artifacts/simulator-full/rc4-native-06.log`.
+Corretto `CopyWithOwner=true` sugli attributi del documento, rifiutato nativamente
+da Inventor 2027; il set persistente usa `false`. Restano esclusi acquisizione,
+tracking, metrologia e overlay fisici; nessun PASS Quest hardware è implicito.
+
 Data: 24 ottobre 2026. Perimetro iniziale: **RC0, sezione indipendente**; avanzamento RC1 e trasferimento RC2 riportato in fondo.
 
 Riferimenti: [specifica funzionale](../Inventor%20XR%20SO/REALITY_CAPTURE_SPEC.md),

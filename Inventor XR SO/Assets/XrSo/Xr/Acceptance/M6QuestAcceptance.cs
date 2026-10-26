@@ -134,6 +134,7 @@ namespace InventorXrSo.Xr
             _assemblyDocId = fixture.Graph.DocumentId;
             Record("PASS; dedicated fixture loaded: " + fixture.Graph.Root.Name);
 
+            App.RequestActivity(InventorXrSo.Core.Experience.Activity.Design);
             if (!ReadBoolean(App, "_inSession")) Call(App, "EnterSession", EnvironmentMode.StudioVr);
             _inspect = Read<InspectWorkspace>(App, "_inspect");
             _design = Read<DesignWorkspace>(App, "_design");
@@ -383,8 +384,10 @@ namespace InventorXrSo.Xr
                 normalizeFirstTab: true);
             CheckApplyOnlyOnBar("Assieme", _assembly);
             CheckDocumentTab();
-            foreach (var id in ContextTabs.InspectGroup(DocContext.Assembly))
+            foreach (var id in ContextTabs.InspectGroup(DocContext.Assembly).Where(t => t == InspectWorkspace.TabMeasure || t == InspectWorkspace.TabSection))
                 Check(Catalog.Palette(id).Count > 0, "the Ispeziona group tab '" + id + "' holds actions (Misura, Sezione, Visibilita, Verifica)");
+            Check(Catalog.Palette(InspectWorkspace.TabVisibility).Count == 0 && Catalog.Palette(InspectWorkspace.TabVerify).Count == 0,
+                "QX: Design excludes the visibility and verification tools reserved for Verifica");
             Pass("M6-01", "Assieme opened by the active document, palette tabs of the context and the Documento tab (no Spazi tab) rotated by the left stick; "
                 + "Ispeziona tools reached through the Ispeziona group; palette is a child of the left controller and no workspace has a floating panel (SYNTHETIC stick flicks and taps); "
                 + "the Progettazione and Lamiera palettes are checked when those contexts are entered");

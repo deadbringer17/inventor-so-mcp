@@ -61,6 +61,7 @@ namespace InventorXrSo.Xr
             Record("Dedicated flexible-assembly fixture m9f (guard " + FixturePrefix + "): " + fixture.Graph.Root.Name);
             Record("Navigation is driven like the app does; a double Trigger is two SYNTHETIC presses on a real body (detector clock driven by the runner)");
 
+            App.RequestActivity(InventorXrSo.Core.Experience.Activity.Design);
             if (!ReadBoolean(App, "_inSession")) Call(App, "EnterSession", EnvironmentMode.StudioVr);
             BindApp();
             BeginSynthetic();

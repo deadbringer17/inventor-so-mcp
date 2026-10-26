@@ -257,6 +257,7 @@ namespace InventorXrSo.Tests
             Assert.False(Enabled(CommitIds.Recover),"Recovery waits for the previous request to conclude.");
             Assert.False(Enabled(Create));
             Assert.AreEqual(CommitBarPhase.Uncertain,_workspace.CommitBar.Phase);
+            Assert.True(_workspace.BlocksActivityExit, "Home keeps the CAD review guard");
             if(fail) previous.PendingMutation.SetException(new IOException("Lost response"));
             else previous.PendingMutation.SetResult(previous.State);
             yield return null; yield return null;
@@ -391,7 +392,9 @@ namespace InventorXrSo.Tests
         [Test] public void AtRestOnlyOnTheToolsScreenWithNoDraft()
         {
             Assert.True(_workspace.AtRest);
+            Assert.False(_workspace.BlocksActivityExit);
             Do(Create); Pick("XY");
+            Assert.True(_workspace.BlocksActivityExit, "Home must not discard the sketch");
             Assert.False(_workspace.AtRest, "an open sketch is a draft: X must keep the Back chain");
         }
         [Test] public void ActionIdsAreUniqueAndEveryTabFitsItsProfileInEveryScreenState()
@@ -497,6 +500,7 @@ namespace InventorXrSo.Tests
             _backend.CommitError=new IOException("Lost response");
             SketchOnXy(); Do(CommitIds.Apply);
             Assert.AreEqual(CommitBarPhase.Uncertain,_workspace.CommitBar.Phase);
+            Assert.True(_workspace.BlocksActivityExit, "Home keeps the CAD review guard");
             Assert.AreEqual("Ho controllato il CAD",Act(CommitIds.Recover).Label);
             Assert.False(Enabled(CommitIds.Apply)); Assert.False(Enabled(Create)); Assert.True(_workspace.RequiresCadReview);
             Do(CommitIds.Recover);

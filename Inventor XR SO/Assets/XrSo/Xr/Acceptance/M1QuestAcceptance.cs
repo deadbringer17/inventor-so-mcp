@@ -17,6 +17,7 @@ using InventorXrSo.Unity.Scene;
 using InventorXrSo.Unity.Ui;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 namespace InventorXrSo.Xr
 {
@@ -25,12 +26,12 @@ namespace InventorXrSo.Xr
     {
         internal static readonly string[] ReflectedMembers =
         {
+            "AppController._verification",
             "AppController._session",
             "AppController._store",
             "AppController._server",
             "AppController._home",
             "AppController._inspect",
-            "AppController._assembly",
             "AppController._catalog",
             "AppController._selection",
             "AppController._selecting",
@@ -93,8 +94,8 @@ namespace InventorXrSo.Xr
             Call(App, "RefreshHome");
             var home = Read<HomePanel>(App, "_home");
             Check(home != null, "Home panel exists");
-            var title = Read<TMPro.TextMeshProUGUI>(home, "_title").text;
-            var body = Read<TMPro.TextMeshProUGUI>(home, "_body").text;
+            var title = Read<TMP_Text>(home, "_title").text;
+            var body = Read<TMP_Text>(home, "_body").text;
             Check(title == UiText.AppTitle, "Home title is the app title");
             Check(body.Contains(UiText.PcLabel + server.Host + ":" + server.Port), "Home shows the PC address");
             Check(body.Contains(UiText.BackendLabel + UiText.VersionLabel(caps.ServerVersion)), "Home shows the backend version");
@@ -107,13 +108,10 @@ namespace InventorXrSo.Xr
             await CheckRealityCaptureSection(home, ct);
 
             // Enter the session as the Home button does.
+            App.RequestActivity(InventorXrSo.Core.Experience.Activity.Verification);
             Call(App, "EnterSession", EnvironmentMode.MixedReality);
             Check(ReadBoolean(App, "_inSession"), "EnterSession switched the app into the session");
-            // M9 migration (UNVERIFIED without a device): the active document decides the workspace, so a session on the fixture assembly
-            // opens Assieme and raises the model on the bench. The M1 gates exercise the Ispeziona-only selection path and the 1:1 scene,
-            // so the runner parks the authoring workspace; the router reopens a workspace only on a document change. Context navigation
-            // itself is covered by the M9 runner.
-            Call(App, "CloseAuthoring");
+            // QX: explicit Verifica entry owns Ispeziona selection and the 1:1 scene; document changes cannot open authoring.
             var view = Read<CadSceneView>(App, "sceneView");
             var visuals = Read<SelectionVisuals>(App, "selectionVisuals");
             var environment = Read<EnvironmentModeController>(App, "environment");
@@ -196,7 +194,8 @@ namespace InventorXrSo.Xr
             Check(environment.Mode == EnvironmentMode.MixedReality, "session started in Mixed Reality");
             var eye = Read<Camera>(environment, "eye");
             Check(eye != null && eye.backgroundColor.a < 0.01f, "Mixed Reality clears the camera to a transparent background");
-            Check(inspect.Active && ReferenceEquals(Read<ActionCatalog>(App, "_catalog").Active, inspect), "Ispeziona is the workspace on the palette");
+            Check(inspect.Active && ReferenceEquals(Read<ActionCatalog>(App, "_catalog").Active, Read<VerificationWorkspace>(App, "_verification"))
+                && App.CurrentActivity == InventorXrSo.Core.Experience.Activity.Verification, "Verifica composes the active inspection tools on the palette");
             Record("Environment switched by invoking the action '" + InspectWorkspace.IdEnvironment + "' by id (synthetic input)");
             RunAction(InspectWorkspace.IdEnvironment);
             Check(environment.Mode == EnvironmentMode.StudioVr && eye.backgroundColor.a > 0.99f, "action switched to Studio VR with an opaque studio background");
@@ -300,10 +299,8 @@ namespace InventorXrSo.Xr
                     "return to Home works");
                 Check(home.InvokeVoiceAction(UiText.RealityCapture) && capture.Active, "repeated entry works");
                 Check(capture.Panel.InvokeVoiceAction(UiText.ReturnHome) && !capture.Active, "repeated return works");
+                App.RequestActivity(InventorXrSo.Core.Experience.Activity.Verification);
                 Call(App, "EnterSession", EnvironmentMode.StudioVr);
-                // The assembly context owns CAD picking on entry; park authoring to check inspection restoration.
-                Check(Read<AssemblyWorkspace>(App, "_assembly").Active && !ray.CanPick, "assembly context restores its input ownership");
-                Call(App, "CloseAuthoring");
                 Check(!capture.Active && view.gameObject.activeSelf && shell.Palette.gameObject.activeSelf && input.enabled && ray.CanPick,
                     "returning to CAD restores its shell and input");
                 Check(Session.Scene.Graph.Revision == revision, "section navigation does not change the CAD revision");

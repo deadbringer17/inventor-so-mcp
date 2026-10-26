@@ -1,6 +1,6 @@
 #requires -Version 7.0
 param([string]$Output, [string]$RuntimeManifest,
-    [ValidateSet('m1','m2','m3','m4','m5','m6','m7','m8','m9','m9n','m9f','m9h','m10','s1')][string]$AcceptanceRunner)
+    [ValidateSet('m1','m2','m3','m4','m5','m6','m7','m8','m9','m9n','m9f','m9h','m10','qx','s1')][string]$AcceptanceRunner)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $repoRoot = Split-Path -Parent $projectRoot
@@ -15,9 +15,9 @@ $hostProcess = $null
 $runCode = 1
 $restored = $false
 $nativeStateUnchanged = $false
-$fixture = switch ($AcceptanceRunner) { { $_ -in 'm8','m9','m10' } { 'm6' }; '' { 'm7' }; default { $AcceptanceRunner } }
+$fixture = switch ($AcceptanceRunner) { { $_ -in 'm8','m9','m10' } { 'm6' }; 'qx' { 'm7' }; '' { 'm7' }; default { $AcceptanceRunner } }
 if (-not $fixture) { $fixture = 'm7' }
-$readOnlyRun = -not $AcceptanceRunner -or $AcceptanceRunner -in 'm1','m2','m7'
+$readOnlyRun = -not $AcceptanceRunner -or $AcceptanceRunner -in 'm1','m2','m7','qx'
 Push-Location $repoRoot
 try {
     if (Test-Path -LiteralPath (Join-Path (Split-Path -Parent $Output) 'stop.request')) {

@@ -1,8 +1,8 @@
 #requires -Version 7.0
 param(
     [string]$Output,
-    [ValidateSet('m1','m2','m3','m4','m5','m6','m7','m8','m9','m9n','m9f','m9h','m10','s1')]
-    [string[]]$Runners = @('m1','m2','m3','m4','m5','m6','m7','m8','m9','m9n','m9f','m9h','m10')
+    [ValidateSet('m1','m2','m3','m4','m5','m6','m7','m8','m9','m9n','m9f','m9h','m10','qx','s1')]
+    [string[]]$Runners = @('m1','m2','m3','m4','m5','m6','m7','m8','m9','m9n','m9f','m9h','m10','qx')
 )
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)

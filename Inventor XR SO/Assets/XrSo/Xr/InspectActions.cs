@@ -79,14 +79,18 @@ namespace InventorXrSo.Xr
             }
         }
 
-        public IEnumerable<XrAction> Actions => _actions ?? (_actions = BuildActions());
+        public IEnumerable<XrAction> Actions => (_actions ?? (_actions = BuildActions()))
+            .Where(a => !_activityAssigned || InventorXrSo.Core.Experience.ActivityPolicy.AllowsAction(Activity, a.Id))
+            .Select(a => new XrAction(a.Id, a.Label, a.Tab,
+                () => (!_activityAssigned || InventorXrSo.Core.Experience.ActivityPolicy.AllowsAction(Activity, a.Id)) && a.Enabled,
+                () => a.TryInvoke(), () => a.DisabledReason, a.Synonyms, a.Kind, a.Icon, () => a.IsOn, a.VoiceInvokes));
 
         /// <summary>Ring on a component: Proprietà, Apri contesto, Misura (same actions as the palette).</summary>
         public IEnumerable<XrAction> ContextActions(SelectionKind selection)
         {
             if (selection != SelectionKind.Component) return Array.Empty<XrAction>();
             var all = Actions.ToList();
-            return new[] { IdProperties, IdEnter, IdMeasure }.Select(id => all.First(a => a.Id == id)).ToArray();
+            return new[] { IdProperties, IdEnter, IdMeasure }.Select(id => all.FirstOrDefault(a => a.Id == id)).Where(a => a != null).ToArray();
         }
 
         // ---------------------------------------------------------------- Ispeziona ▸ group
@@ -96,7 +100,8 @@ namespace InventorXrSo.Xr
         {
             var context = _catalog?.CurrentContext;
             if (context == null || _shell == null) return;
-            var tabs = ContextTabs.InspectGroup(context.Value).ToList();
+            var tabs = ContextTabs.InspectGroup(context.Value).Where(t => Activity != InventorXrSo.Core.Experience.Activity.Design
+                || t == TabMeasure || t == TabSection).ToList();
             tabs.Add(TabExit);
             _shell.Palette.ShowTabGroup(tabs, backable: true);
         }
@@ -134,7 +139,7 @@ namespace InventorXrSo.Xr
             {
                 var item = node;
                 return new PickerItem((item == _selected ? "● " : "") + (item.Suppressed ? "[Soppresso] " : "") + item.Name,
-                    () => SelectNode(item), backend: true);
+                    () => SelectNode(item), backend: false);
             }));
         }
 
@@ -207,7 +212,7 @@ namespace InventorXrSo.Xr
                     () => _shell.Palette.TryLeaveGroup(TabInspect), () => "Le schede principali sono già visibili."),
 
                 // Esplora: browsing of the scene when no document context is open (the documents and Torna live in Documento)
-                new XrAction(IdBrowse, "Esplora", TabExplore, () => Backend && _context.Current != null, OpenBrowserPicker, BackendReason, new[] { "browser" }),
+                new XrAction(IdBrowse, "Esplora", TabExplore, () => Local && _context.Current != null, OpenBrowserPicker, LocalReason, new[] { "browser" }),
                 new XrAction(IdProperties, "Proprietà", TabExplore, () => Backend, () => { _showInfo = true; LoadInfo(); }, BackendReason, icon: "properties"),
                 new XrAction(IdDocuments, "Elenco documenti", TabExplore, () => Backend, LoadDocuments, BackendReason, icon: "documents"),
                 new XrAction(IdScale, "Scala", TabView, () => Local && _view != null, OpenScalePicker, LocalReason),
@@ -269,8 +274,8 @@ namespace InventorXrSo.Xr
         // ---------------------------------------------------------------- voice / runner command surface
 
         /// <summary>Misura is the only fixed-vocabulary command Ispeziona offers: same enablement as its action.</summary>
-        public bool IsEnabled(string commandId) => commandId == CommandIds.Measure && Actions.First(a => a.Id == IdMeasure).Enabled;
+        public bool IsEnabled(string commandId) => commandId == CommandIds.Measure && Actions.FirstOrDefault(a => a.Id == IdMeasure)?.Enabled == true;
 
-        public bool Invoke(string commandId) => commandId == CommandIds.Measure && Actions.First(a => a.Id == IdMeasure).TryInvoke();
+        public bool Invoke(string commandId) => commandId == CommandIds.Measure && Actions.FirstOrDefault(a => a.Id == IdMeasure)?.TryInvoke() == true;
     }
 }

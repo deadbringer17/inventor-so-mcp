@@ -23,6 +23,7 @@ namespace InventorXrSo.Tests
             "M5QuestAcceptance",
             "M6QuestAcceptance",
             "M7QuestAcceptance",
+            "QxQuestAcceptance",
             "M8QuestAcceptance",
             "M10QuestAcceptance",
             "M9QuestAcceptance",
@@ -99,6 +100,7 @@ namespace InventorXrSo.Tests
         [TestCase("M5QuestAcceptance")]
         [TestCase("M6QuestAcceptance")]
         [TestCase("M7QuestAcceptance")]
+        [TestCase("QxQuestAcceptance")]
         [TestCase("M8QuestAcceptance")]
         [TestCase("M10QuestAcceptance")]
         [TestCase("M9QuestAcceptance")]
@@ -141,6 +143,7 @@ namespace InventorXrSo.Tests
         [TestCase("M5QuestAcceptance")]
         [TestCase("M6QuestAcceptance")]
         [TestCase("M7QuestAcceptance")]
+        [TestCase("QxQuestAcceptance")]
         [TestCase("M8QuestAcceptance")]
         [TestCase("M10QuestAcceptance")]
         [TestCase("M9QuestAcceptance")]
@@ -292,6 +295,7 @@ namespace InventorXrSo.Tests
         [TestCase("M5QuestAcceptance")]
         [TestCase("M6QuestAcceptance")]
         [TestCase("M7QuestAcceptance")]
+        [TestCase("QxQuestAcceptance")]
         [TestCase("M8QuestAcceptance")]
         [TestCase("M10QuestAcceptance")]
         [TestCase("M9QuestAcceptance")]

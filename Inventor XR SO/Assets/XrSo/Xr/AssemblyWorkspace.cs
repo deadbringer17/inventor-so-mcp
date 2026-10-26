@@ -94,6 +94,7 @@ namespace InventorXrSo.Xr
         private CancellationTokenSource _reads = new CancellationTokenSource();
 
         public bool Active { get; private set; }
+        public bool BlocksActivityExit => RequiresCadReview || Active && (InDraft || InputArmed);
         public bool RequiresCadReview => _reviewAfterRebind || _mutations > 0 || _session?.Status == DesignStatus.Committing || _session?.Status == DesignStatus.RefreshRequired;
         /// <summary>M9: Misura (Ispeziona) is armed and owns the trigger: the workspace does not pick or capture.</summary>
         public Func<bool> PickSuppressed { get; set; }

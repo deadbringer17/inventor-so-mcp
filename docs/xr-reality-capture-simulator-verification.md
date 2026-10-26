@@ -5,6 +5,16 @@ locali di questa consegna. **Collaudo software concluso con i limiti sotto.**
 Le corse precedenti di `nuova_ux` non vengono attribuite a questo branch.
 L’accettazione completa di tutte le milestone storiche rimane parziale.
 
+## Integrazione della PR dopo la UX a quattro attività
+
+Il checkpoint `ea4c68c` conserva i risultati completi del collaudo sul ramo
+Capture prima dell’integrazione. La PR #14 di `nuova_ux` risulta già integrata
+in `main` (`87bb820`): questo branch incorpora quel main, preserva le quattro
+attività e aggiunge le correzioni alla preview e ai runner. I conteggi e gli
+APK delle tabelle seguenti appartengono al checkpoint Capture; non vengono
+riattribuiti automaticamente alla versione integrata. Verifica post-integrazione
+in corso, con evidenze separate e descrizione finale nella PR.
+
 ## Evidenze finali
 
 Radice: `artifacts/reality-capture/simulator-20261026-065832/`.

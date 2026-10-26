@@ -25,6 +25,8 @@ namespace InventorXrSo.Core.Backend
             _mcp = new McpClient(transport, server.BaseUrl, server.Token);
         }
 
+        public Func<string, bool> ToolAllowed { get => _mcp.ToolAllowed; set => _mcp.ToolAllowed = value; }
+
         public Task ConnectAsync(CancellationToken ct) => _mcp.InitializeAsync(ct);
 
         public async Task<CapabilitiesInfo> GetCapabilitiesAsync(CancellationToken ct) =>

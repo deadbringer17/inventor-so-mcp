@@ -56,6 +56,7 @@ namespace InventorXrSo.Xr
             RequireFixture();
             _binding = App.AcceptanceBootstrap;
             GuardBinding();
+            App.RequestActivity(InventorXrSo.Core.Experience.Activity.Design);
             if (!ReadBoolean(App, "_inSession")) Call(App, "EnterSession", EnvironmentMode.StudioVr);
             _design = await WaitFor(() => Read<DesignWorkspace>(App, "_design"), ct);
             _lamiera = await WaitFor(() => Read<LamieraWorkspace>(App, "_lamiera"), ct);

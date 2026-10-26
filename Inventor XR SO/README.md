@@ -227,6 +227,49 @@ Lamiera apre la modifica della feature. Misura e Sezione sono nel gruppo
 [Spec M9](../docs/superpowers/specs/2026-10-04-m9-navigazione-contesto-design.md),
 [verbale](../docs/xr-m9-verification.md): collaudo Quest e prova fisica aperti.
 
+## Test desktop senza visore: Meta XR Simulator
+
+È disponibile un percorso automatico in Play Mode con il runtime Meta XR Simulator
+e il server HTTPS FakeAddIn. Dalla radice del repository, con l'Editor chiuso:
+
+```powershell
+& 'Inventor XR SO/Tools~/Invoke-Simulator.ps1' -Output 'artifacts/meta-xr-simulator/nuova-prova'
+```
+
+Richiede Unity 6000.6.3f1, .NET 8 SDK, `metavr` e Meta XR Simulator installati.
+Il wrapper compila la fixture, usa OpenXR soltanto su Standalone e imposta il
+runtime nell'ambiente del processo. Android conserva Oculus. Log, JSON e cinque
+screenshot documentano i controlli sintetici; il pairing reale non viene modificato.
+`-RuntimeManifest` consente un percorso runtime diverso; `-SetupOnly` configura
+soltanto il profilo. [Esiti, installazione locale e limiti](../docs/xr-meta-simulator-verification.md).
+Questa prova non copre Inventor COM, acquisizione reale o prestazioni Quest.
+
+Per usare il simulatore contro Inventor reale, aprire una sola istanza di
+Inventor 2027 con add-in SO e tier sperimentale abilitato, poi eseguire:
+
+```powershell
+& 'Inventor XR SO/Tools~/Invoke-SimulatorLive.ps1' -Output 'artifacts/meta-xr-simulator/prova-nativa'
+```
+
+Il wrapper prepara la fixture M7 dedicata, usa un host HTTPS su loopback con
+certificato e credenziali temporanei e ripristina la fixture nel `finally`.
+Verifica anche interferenza, distanza minima e salute/BOM attraverso le azioni
+di Verifica. Documenti dell'utente e pairing persistente non vengono salvati
+o sovrascritti. Questa resta una prova desktop con input sintetico.
+
+Per i runner completi migrati (M1–M10, varianti M9 e QX), con le stesse
+precondizioni, eseguire la suite sequenziale. S1 è una corsa incrementale separata:
+
+```powershell
+& 'Inventor XR SO/Tools~/Invoke-SimulatorSuite.ps1' -Output 'artifacts/simulator/suite-nuova'
+& 'Inventor XR SO/Tools~/Invoke-SimulatorLive.ps1' -AcceptanceRunner s1 -Output 'artifacts/simulator/s1-nuovo'
+```
+
+Ogni runner usa il proprio documento fixture e conserva esito, limiti di
+copertura e ripristino. Exit code 0 non promuove i `NOT COVERED` o un verdetto
+`PARTIAL`. [Verbale esteso](../docs/xr-simulator-full-collaudo.md) e
+[procedura per le prossime sessioni](../CLAUDE.md#collaudo-autonomo-senza-visore--meta-xr-simulator).
+
 ## M10 icone Inventor
 
 Migrazione software estesa ai sei fornitori Progettazione, Lamiera, Assieme,
@@ -268,8 +311,8 @@ il budget GPU (contatore non disponibile).
 
 ## Collaudo desktop con Meta XR Simulator
 
-Il branch `codex/reality-capture` dispone dei runner M1–M10 (incluse le
-varianti M9) e S1 anche nell’Editor. Sono input **sintetici** su runtime
+Il branch `codex/reality-capture`, integrato con la UX a quattro attività,
+dispone dei runner M1–M10 (incluse le varianti M9), QX e S1 anche nell’Editor. Sono input **sintetici** su runtime
 Meta XR Simulator 207.1, con Unity 6000.6.3f1. Android conserva il loader
 Oculus; Standalone usa OpenXR 1.18.0. Il runtime globale OpenXR e il pairing
 persistente non vengono modificati.

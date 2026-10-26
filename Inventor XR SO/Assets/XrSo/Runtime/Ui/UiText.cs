@@ -9,6 +9,12 @@ namespace InventorXrSo.Unity.Ui
     /// <summary>Every user-visible string (MVP language: Italian).</summary>
     public static class UiText
     {
+        public const string DesignActivity = "Disegno e modifica";
+        public const string PresentationActivity = "Presentazione";
+        public const string VerificationActivity = "Verifica meccanica";
+        public const string DesignActivityBody = "Crea e modifica parti, lamiere e assiemi.";
+        public const string PresentationActivityBody = "Esplora il modello e misura. Movimenti in una fase successiva.";
+        public const string VerificationActivityBody = "Esplora e analizza. Smontaggio ed esploso in una fase successiva.";
         public const string AppTitle = "Inventor XR SO";
         public const string NotPaired = "Nessun PC associato";
         public const string NotPairedBody = "Scansiona il QR di associazione mostrato sul PC oppure inserisci il codice a 6 cifre.";

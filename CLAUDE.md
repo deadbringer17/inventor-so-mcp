@@ -156,3 +156,183 @@ GPU (plugin senza campioni).
   del file che modifichi.
 - `src/` e `pyproject.toml` sono il riferimento Python: non aggiungere lì
   funzionalità di produzione.
+
+## Collaudo autonomo senza visore — Meta XR Simulator
+
+Procedura riutilizzabile dal branch `nuova_ux`, verificata nella sessione del
+25–26 ottobre 2026. Verbale corrente e limiti:
+**[docs/xr-simulator-full-collaudo.md](docs/xr-simulator-full-collaudo.md)**.
+Configurazione iniziale e smoke precedenti:
+[docs/xr-meta-simulator-verification.md](docs/xr-meta-simulator-verification.md).
+Leggere i verbali prima di attribuire un PASS a un gate storico.
+
+### Prerequisiti e isolamento
+
+- Windows, PowerShell 7, Unity **6000.6.3f1**, SDK .NET 8 e 10.
+  Unity locale: `C:/Program Files/Unity/Hub/Editor/6000.6.3f1/Editor/Unity.exe`.
+- Meta CLI `metavr` nel PATH; installazione locale:
+  `C:/Users/salva/.metavr/bin/metavr.exe`.
+- Runtime ufficiale Meta XR Simulator **207.1**. Il wrapper cerca prima il
+  registro `SOFTWARE/Classes/xrsim/shell/open/command`, poi
+  `%LOCALAPPDATA%/MetaXRSimulatorPortable/PFiles/MetaXRSimulator/v207.1/meta_openxr_simulator.json`.
+  Per un'altra installazione usare `-RuntimeManifest <percorso-assoluto>`.
+- Per CAD nativo: una sola istanza Inventor 2027 con add-in SO sperimentale
+  **compilato dal codice da collaudare** e avviato con
+  `INVENTOR_SO_EXPERIMENTAL=1` nell'ambiente del processo. Confermare con
+  `inventor_health` e identificare i documenti aperti. Non basta avere installato
+  un vecchio pacchetto: il manifest può puntare a una DLL di una versione precedente.
+- Eseguire una sola corsa Unity/fixture alla volta, con l'Editor del progetto
+  chiuso. Non modificare script Unity mentre il runner è in Play Mode.
+  Eseguire anche import/build Unity e sonde CAD/test di host in sequenza:
+  importazioni pesanti concorrenti possono causare timeout e un esito CAD incerto.
+- La simulazione usa OpenXR su **Standalone**, Oculus su Android. Il wrapper
+  imposta `XR_RUNTIME_JSON` soltanto nell'ambiente del processo e lo ripristina:
+  non cambiare il runtime OpenXR globale e non sostituire Quest Link.
+- Serve un Editor GUI con **Game view** che produca frame XR. `-batchmode` può
+  inizializzare OpenXR senza renderizzare: non usarlo per questi runner.
+  Rimane corretto per EditMode e build APK.
+
+### Comandi dalla radice del repository
+
+Usare sempre una cartella evidenze nuova; non sovrascrivere una corsa precedente.
+
+```powershell
+# Solo configurazione Standalone/OpenXR; nessuna prova funzionale.
+& 'Inventor XR SO/Tools~/Invoke-Simulator.ps1' -SetupOnly -Output 'artifacts/simulator/setup-nuovo'
+
+# Smoke sintetico con host HTTPS FakeAddIn, senza Inventor.
+& 'Inventor XR SO/Tools~/Invoke-Simulator.ps1' -Output 'artifacts/simulator/fake-nuovo'
+
+# Smoke con Inventor reale e fixture M7 dedicata (49 controlli di base).
+& 'Inventor XR SO/Tools~/Invoke-SimulatorLive.ps1' -Output 'artifacts/simulator/native-nuovo'
+
+# Un runner completo; il wrapper sceglie/prepara/ripristina la fixture corretta.
+& 'Inventor XR SO/Tools~/Invoke-SimulatorLive.ps1' -AcceptanceRunner qx -Output 'artifacts/simulator/qx-nuovo'
+
+# Suite sequenziale dei runner storici migrati e QX.
+& 'Inventor XR SO/Tools~/Invoke-SimulatorSuite.ps1' -Output 'artifacts/simulator/suite-nuova'
+
+# Selezione di runner o ripetizione mirata dopo una correzione.
+& 'Inventor XR SO/Tools~/Invoke-SimulatorSuite.ps1' -Runners @('m5','m7','qx') -Output 'artifacts/simulator/ripetizione-nuova'
+
+# S1 è incrementale e separato dalla suite predefinita: ha bootstrap dedicato e pacing HTTP.
+& 'Inventor XR SO/Tools~/Invoke-SimulatorLive.ps1' -AcceptanceRunner s1 -Output 'artifacts/simulator/s1-nuovo'
+
+# Sonde native separate, soltanto fra le fixture e senza documenti aperti.
+dotnet run --project bridge/tests/M3LiveProbe -- --face-feature
+dotnet run --project bridge/tests/RealityReferenceLiveProbe
+```
+
+Runner disponibili: `m1,m2,m3,m4,m5,m6,m7,m8,m9,m9n,m9f,m9h,m10,qx,s1`.
+M8/M9/M10 usano la fixture M6; QX usa M7; M4 usa `M4LiveProbe`;
+gli altri usano la rispettiva fixture `QuestAcceptanceFixtures`.
+Non passare documenti dell'utente né costruire credenziali a mano.
+Il wrapper crea un host HTTPS di produzione su loopback/porta libera, certificato
+P-256 e bearer temporanei, mantenendo il pinning SHA-256. Non cambia il pairing
+persistente. Il bootstrap S1 in Editor non collauda il bootstrap privato Android.
+La fixture S1 prepara `S1_Create`, `S1_TextRead` e i tre parametri nativi
+`S1QuestLength73`, `S1QuestFlag73`, `S1QuestLabel73`: il vecchio fixture builder
+con il solo schizzo vuoto non basta per gli incrementi testo/parametri.
+La sonda RC4 usa una scansione sintetica e il vero plan/preview/commit; verifica
+provenienza, geometria di riferimento, Undo/Redo, salva una nuova parte nel
+workspace e la riapre. Chiude i propri documenti e conserva il file come prova.
+`--diagnose` è una diagnosi COM in transazione annullata, non un PASS di accettazione.
+
+### Esiti, errori e ripristino
+
+- Leggere `progress.json` e `results.json` della suite; per ogni corsa conservare
+  `runner-result.json`, `result.json`, `unity.log`, `*-acceptance.txt`, PNG,
+  manifest fixture sotto `artifacts/<fixture>-verification/quest-fixture.json`,
+  `native-before.log`, `native-after.log`, `native-cleanup.json` e log host.
+- `pass.marker` ed exit code 0 attestano il completamento del runner. **Non
+  attestano copertura totale**: leggere `verdict`, `passed_gates`, `not_covered`.
+  `PARTIAL` resta parziale; un caso fisico non eseguito resta escluso/aperto.
+  Contatori e frame del PC non certificano prestazioni GPU del Quest.
+- Confrontare i due stati nativi nelle corse senza authoring. L'attivazione di
+  documenti può avanzare `revision` senza modificare il CAD: controllare anche
+  `visual_revision`, geometria, pose e dirty flag. Le corse authoring devono
+  invece avanzare revisione al commit ed essere chiuse senza salvare la fixture.
+- `native-cleanup.json` deve riportare `fixture_restored=true` quando
+  `fixture_prepared=true`. La suite si arresta se il ripristino fallisce.
+  Riparare quello stato prima di avviare un'altra fixture.
+- Per fermare le corse **in coda**, creare `stop.request` nella cartella della
+  suite: i figli successivi si fermano prima della preparazione. Lasciare finire
+  la corsa attiva e il suo `finally`; non terminare tutto l'albero dei processi.
+- `error CS...` è errore di compilazione, assenza di log è problema di avvio,
+  `FAIL` nel runner è fallimento della prova. Non confonderli né contare come
+  falliti funzionali i runner fermati prima di preparare la fixture.
+- Il frontend è avviato tramite `metavr xrsim app launch --app-path ...`.
+  Usare il wrapper: la GUI può ereditare le pipe del CLI e bloccare l'attesa EOF.
+  Il wrapper attende il processo launcher con timeout e rileva gli errori CS.
+- Dopo una terminazione forzata può comparire **Scene Backup Detected** prima
+  del caricamento del progetto: `unity.log` resta sulle righe di licensing e
+  il titolo della finestra identifica il dialogo. Usare Computer Use per
+  **Keep Backups**, quindi verificare che il log riprenda. Non modificare la
+  scena generata e non cancellare alla cieca `Temp/`. Conservare l'eventuale
+  `Assets/_Recovery/` nelle evidenze prima di ripulire gli artefatti generati.
+- Il `finally` chiude senza salvare i documenti fixture, riattiva quello
+  precedente, ferma soltanto il proprio host ed elimina credenziali/certificato
+  temporanei. Verificare il JSON, non presumere che il cleanup sia riuscito.
+
+### Add-in temporaneo e controlli finali
+
+Se l'add-in installato non corrisponde al branch, pubblicarne uno **in una nuova
+cartella QA**, senza sovrascrivere DLL caricate:
+
+```powershell
+dotnet publish bridge/src/plugin-so27/Inventor.So.AddIn.csproj -c Debug -p:SoExperimental=true --self-contained false -o artifacts/simulator/qa-nuova/addin
+```
+
+Il manifest installato è normalmente
+`%APPDATA%/Autodesk/Inventor 2027/Addins/InventorSO/Inventor.So.addin`.
+Prima di cambiarne `Assembly`, conservarne una copia **byte per byte**, hash
+SHA-256, percorso DLL originale e PID. Chiudere Inventor soltanto dopo aver
+verificato che non abbia documenti dell'utente aperti; non chiudere documenti
+non salvati per liberare la DLL. Puntare `Assembly` alla DLL QA assoluta e
+riavviare una sola istanza con l'ambiente sperimentale limitato al processo.
+La posizione di Inventor si ricava dal registro
+`HKLM/SOFTWARE/Autodesk/Inventor/RegistryVersion31.0/InventorLocation`:
+su questa macchina è `Z:/Installati/Inventor 2027/Bin/Inventor.exe`.
+Attendere il caricamento dell'add-in prima di interpretare `NO_TARGET` come errore.
+Se MCP resta agganciato al vecchio PID, usare `inventor_list_available_targets`
+e `inventor_switch_target` sul target effettivamente riavviato, poi `inventor_health`.
+Per chiudere via COM un'istanza vuota si può usare Windows PowerShell 5 con
+`-NoProfile -STA`: `Marshal.GetActiveObject('Inventor.Application')`, controllo
+`Documents.Count == 0`, quindi `Quit()`. Quel metodo Marshal non è disponibile
+nello stesso modo in PowerShell 7/.NET moderno; le fixture C# usano il P/Invoke.
+Non terminare un'istanza con documenti non verificati per forzare il riavvio.
+
+Alla fine: verificare zero documenti fixture, chiudere l'istanza QA, ripristinare
+il manifest originale dalla copia e verificarne l'hash, quindi riavviare
+l'installazione precedente. Nella sessione iniziale lo stato di recupero è in
+`artifacts/simulator-full/addin-qa-state.json` e la copia originale in
+`artifacts/simulator-full/original-addin-manifest.xml`: **non sovrascriverli**.
+
+Dopo eventuali fix eseguire Core, backend, Capture.Worker, Unity EditMode e
+`XrSoBuild.BuildQxApksBatch` con `-qxOutput` nuovo. Ispezionare gli APK: ARM64
+e metadati dei runner presenti nel QA, assenti nell'ordinario. `UNITY_EDITOR`
+abilita i runner solo nell'Editor; nei player serve `XR_SO_ACCEPTANCE`.
+Il gate di avvio Editor richiede richiesta runner, file credenziali e output.
+I font Satoshi SDF possono accumulare glifi durante Play Mode: ripristinare
+solo quelle modifiche generate dopo tutti i test; preservare modifiche utente.
+Aggiornare verbale, conteggi, hash e limiti prima del commit. Non aggiornare a
+mano `Scenes/Main.unity` e non dichiarare superata una prova fisica esclusa.
+
+Esempio di verifica finale, in sequenza e con percorsi evidenze assoluti nuovi:
+
+```powershell
+dotnet test 'Inventor XR SO/Tests~/XrSo.Core.Tests'
+dotnet test bridge/tests/Bimwright.Ipt.Tests
+dotnet test bridge/tests/Capture.Worker.Tests
+$evidence = Join-Path (Get-Location) 'artifacts/simulator/verifica-finale-nuova'
+New-Item -ItemType Directory -Path $evidence
+& 'Inventor XR SO/Tools~/Invoke-Unity.ps1' -Arguments @('-buildTarget','Android','-runTests','-testPlatform','EditMode','-assemblyNames','InventorXrSo.Tests.EditMode','-testResults',"$evidence/editmode.xml") -Log "$evidence/editmode.log"
+& 'Inventor XR SO/Tools~/Invoke-Unity.ps1' -Arguments @('-buildTarget','Android','-executeMethod','InventorXrSo.Editor.XrSoBuild.BuildQxApksBatch','-qxOutput',"$evidence/apks") -Log "$evidence/apks.log"
+& 'Inventor XR SO/Tools~/Inspect-SimulatorPackages.ps1' -QaApk "$evidence/apks/InventorXrSo-qx-acceptance.apk" -OrdinaryApk "$evidence/apks/InventorXrSo-qx-ordinary.apk" -OutputJson "$evidence/package-inspection.json"
+```
+
+Negli ZIP APK controllare `lib/arm64-v8a/libil2cpp.so` e
+`assets/bin/Data/Managed/Metadata/global-metadata.dat`; cercare i nomi
+`QuestAcceptanceRunner`, `QxQuestAcceptance`, `M1QuestAcceptance`…`S1QuestAcceptance`
+nei metadati. Non usare la sola presenza di una stringa in tutto lo ZIP come
+prova di esclusione delle classi. Registrare dimensioni e SHA-256 dei due APK.

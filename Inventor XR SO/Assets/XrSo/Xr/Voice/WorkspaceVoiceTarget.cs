@@ -53,6 +53,7 @@ namespace InventorXrSo.Xr.Voice
 
         /// <summary>Vero solo con una sessione aperta (fuori dalla Home). Impostato da AppController.</summary>
         public bool InSession { get; set; }
+        public Func<InventorXrSo.Core.Experience.Activity> ActivityProbe { get; set; }
 
         public bool AcceptsVoice => InSession;
 
@@ -61,6 +62,8 @@ namespace InventorXrSo.Xr.Voice
             get
             {
                 if (!InSession) return null;
+                if (ActivityProbe != null && ActivityProbe() != InventorXrSo.Core.Experience.Activity.Design)
+                    return _surfaces[3] != null && _surfaces[3].Active ? _surfaces[3] : null;
                 foreach (var surface in _surfaces) if (surface != null && surface.Active) return surface;
                 return null;
             }

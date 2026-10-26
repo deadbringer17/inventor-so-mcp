@@ -3,7 +3,7 @@ param(
     [string]$RuntimeManifest,
     [string]$Output,
     [string]$LiveCredentials,
-    [ValidateSet('m1','m2','m3','m4','m5','m6','m7','m8','m9','m9n','m9f','m9h','m10','s1')][string]$AcceptanceRunner
+    [ValidateSet('m1','m2','m3','m4','m5','m6','m7','m8','m9','m9n','m9f','m9h','m10','qx','s1')][string]$AcceptanceRunner
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -12,7 +12,7 @@ $Output = [System.IO.Path]::GetFullPath($Output)
 foreach ($previousEvidence in @('unity.log','result.json','runner-result.json')) {
     if (Test-Path -LiteralPath (Join-Path $Output $previousEvidence)) { throw 'Choose a new output folder; previous simulator evidence is immutable.' }
 }
-if ($AcceptanceRunner -and -not $LiveCredentials) { throw 'Acceptance runners require the owned native fixture credentials from Invoke-SimulatorLive.ps1.' }
+if ($AcceptanceRunner -and -not $LiveCredentials) { throw 'Acceptance runners require owned native fixture credentials from Invoke-SimulatorLive.ps1.' }
 New-Item -ItemType Directory -Path $Output -Force | Out-Null
 if (-not $RuntimeManifest) {
     $simRegistryPath = 'SOFTWARE\Classes\xrsim\shell\open\command'

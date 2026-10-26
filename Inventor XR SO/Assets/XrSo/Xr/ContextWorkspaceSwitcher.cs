@@ -31,6 +31,7 @@ namespace InventorXrSo.Xr
             _inSession = inSession ?? (() => true);
         }
 
+        public Func<bool> CanAuthor { get; set; }
         public NavigationStack Navigation => _stack;
         /// <summary>Context of the active document as last routed; null when none/unsupported.</summary>
         public DocContext? Context { get; private set; }
@@ -80,6 +81,7 @@ namespace InventorXrSo.Xr
         /// <summary>Opens the workspace of <see cref="Context"/> when in session and it is not already the open one.</summary>
         public void Sync()
         {
+            if (CanAuthor?.Invoke() == false) { if (Opened != null) Leave(); return; }
             if (!_inSession() || Context == null || Opened == Context) return;
             if (_open(Context.Value)) Opened = Context;
             else _hud("Operazione CAD da verificare: non cambio contesto finché non è risolta.");

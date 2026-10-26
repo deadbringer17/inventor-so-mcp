@@ -31,6 +31,8 @@ namespace InventorXrSo.Xr
         private CancellationTokenSource _upload;
         public void BindTransfer(Func<CaptureSessionClient> transfer) => _transfer = transfer;
         public HomePanel Panel { get; private set; }
+        public bool BlocksActivityExit => Active && (_uiBusy || _reviewBusy || _referenceCommitUnconfirmed || _referencePlan != null
+            || _controller != null && (_controller.State == CaptureState.Recording || _controller.State == CaptureState.Paused));
         public bool Active => Panel != null && Panel.gameObject.activeSelf;
 
         public void Initialize(Transform head, Action returnHome)
@@ -44,6 +46,13 @@ namespace InventorXrSo.Xr
             Panel.name = "RealityCapturePanel";
             XrUi.MakeInteractive(Panel.Canvas, head.GetComponent<Camera>());
             Panel.gameObject.SetActive(false);
+        }
+
+        public void ExplainBlockedExit()
+        {
+            // Keep the current controls reachable: operator can Stop/Cancel/Review before leaving.
+            if (_referenceCommitUnconfirmed) { ShowUnconfirmedReference(); return; }
+            Panel.ShowNotice("Prima di tornare alla Home: termina o annulla l’operazione in corso. Scansioni raw conservate.");
         }
 
         public void Open()
