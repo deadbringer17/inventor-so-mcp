@@ -1,4 +1,4 @@
-#if XR_SO_ACCEPTANCE
+#if XR_SO_ACCEPTANCE || UNITY_EDITOR
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -21,6 +21,7 @@ namespace InventorXrSo.Xr
     {
         internal static readonly string[] ReflectedMembers =
         {
+            "AppController._verification",
             "AppController._inspect",
             "AppController._catalog",
             "AppController._selection",
@@ -91,7 +92,8 @@ namespace InventorXrSo.Xr
             // M2-Inspect: Ispeziona is on the palette by default; its tabs and actions are declared, no panel or wrist menu exists.
             // Every tap below is an action invoked by id: SYNTHETIC input, never a hand or a controller ray.
             Record("Actions are invoked by id through the catalog and numbers typed on the keypad entry (synthetic input)");
-            Check(inspect.Active && ReferenceEquals(Catalog.Active, inspect), "Ispeziona is the active workspace of the palette");
+            Check(inspect.Active && ReferenceEquals(Catalog.Active, Read<VerificationWorkspace>(App, "_verification"))
+                && App.CurrentActivity == InventorXrSo.Core.Experience.Activity.Verification, "Verifica composes the active inspection tools on the palette");
             var tabs = Catalog.Tabs.Select(t => t.Label).ToList();
             Check(tabs.SequenceEqual(new[] { "Esplora", "Misura", "Sezione", "Visibilità", "Verifica", "Vista", "Documento" }), "palette tabs without an authoring workspace are " + string.Join(" / ", tabs));
             foreach (var id in new[] { InspectWorkspace.IdBrowse, InspectWorkspace.IdProperties, InspectWorkspace.IdMeasure, InspectWorkspace.IdSection,

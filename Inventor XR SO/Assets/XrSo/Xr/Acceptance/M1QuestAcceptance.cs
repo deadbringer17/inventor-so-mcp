@@ -1,4 +1,4 @@
-#if XR_SO_ACCEPTANCE
+#if XR_SO_ACCEPTANCE || UNITY_EDITOR
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -17,6 +17,7 @@ using InventorXrSo.Unity.Scene;
 using InventorXrSo.Unity.Ui;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 namespace InventorXrSo.Xr
 {
@@ -25,6 +26,7 @@ namespace InventorXrSo.Xr
     {
         internal static readonly string[] ReflectedMembers =
         {
+            "AppController._verification",
             "AppController._session",
             "AppController._store",
             "AppController._server",
@@ -92,8 +94,8 @@ namespace InventorXrSo.Xr
             Call(App, "RefreshHome");
             var home = Read<HomePanel>(App, "_home");
             Check(home != null, "Home panel exists");
-            var title = Read<Text>(home, "_title").text;
-            var body = Read<Text>(home, "_body").text;
+            var title = Read<TMP_Text>(home, "_title").text;
+            var body = Read<TMP_Text>(home, "_body").text;
             Check(title == UiText.AppTitle, "Home title is the app title");
             Check(body.Contains(UiText.PcLabel + server.Host + ":" + server.Port), "Home shows the PC address");
             Check(body.Contains(UiText.BackendLabel + UiText.VersionLabel(caps.ServerVersion)), "Home shows the backend version");
@@ -192,7 +194,8 @@ namespace InventorXrSo.Xr
             Check(environment.Mode == EnvironmentMode.MixedReality, "session started in Mixed Reality");
             var eye = Read<Camera>(environment, "eye");
             Check(eye != null && eye.backgroundColor.a < 0.01f, "Mixed Reality clears the camera to a transparent background");
-            Check(inspect.Active && ReferenceEquals(Read<ActionCatalog>(App, "_catalog").Active, inspect), "Ispeziona is the workspace on the palette");
+            Check(inspect.Active && ReferenceEquals(Read<ActionCatalog>(App, "_catalog").Active, Read<VerificationWorkspace>(App, "_verification"))
+                && App.CurrentActivity == InventorXrSo.Core.Experience.Activity.Verification, "Verifica composes the active inspection tools on the palette");
             Record("Environment switched by invoking the action '" + InspectWorkspace.IdEnvironment + "' by id (synthetic input)");
             RunAction(InspectWorkspace.IdEnvironment);
             Check(environment.Mode == EnvironmentMode.StudioVr && eye.backgroundColor.a > 0.99f, "action switched to Studio VR with an opaque studio background");

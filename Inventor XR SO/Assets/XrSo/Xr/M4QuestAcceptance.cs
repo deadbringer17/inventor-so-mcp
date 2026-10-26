@@ -1,4 +1,4 @@
-#if XR_SO_ACCEPTANCE
+#if XR_SO_ACCEPTANCE || UNITY_EDITOR
 using System;
 using System.Linq;
 using System.Threading;
@@ -111,7 +111,7 @@ namespace InventorXrSo.Xr
             Record("PASS; dedicated fixture loaded: " + fixture.Graph.Root.Name);
 
             app.RequestActivity(InventorXrSo.Core.Experience.Activity.Design);
-            Call(app, "EnterSession", EnvironmentMode.StudioVr);
+            if (!ReadBoolean(app, "_inSession")) Call(app, "EnterSession", EnvironmentMode.StudioVr);
             _ws = Read<AssemblyWorkspace>(app, "_assembly");
             // M9: the router opens Assieme for the fixture assembly (no Spazi action any more).
             await WaitUntil(() => _ws.Active, ct, 60);

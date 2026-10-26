@@ -1,4 +1,4 @@
-#if XR_SO_ACCEPTANCE
+#if XR_SO_ACCEPTANCE || UNITY_EDITOR
 using System;
 using System.Collections;
 using System.Globalization;
@@ -24,6 +24,7 @@ namespace InventorXrSo.Xr
     {
         internal static readonly string[] ReflectedMembers =
         {
+            "AppController._inSession",
             "AppController._session", "AppController._inspect", "AppController._design", "AppController._selection",
             "AppController._catalog",
             "AppController.EnterSession",
@@ -66,7 +67,7 @@ namespace InventorXrSo.Xr
 
             // ---- M9: the active document is the part, so the context router opens Progettazione by itself (no Spazi action any more)
             App.RequestActivity(InventorXrSo.Core.Experience.Activity.Design);
-            Call(App, "EnterSession", EnvironmentMode.StudioVr);
+            if (!ReadBoolean(App, "_inSession")) Call(App, "EnterSession", EnvironmentMode.StudioVr);
             _inspect = Read<InspectWorkspace>(App, "_inspect");
             _design = Read<DesignWorkspace>(App, "_design");
             Check(_inspect != null && _design != null, "app exposes the Inspect and Design workspaces");
@@ -92,6 +93,10 @@ namespace InventorXrSo.Xr
 
             // ---- C1: extrude preview / cancel
             await PreviewExtrudeAsync(state0, ct);
+            Check(!App.RequestActivity(InventorXrSo.Core.Experience.Activity.Home)
+                && App.CurrentActivity == InventorXrSo.Core.Experience.Activity.Design && DesignSess.Preview != null,
+                "QX-03: Home refuses a real native preview without discarding its plan");
+            Pass("QX-03-native-preview", "Home blocked during native extrusion preview; existing plan retained for Cancel/Apply");
             var session = DesignSess;
             var previewView = PreviewView;
             var root = Read<GameObject>(previewView, "_previewRoot");

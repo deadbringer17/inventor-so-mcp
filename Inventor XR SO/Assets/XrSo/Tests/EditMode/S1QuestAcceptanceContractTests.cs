@@ -25,8 +25,10 @@ namespace InventorXrSo.Tests
             Assert.That(Source.TrimStart(), Does.StartWith("#if XR_SO_ACCEPTANCE"));
             Assert.That(Source.TrimEnd(), Does.EndWith("#endif"));
             Assert.That(Source, Does.Contain("StartIfRequested<S1QuestAcceptance>(\"xr_s1_acceptance\")"));
-            Assert.That(typeof(AppController).Assembly.GetType("InventorXrSo.Xr.S1QuestAcceptance"), Is.Null,
-                "Ordinary/EditMode assembly must not contain device acceptance code.");
+            Assert.That(Source.TrimStart(), Does.StartWith("#if XR_SO_ACCEPTANCE || UNITY_EDITOR"), "ordinary players exclude the runner");
+            var runner = typeof(AppController).Assembly.GetType("InventorXrSo.Xr.S1QuestAcceptance");
+            Assert.That(runner, Is.Not.Null, "Editor exposes the opt-in simulator runner");
+            QuestAcceptanceContractTests.AssertEditorRunnerRequiresFixture(runner, "xr_s1_acceptance");
         }
 
         [Test]

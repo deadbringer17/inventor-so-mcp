@@ -1,5 +1,9 @@
 # Meta XR Simulator — verifica desktop
 
+Aggiornamento 25–26 ottobre 2026: per i runner completi M1–M10/QX, S1 e la
+sonda RC4 nativa vedere il [collaudo esteso](xr-simulator-full-collaudo.md).
+Le corse sotto restano le evidenze storiche dello smoke iniziale.
+
 25 ottobre 2026, branch `nuova_ux`. Runtime Meta XR Simulator **207.1**, Unity
 **6000.6.3f1**, OpenXR **1.18.0**, profilo Meta Quest 3. Nessun visore collegato.
 

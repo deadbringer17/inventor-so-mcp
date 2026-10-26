@@ -8,8 +8,13 @@ OpenXR 1.18.0 per Standalone e il percorso Editor
 `Tools~/Invoke-Simulator.ps1`, con Meta XR Simulator 207.1 e HTTPS FakeAddIn.
 Android mantiene Oculus. [Verbale del simulatore](xr-meta-simulator-verification.md).
 `Tools~/Invoke-SimulatorLive.ps1` estende la prova al CAD nativo: prepara,
-ispeziona e ripristina la fixture M7; interferenza, distanza, salute e BOM
+ispeziona e ripristina la fixture del runner richiesto (M7 nello smoke); interferenza, distanza, salute e BOM
 sono eseguite tramite il workspace Verifica e l'host HTTPS di produzione.
+`Tools~/Invoke-SimulatorSuite.ps1` esegue in sequenza i runner migrati M1–M10/QX;
+S1 ha una corsa separata e un bootstrap dedicato. Il
+[verbale esteso](xr-simulator-full-collaudo.md) distingue esiti e copertura;
+la [procedura in CLAUDE.md](../CLAUDE.md#collaudo-autonomo-senza-visore--meta-xr-simulator)
+descrive riproduzione, errori di avvio e ripristino dell'add-in temporaneo.
 L'analisi statica sottostante descrive il punto di partenza precedente ai lavori.
 
 <!-- unity-onboarding:generated:start -->

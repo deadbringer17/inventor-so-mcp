@@ -257,6 +257,19 @@ Verifica anche interferenza, distanza minima e salute/BOM attraverso le azioni
 di Verifica. Documenti dell'utente e pairing persistente non vengono salvati
 o sovrascritti. Questa resta una prova desktop con input sintetico.
 
+Per i runner completi migrati (M1–M10, varianti M9 e QX), con le stesse
+precondizioni, eseguire la suite sequenziale. S1 è una corsa incrementale separata:
+
+```powershell
+& 'Inventor XR SO/Tools~/Invoke-SimulatorSuite.ps1' -Output 'artifacts/simulator/suite-nuova'
+& 'Inventor XR SO/Tools~/Invoke-SimulatorLive.ps1' -AcceptanceRunner s1 -Output 'artifacts/simulator/s1-nuovo'
+```
+
+Ogni runner usa il proprio documento fixture e conserva esito, limiti di
+copertura e ripristino. Exit code 0 non promuove i `NOT COVERED` o un verdetto
+`PARTIAL`. [Verbale esteso](../docs/xr-simulator-full-collaudo.md) e
+[procedura per le prossime sessioni](../CLAUDE.md#collaudo-autonomo-senza-visore--meta-xr-simulator).
+
 ## M10 icone Inventor
 
 Migrazione software estesa ai sei fornitori Progettazione, Lamiera, Assieme,

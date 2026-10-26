@@ -75,6 +75,19 @@ internal static class S1Fixtures
                 sketch.Name = SketchName;
                 sketch.Visible = true;
                 AssertEmpty(sketch);
+                // The migrated runner includes the native text/parameter increments.
+                // Populate their dedicated read-only sketch without touching S1_Create.
+                def.Parameters.UserParameters.AddByExpression("S1QuestLength73", "10 mm", "mm");
+                def.Parameters.UserParameters.AddByValue("S1QuestFlag73", false, UnitsTypeEnum.kBooleanUnits);
+                def.Parameters.UserParameters.AddByValue("S1QuestLabel73", "Quest73", UnitsTypeEnum.kTextUnits);
+                var textRead = def.Sketches.Add(def.WorkPlanes[3]);
+                textRead.Name = "S1_TextRead"; textRead.Visible = true;
+                textRead.TextBoxes.AddFitted(app.TransientGeometry.CreatePoint2d(1, 2),
+                    "L=<Parameter Name='S1QuestLength73' Precision='0'>S1QuestLength73</Parameter>", Type.Missing);
+                textRead.TextBoxes.AddByRectangle(app.TransientGeometry.CreatePoint2d(1, 5),
+                    app.TransientGeometry.CreatePoint2d(8, 3), "Quest73", Type.Missing);
+                if (!part.Rebuild2(false) || textRead.TextBoxes.Count != 2 || textRead.TextBoxes[1].Text != "L=10")
+                    throw new InvalidOperationException("Native S1 text/parameter fixture initialization differs.");
                 string path = Path.Combine(directory, sheet ? SheetName : PartName);
                 part.SaveAs(path, false);
                 var row = State((Document)part);

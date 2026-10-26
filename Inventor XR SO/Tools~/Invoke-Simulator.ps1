@@ -2,7 +2,8 @@ param(
     [switch]$SetupOnly,
     [string]$RuntimeManifest,
     [string]$Output,
-    [string]$LiveCredentials
+    [string]$LiveCredentials,
+    [string]$AcceptanceRunner
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -38,23 +39,45 @@ if (-not $SetupOnly) {
     }
 }
 $simExe = Join-Path (Split-Path -Parent $RuntimeManifest) 'MetaXRSimulator.exe'
-& metavr xrsim app launch --app-path $simExe *> (Join-Path $Output 'frontend-launch.log')
-if ($LASTEXITCODE -ne 0) { throw 'Meta XR Simulator frontend did not start; see frontend-launch.log.' }
+$launcher = Start-Process (Get-Command metavr).Source -ArgumentList @('xrsim','app','launch','--app-path',('"'+$simExe+'"')) `
+    -RedirectStandardOutput (Join-Path $Output 'frontend-launch.log') -RedirectStandardError (Join-Path $Output 'frontend-error.log') -PassThru -WindowStyle Hidden
+# The newly launched GUI may inherit CLI pipes; wait for the CLI process, not EOF from its descendants.
+if (-not $launcher.WaitForExit(45000)) { Stop-Process -Id $launcher.Id; throw 'Meta XR Simulator launcher timed out.' }
+$launcher.Refresh()
+if ($launcher.ExitCode -ne 0) { throw 'Meta XR Simulator frontend did not start; see frontend-launch.log.' }
 $previousRuntime = $env:XR_RUNTIME_JSON
 $previousLiveCredentials = $env:XR_SO_SIMULATOR_LIVE_CREDENTIALS
+$previousRunner = $env:XR_SO_SIMULATOR_RUNNER
+$previousOutput = $env:XR_SO_SIMULATOR_OUTPUT
 try {
     # Process scope only. Never replace the system-wide Quest Link/OpenXR runtime.
     $env:XR_RUNTIME_JSON = [System.IO.Path]::GetFullPath($RuntimeManifest)
     $env:XR_SO_SIMULATOR_LIVE_CREDENTIALS = if ($LiveCredentials) { [System.IO.Path]::GetFullPath($LiveCredentials) } else { $null }
+    $env:XR_SO_SIMULATOR_RUNNER = if ($AcceptanceRunner) { 'xr_' + $AcceptanceRunner + '_acceptance' } else { $null }
+    $env:XR_SO_SIMULATOR_OUTPUT = $Output
+    $runnerResult = Join-Path $Output 'runner-result.json'
+    if (Test-Path -LiteralPath $runnerResult) { Remove-Item -LiteralPath $runnerResult }
     $method = if ($SetupOnly) { 'InventorXrSo.Editor.XrSoSimulator.ConfigureBatch' } else { 'InventorXrSo.Editor.XrSoSimulator.RunSmokeBatch' }
     # A real Game view is required to pump XR frames. Batch mode can create an OpenXR instance without rendering a session.
     $unity = 'C:/Program Files/Unity/Hub/Editor/6000.6.3f1/Editor/Unity.exe'
     $unityArgs = @('-projectPath',('"'+$projectRoot+'"'),'-buildTarget','Win64','-executeMethod',$method,'-xrSimOutput',('"'+$Output+'"'),'-logFile',('"'+(Join-Path $Output 'unity.log')+'"'))
     $editor = Start-Process -FilePath $unity -ArgumentList $unityArgs -PassThru -WindowStyle Hidden
-    $editor.WaitForExit(); $editor.Refresh()
+    $deadline = [DateTime]::UtcNow.AddMinutes(30)
+    $unityLog = Join-Path $Output 'unity.log'
+    while (-not $editor.WaitForExit(1000)) {
+        if ((Test-Path -LiteralPath $unityLog) -and (Select-String -LiteralPath $unityLog -Pattern 'error CS[0-9]{4}:' -Quiet)) {
+            Stop-Process -Id $editor.Id
+            throw 'Unity compilation failed; see unity.log.'
+        }
+        if ([DateTime]::UtcNow -gt $deadline) { Stop-Process -Id $editor.Id; throw 'Unity simulator run exceeded 30 minutes.' }
+    }
+    $editor.Refresh()
     $resultCode = $editor.ExitCode
     if (-not $SetupOnly -and $resultCode -eq 0 -and -not (Test-Path -LiteralPath $marker)) {
         throw 'Unity exited without completing the simulator checks; see unity.log.'
     }
-} finally { $env:XR_RUNTIME_JSON = $previousRuntime; $env:XR_SO_SIMULATOR_LIVE_CREDENTIALS = $previousLiveCredentials }
+} finally {
+    $env:XR_RUNTIME_JSON = $previousRuntime; $env:XR_SO_SIMULATOR_LIVE_CREDENTIALS = $previousLiveCredentials
+    $env:XR_SO_SIMULATOR_RUNNER = $previousRunner; $env:XR_SO_SIMULATOR_OUTPUT = $previousOutput
+}
 exit $resultCode

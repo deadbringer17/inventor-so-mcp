@@ -9,9 +9,8 @@ using UnityEngine;
 
 namespace InventorXrSo.Tests
 {
-    // I runner di accettazione su Quest (Xr/Acceptance/*.cs) sono compilati solo con XR_SO_ACCEPTANCE,
-    // assente in EditMode: il contratto con AppController & co. (accesso per reflection) si verifica
-    // quindi sul TESTO sorgente dei runner.
+    // Acceptance code is available in the Editor and opt-in QA players. Ordinary
+    // players must exclude it; the explicit credential/runner gate is exercised here.
     public class QuestAcceptanceContractTests
     {
         private static readonly string[] RunnerTypeNames =
@@ -61,8 +60,38 @@ namespace InventorXrSo.Tests
                 .Where(t => RunnerTypeNames.Contains(t.Name))
                 .Select(t => t.FullName)
                 .ToList();
-            Assert.IsEmpty(present,
-                "I runner di accettazione non devono essere compilati senza XR_SO_ACCEPTANCE: " + string.Join(", ", present));
+            Assert.AreEqual(RunnerTypeNames.Length, present.Count, "Editor hosts expose the guarded runners for simulator acceptance.");
+            foreach (string name in RunnerTypeNames)
+            {
+                string folder = name == "M4QuestAcceptance" ? "XrSo/Xr" : "XrSo/Xr/Acceptance";
+                var source = File.ReadAllText(Path.Combine(Application.dataPath, folder, name + ".cs"));
+                StringAssert.StartsWith("#if XR_SO_ACCEPTANCE || UNITY_EDITOR", source.TrimStart(), "ordinary player compile gate: " + name);
+                StringAssert.EndsWith("#endif", source.TrimEnd(), "whole runner stays behind the compile gate: " + name);
+            }
+            AssertEditorRunnerRequiresFixture(assembly.GetType("InventorXrSo.Xr.M3QuestAcceptance"), "xr_m3_acceptance");
+        }
+
+        internal static void AssertEditorRunnerRequiresFixture(Type runner, string request)
+        {
+            var parent = typeof(InventorXrSo.Xr.AppController).Assembly.GetType("InventorXrSo.Xr.QuestAcceptanceRunner");
+            var start = parent.GetMethod("StartIfRequested", BindingFlags.Static | BindingFlags.NonPublic).MakeGenericMethod(runner);
+            string[] keys = { "XR_SO_SIMULATOR_RUNNER", "XR_SO_SIMULATOR_LIVE_CREDENTIALS", "XR_SO_SIMULATOR_OUTPUT" };
+            var previous = keys.Select(Environment.GetEnvironmentVariable).ToArray();
+            var before = Resources.FindObjectsOfTypeAll(parent);
+            try
+            {
+                Environment.SetEnvironmentVariable(keys[0], request);
+                Environment.SetEnvironmentVariable(keys[1], Path.Combine(Application.temporaryCachePath, Guid.NewGuid().ToString("N") + ".missing"));
+                Environment.SetEnvironmentVariable(keys[2], Application.temporaryCachePath);
+                start.Invoke(null, new object[] { request });
+                CollectionAssert.AreEquivalent(before, Resources.FindObjectsOfTypeAll(parent), "a runner request alone cannot start without owned fixture credentials");
+            }
+            finally
+            {
+                for (int i = 0; i < keys.Length; i++) Environment.SetEnvironmentVariable(keys[i], previous[i]);
+                foreach (var spawned in Resources.FindObjectsOfTypeAll(parent).Except(before).OfType<Component>())
+                    UnityEngine.Object.DestroyImmediate(spawned.gameObject);
+            }
         }
 
         [TestCase("M1QuestAcceptance")]
@@ -203,7 +232,7 @@ namespace InventorXrSo.Tests
         {
             var runner = ReadSource("QuestAcceptanceRunner");
             StringAssert.Contains("protected virtual string Completion()", runner);
-            StringAssert.Contains("Record(Completion());", runner);
+            StringAssert.Contains("verdict = Completion(); Record(verdict);", runner);
             StringAssert.Contains("NotCoveredGates.Add(gate);", runner);
 
             var source = ReadSource("M9QuestAcceptance");

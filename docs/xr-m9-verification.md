@@ -1,5 +1,13 @@
 # M9 navigazione per contesto — stato e verifica
 
+Aggiornamento 25–26 ottobre 2026 sul branch `nuova_ux`: rieseguiti i runner
+M9/n/f/h con Meta XR Simulator e Inventor reale. M9: 549 asserzioni senza errori,
+verdetto ancora `PARTIAL` per maniglia/highlight già mancanti; n/f/h: 121/200/200
+asserzioni PASS. Rieseguita anche la sonda nativa sui quattro tipi di feature
+e sul parametro guidato da espressione. Vedere il
+[verbale esteso](xr-simulator-full-collaudo.md) per regressioni, limiti e ripristino.
+Questa evidenza desktop non modifica gli esiti storici su Quest riportati sotto.
+
 Data: 5 ottobre 2026, Europe/Rome.
 Spec: [M9 navigazione per contesto](superpowers/specs/2026-10-04-m9-navigazione-contesto-design.md).
 Piano: [M9](superpowers/plans/2026-10-04-m9-navigazione-contesto.md).

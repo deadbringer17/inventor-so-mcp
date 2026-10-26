@@ -1,5 +1,10 @@
 # Quattro esperienze XR — verifica F0–F4
 
+Per la successiva riesecuzione dei runner completi con Meta XR Simulator e
+Inventor reale, inclusi offline/riconnessione e guardie Capture, vedere il
+[verbale esteso del 25–26 ottobre](xr-simulator-full-collaudo.md).
+I conteggi sotto documentano la prima tranche.
+
 25 ottobre 2026, Europe/Rome. Branch: `nuova_ux`.
 Perimetro: prima consegna del [piano](superpowers/plans/2026-10-25-quattro-esperienze-xr.md), F0–F4.
 
