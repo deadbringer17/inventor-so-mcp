@@ -264,3 +264,52 @@ il budget GPU (contatore non disponibile).
 [piano](../docs/superpowers/plans/2026-10-06-m10-icone-inventor.md),
 [inventario](../docs/xr-m10-action-inventory.md),
 [esiti e gate aperti](../docs/xr-m10-verification.md).
+
+
+## Collaudo desktop con Meta XR Simulator
+
+Il branch `codex/reality-capture` dispone dei runner M1–M10 (incluse le
+varianti M9) e S1 anche nell’Editor. Sono input **sintetici** su runtime
+Meta XR Simulator 207.1, con Unity 6000.6.3f1. Android conserva il loader
+Oculus; Standalone usa OpenXR 1.18.0. Il runtime globale OpenXR e il pairing
+persistente non vengono modificati.
+
+Dalla radice del repository, con Editor del progetto chiuso, usare sempre
+cartelle di evidenze nuove:
+
+```powershell
+# Percorso HTTPS FakeAddIn: nessuna modifica CAD nativa.
+& 'Inventor XR SO/Tools~/Invoke-Simulator.ps1' -Output 'artifacts/simulator/capture-fake-nuovo'
+
+# Inventor 2027 reale, una sola istanza con add-in del branch sperimentale.
+& 'Inventor XR SO/Tools~/Invoke-SimulatorLive.ps1' -AcceptanceRunner m1 -Output 'artifacts/simulator/capture-m1-nuovo'
+& 'Inventor XR SO/Tools~/Invoke-SimulatorSuite.ps1' -Output 'artifacts/simulator/capture-suite-nuova'
+& 'Inventor XR SO/Tools~/Invoke-SimulatorLive.ps1' -AcceptanceRunner s1 -Output 'artifacts/simulator/capture-s1-nuovo'
+```
+
+Il wrapper prepara la fixture dedicata, crea certificato e bearer temporanei,
+conserva il pinning e chiude senza salvare i documenti della fixture nel
+`finally`. L’add-in deve essere compilato con `-p:SoExperimental=true` e
+Inventor avviato con `INVENTOR_SO_EXPERIMENTAL=1` nell’ambiente del processo.
+Non sostituire DLL già caricate; conservare e ripristinare il manifest originale
+se si usa un add-in QA temporaneo. Non chiudere documenti dell’utente per
+forzare un riavvio. Le corse native e gli import/test/build Unity vanno eseguiti
+in sequenza.
+
+Controllare `runner-result.json`, `result.json`, log, PNG e
+`native-cleanup.json`: `fixture_restored=true` è obbligatorio se la fixture è
+stata preparata. `pass.marker` ed exit code 0 non promuovono i casi
+`not_covered` a PASS. Per interrompere la coda creare `stop.request` nella
+cartella della suite e lasciare terminare la corsa attiva. Il simulatore non
+esegue l’APK Android e non certifica camere, tracking fisico, controller,
+metrologia, ergonomia o GPU del Quest.
+
+Evidenze, difetti corretti e limiti del ramo Capture:
+[verbale del simulatore](../docs/xr-reality-capture-simulator-verification.md).
+
+Le build di verifica usano `InventorXrSo.Editor.XrSoBuild.BuildSimulatorApksBatch`
+con `-simulatorApkOutput` diretto a una cartella nuova. Producono
+`InventorXrSo-simulator-acceptance.apk` e `InventorXrSo-simulator-ordinary.apk`
+senza sovrascrivere `Builds/InventorXrSo.apk`. Eseguire poi
+`Tools~/Inspect-SimulatorPackages.ps1` con `-QaApk`, `-OrdinaryApk` e un nuovo
+`-OutputJson`: verifica ARM64 e nomi esatti dei runner nei metadati IL2CPP.

@@ -218,10 +218,15 @@ namespace InventorXrSo.Xr
         }
         public void SetScene(LoadedScene scene)
         {
-            if (NativeEditorOpen) _nativeEditor?.Session.InvalidatePresentation();
+            bool sameRevision = _state != null && scene?.Graph.State != null
+                && _state.DocumentId == scene.Graph.State.DocumentId && _state.Revision == scene.Graph.State.Revision;
+            if (NativeEditorOpen && !sameRevision) _nativeEditor?.Session.InvalidatePresentation();
             _sceneState = scene?.Graph.State;
             _kind = scene?.Graph.Kind;
             SetDocumentState(scene?.Graph.State);
+            // CadSceneView cleared the ghost while rebuilding. Restore only the plan
+            // that survived the document/revision check above, before offering Apply.
+            if (_session != null) SessionChanged();
         }
         public void SetDocumentState(DocumentState state)
         {
@@ -318,7 +323,7 @@ namespace InventorXrSo.Xr
         private void SessionChanged()
         {
             if (_session.Status == DesignStatus.Previewing || _session.Status == DesignStatus.Committing) _history = null;
-            if (_session.Preview != null && _session.Status == DesignStatus.PreviewReady && _renderedPlan != _session.Preview.PlanId && Active)
+            if (_session.Preview != null && _session.Status == DesignStatus.PreviewReady && (_renderedPlan != _session.Preview.PlanId || !_previewView.IsShowing) && Active)
             {
                 try
                 {
@@ -332,7 +337,13 @@ namespace InventorXrSo.Xr
                     }
                     _session.ConfirmRendered(_renderedPlan);
                 }
-                catch (Exception ex) { SetNotice("Anteprima non visualizzabile: " + ex.Message); }
+                catch (Exception ex)
+                {
+                    var error = "Anteprima non visualizzabile: " + ex.Message;
+                    // A failed redraw cannot retain an earlier confirmation for Apply.
+                    if (_session.CanEdit) _session.RejectDraft(error);
+                    SetNotice(error);
+                }
             }
             if (_session.Preview == null) { _previewView.Clear(); _renderedPlan = null; }
             ShowValidationContext();

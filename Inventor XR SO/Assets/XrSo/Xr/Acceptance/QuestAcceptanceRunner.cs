@@ -1,4 +1,4 @@
-#if XR_SO_ACCEPTANCE
+#if XR_SO_ACCEPTANCE || UNITY_EDITOR
 using System;
 using System.IO;
 using System.Reflection;
@@ -7,6 +7,7 @@ using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using InventorXrSo.Core.Session;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 
 namespace InventorXrSo.Xr
@@ -24,6 +25,13 @@ namespace InventorXrSo.Xr
         protected virtual string FixtureMilestone => Milestone;
         protected string FixturePrefix => "XR_" + FixtureMilestone.ToUpperInvariant() + "_Quest_Acceptance";
         protected string LogPath { get; private set; }
+        private static int _assertions;
+        private readonly System.Collections.Generic.List<string> _passedGates = new System.Collections.Generic.List<string>();
+        protected static string EvidenceDirectory =>
+#if UNITY_EDITOR
+            Environment.GetEnvironmentVariable("XR_SO_SIMULATOR_OUTPUT") ??
+#endif
+            Application.persistentDataPath;
 
         /// <summary>Every gate id passed to <see cref="NotCovered"/> in this run, in order (a runner may decide its verdict on it).</summary>
         protected readonly System.Collections.Generic.List<string> NotCoveredGates = new System.Collections.Generic.List<string>();
@@ -34,6 +42,14 @@ namespace InventorXrSo.Xr
         /// <summary>Called by each subclass from its own AfterSceneLoad static method.</summary>
         protected static void StartIfRequested<T>(string intentExtra) where T : QuestAcceptanceRunner
         {
+#if UNITY_EDITOR
+            if (Environment.GetEnvironmentVariable("XR_SO_SIMULATOR_RUNNER") != intentExtra
+                || !File.Exists(Environment.GetEnvironmentVariable("XR_SO_SIMULATOR_LIVE_CREDENTIALS"))
+                || string.IsNullOrEmpty(Environment.GetEnvironmentVariable("XR_SO_SIMULATOR_OUTPUT"))) return;
+            var editorHost = new GameObject("Simulator Acceptance Runner");
+            DontDestroyOnLoad(editorHost);
+            editorHost.AddComponent<T>();
+#endif
 #if UNITY_ANDROID && !UNITY_EDITOR
             try
             {
@@ -65,7 +81,9 @@ namespace InventorXrSo.Xr
 
         private async void Start()
         {
-            LogPath = Path.Combine(Application.persistentDataPath, Milestone + "-acceptance.txt");
+            LogPath = Path.Combine(EvidenceDirectory, Milestone + "-acceptance.txt");
+            _assertions = 0;
+            string verdict = null;
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(TimeoutSeconds));
             try
             {
@@ -73,19 +91,45 @@ namespace InventorXrSo.Xr
                 File.WriteAllText(LogPath, string.Empty);
                 Record("START; waiting for online Inventor fixture");
                 await Run(timeout.Token);
-                Record(Completion());
+                verdict = Completion(); Record(verdict);
             }
             catch (Exception ex)
             {
                 var inner = ex;
                 while ((inner is TargetInvocationException || inner is AggregateException) && inner.InnerException != null)
                     inner = inner.InnerException;
-                Record("FAIL; " + inner.GetType().Name + ": " + inner.Message);
+                verdict = "FAIL; " + inner.GetType().Name + ": " + inner.Message; Record(verdict);
+                Record(inner.StackTrace ?? "stack unavailable");
             }
+#if UNITY_EDITOR
+            finally
+            {
+                File.WriteAllText(Path.Combine(EvidenceDirectory, "runner-result.json"), new JObject
+                {
+                    ["runner"] = Milestone, ["fixture"] = FixtureMilestone, ["input"] = "synthetic",
+                    ["verdict"] = verdict, ["success"] = verdict != null && !verdict.StartsWith("FAIL", StringComparison.Ordinal),
+                    ["assertions"] = _assertions, ["passed_gates"] = new JArray(_passedGates), ["not_covered"] = new JArray(NotCoveredGates),
+                    ["platform"] = "Unity Editor / Meta XR Simulator; not Quest hardware"
+                }.ToString());
+            }
+#endif
         }
 
         protected void Record(string message)
         {
+            // Older runners log gate lines directly instead of calling Pass/NotCovered.
+            string prefix = message.StartsWith("NOT COVERED [", StringComparison.Ordinal) ? "NOT COVERED ["
+                : message.StartsWith("PASS [", StringComparison.Ordinal) ? "PASS [" : null;
+            if (prefix != null)
+            {
+                int end = message.IndexOf(']', prefix.Length);
+                if (end > prefix.Length)
+                {
+                    string gate = message.Substring(prefix.Length, end - prefix.Length);
+                    var gates = prefix[0] == 'N' ? NotCoveredGates : _passedGates;
+                    if (!gates.Contains(gate)) gates.Add(gate);
+                }
+            }
             var line = DateTime.UtcNow.ToString("O") + " " + Tag + " " + message;
             Debug.Log(line);
             if (string.IsNullOrEmpty(LogPath)) return;
@@ -93,7 +137,7 @@ namespace InventorXrSo.Xr
             File.AppendAllText(LogPath, line + Environment.NewLine);
         }
 
-        protected void Pass(string gate, string message) => Record("PASS [" + gate + "] " + message);
+        protected void Pass(string gate, string message) { _passedGates.Add(gate); Record("PASS [" + gate + "] " + message); }
         protected void NotCovered(string gate, string reason)
         {
             NotCoveredGates.Add(gate);
@@ -103,6 +147,7 @@ namespace InventorXrSo.Xr
         protected static void Check(bool condition, string message)
         {
             if (!condition) throw new InvalidOperationException(message);
+            _assertions++;
         }
 
         private static FieldInfo FindField(object target, string name)
@@ -208,13 +253,13 @@ namespace InventorXrSo.Xr
 
         protected async Task<string> CaptureScreenshot(string suffix, CancellationToken ct)
         {
-            var directory = Application.persistentDataPath;
+            var directory = EvidenceDirectory;
             Directory.CreateDirectory(directory);
             var fileName = Milestone + "-acceptance-" + suffix + ".png";
             var path = Path.Combine(directory, fileName);
             if (File.Exists(path)) File.Delete(path);
             // Android resolves screenshot names under persistentDataPath itself.
-            ScreenCapture.CaptureScreenshot(fileName);
+            ScreenCapture.CaptureScreenshot(Application.isEditor ? path : fileName);
             await WaitFor(() => File.Exists(path) && new FileInfo(path).Length > 0 ? path : null, ct);
             Record("Screenshot: " + path);
             return path;

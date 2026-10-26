@@ -25,7 +25,8 @@ public sealed class CreateRealityReferenceHandler:ExperimentalHandler
             throw new ArgumentException("Create the reference in an empty managed workspace part; existing models are refused.");
         def.BOMStructure=BOMStructureEnum.kReferenceBOMStructure;
         if(part.AttributeSets.NameIsUsed[input.Name]) throw new ArgumentException("This reference already exists; no duplicate import is allowed.");
-        var metadata=part.AttributeSets.Add(input.Name,true);
+        // Document attribute sets cannot be copied with an owning entity. Persist without CopyWithOwner.
+        var metadata=part.AttributeSets.Add(input.Name,false);
         metadata.Add("source_json",ValueTypeEnum.kByteArrayType,Encoding.UTF8.GetBytes(input.Payload.ToString(Formatting.None)));
         metadata.Add("status",ValueTypeEnum.kStringType,"estimated; uncertainty not estimated; not B-Rep");
         var cloud=def.Sketches3D.Add();cloud.Name=input.Name+"_PointCloud";

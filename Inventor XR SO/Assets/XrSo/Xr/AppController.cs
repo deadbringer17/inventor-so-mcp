@@ -48,6 +48,7 @@ namespace InventorXrSo.Xr
         private SelectionService _selection;
         private CancellationTokenSource _run;
         private bool _inSession;
+        private bool _quitting;
         private bool _placed;
         private string _documentId;
         private CancellationTokenSource _picking;
@@ -100,13 +101,21 @@ namespace InventorXrSo.Xr
             qrScanner = scanner;
         }
 
+#if UNITY_EDITOR
+        public static Func<ICredentialStore> EditorCredentialStoreFactory { get; set; }
+#endif
+
         private void Start()
         {
             InitializeUi();
-#if XR_SO_ACCEPTANCE
+#if XR_SO_ACCEPTANCE || UNITY_EDITOR
             if(TryStartAcceptanceBootstrap()) return;
 #endif
-            _store = CredentialStores.Create();
+            _store =
+#if UNITY_EDITOR
+                EditorCredentialStoreFactory?.Invoke() ??
+#endif
+                CredentialStores.Create();
             _server = _store.Load();
             ShowHome();
             if (_server == null) ShowPairing(UiText.NotPaired, UiText.NotPairedBody);
@@ -251,7 +260,7 @@ namespace InventorXrSo.Xr
 
         private void Update()
         {
-#if XR_SO_ACCEPTANCE
+#if XR_SO_ACCEPTANCE || UNITY_EDITOR
             TickAcceptanceBootstrap();
 #endif
             if ((_inSession || _capture.Active) && OVRInput.GetDown(OVRInput.Button.Start)) LeaveSession();
@@ -349,6 +358,8 @@ namespace InventorXrSo.Xr
             return target;
         }
 
+        private void OnApplicationQuit() { _quitting = true; StopSession(); }
+
         private void OnDestroy()
         {
             _lifetime.Cancel();
@@ -366,15 +377,18 @@ namespace InventorXrSo.Xr
         private void StopSession()
         {
             if (_voice != null) { Destroy(_voice.gameObject); _voice = null; }
-            _inspect?.Bind(null, null);
-            _design?.Bind(null);
-            _assembly?.Bind(null);
-            _lamiera?.Bind(null, null);
+            // Scene children may already be destroyed when the application stops.
+            if (!_quitting && sceneView != null)
+            {
+                if (_inspect != null) _inspect.Bind(null, null);
+                if (_design != null) _design.Bind(null);
+                if (_assembly != null) _assembly.Bind(null);
+                if (_lamiera != null) _lamiera.Bind(null, null);
+            }
             _currentScene = null;
             _sceneByDocument.Clear();
             _dirty.Clear();
-            _contextSwitcher?.Clear();
-            ClearGhost();
+            if (!_quitting && sceneView != null) { _contextSwitcher?.Clear(); ClearGhost(); }
             if (_session != null)
             {
                 _session.StatusChanged -= OnStatusChanged; _session.SceneLoaded -= OnSceneLoaded;
@@ -415,7 +429,7 @@ namespace InventorXrSo.Xr
 
         private void ShowPairing(string title, string body)
         {
-#if XR_SO_ACCEPTANCE
+#if XR_SO_ACCEPTANCE || UNITY_EDITOR
             if(_acceptanceBootstrapRequested){BlockAcceptanceBootstrap();return;}
 #endif
             // A revoked token or a failed reconnect must not navigate out of the independent section.
@@ -473,7 +487,7 @@ namespace InventorXrSo.Xr
 
         private async void Complete(Task<PairedServer> pairing)
         {
-#if XR_SO_ACCEPTANCE
+#if XR_SO_ACCEPTANCE || UNITY_EDITOR
             if(_acceptanceBootstrapRequested){BlockAcceptanceBootstrap();return;}
 #endif
             _home.ShowMessage(UiText.Pairing, "");
@@ -491,7 +505,7 @@ namespace InventorXrSo.Xr
 
         private void Forget()
         {
-#if XR_SO_ACCEPTANCE
+#if XR_SO_ACCEPTANCE || UNITY_EDITOR
             if(_acceptanceBootstrapRequested){BlockAcceptanceBootstrap();return;}
 #endif
             StopSession();
@@ -505,7 +519,7 @@ namespace InventorXrSo.Xr
 
         private void StartSession()
         {
-#if XR_SO_ACCEPTANCE
+#if XR_SO_ACCEPTANCE || UNITY_EDITOR
             if(_acceptanceBootstrapRequested && (_acceptanceBootstrapBlocked || AcceptanceBootstrap==null
                 || AcceptanceBootstrap.ExpiresUtc<=DateTimeOffset.UtcNow)){BlockAcceptanceBootstrap();return;}
 #endif

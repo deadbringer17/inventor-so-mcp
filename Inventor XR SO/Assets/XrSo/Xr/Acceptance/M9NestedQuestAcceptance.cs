@@ -1,4 +1,4 @@
-#if XR_SO_ACCEPTANCE
+#if XR_SO_ACCEPTANCE || UNITY_EDITOR
 using System;
 using System.Collections.Generic;
 using System.Linq;

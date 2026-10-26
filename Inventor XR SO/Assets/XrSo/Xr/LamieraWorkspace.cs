@@ -249,13 +249,16 @@ namespace InventorXrSo.Xr
 
         public void SetScene(LoadedScene scene)
         {
-            if (NativeEditorOpen) _nativeEditor?.Session.InvalidatePresentation();
+            bool sameRevision = _state != null && scene?.Graph.State != null
+                && _state.DocumentId == scene.Graph.State.DocumentId && _state.Revision == scene.Graph.State.Revision;
+            if (NativeEditorOpen && !sameRevision) _nativeEditor?.Session.InvalidatePresentation();
             // CadSceneView.Show rebuilds the view and releases the rendered ghost: its rendering proof is gone.
-            if (_session?.CanEdit == true && _session.Status == DesignStatus.PreviewReady)
+            if (_session?.CanEdit == true && _session.Status == DesignStatus.PreviewReady && (!NativeEditorOpen || !sameRevision))
             { _renderedPlan = null; _session.RejectDraft("Scena aggiornata: ricalcola l'anteprima prima di applicare."); }
             _sceneState = scene?.Graph.State; _kind = scene?.Graph.Kind;
             SetDocumentState(_sceneState);
             EnsureSheetContext();
+            if (NativeEditorOpen && _session != null) SessionChanged();
             RequestRender();
         }
 
@@ -334,6 +337,10 @@ namespace InventorXrSo.Xr
             UpdateBar();
             ActiveChanged?.Invoke(false);
             if (was) Closed?.Invoke();
+            // Routing a newly opened part closes the inactive authoring workspaces.
+            // Its subtype read may still be pending: restart discovery so a sheet
+            // can promote the initial Part route to Lamiera without a CAD revision.
+            if (CanEnter?.Invoke() != false) EnsureSheetContext();
         }
 
         private void CancelReads()
@@ -748,7 +755,7 @@ namespace InventorXrSo.Xr
         private void SessionChanged()
         {
             if (_session.Status == DesignStatus.Previewing || _session.Status == DesignStatus.Committing) _history = null;
-            if (_session.Preview != null && _session.Status == DesignStatus.PreviewReady && _renderedPlan != _session.Preview.PlanId && Active)
+            if (_session.Preview != null && _session.Status == DesignStatus.PreviewReady && (_renderedPlan != _session.Preview.PlanId || !_previewView.IsShowing) && Active)
             {
                 try
                 {
@@ -757,7 +764,12 @@ namespace InventorXrSo.Xr
                     _session.ConfirmRendered(_renderedPlan);
                     CalibrateFlangeAxis(_session.Preview);
                 }
-                catch (Exception ex) { SetNotice("Anteprima non visualizzabile: " + ex.Message); }
+                catch (Exception ex)
+                {
+                    var error = "Anteprima non visualizzabile: " + ex.Message;
+                    if (_session.CanEdit) _session.RejectDraft(error);
+                    SetNotice(error);
+                }
             }
             // The blue ghost belongs to the Ready state only: an edited draft (Bozza) must not keep showing the stale result.
             if (_session.Preview == null || _session.Status == DesignStatus.Draft) { _previewView.Clear(); _renderedPlan = null; }

@@ -28,7 +28,7 @@ namespace InventorXrSo.Xr
         private readonly List<ScanPrimitive> _measurePrimitives=new List<ScanPrimitive>();
         private static string PrimitiveLabel(string kind)=>kind=="point"?"Punto":kind=="axis"?"Asse":kind=="plane"?"Piano":kind=="circle"?"Cerchio":"Cilindro";
         private static string SolveLabel(string state)=>state=="queued"?"in coda":state=="running"?"in corso":state=="succeeded"?"pronta":state=="cancelled"?"annullata":"non riuscita";
-#if XR_SO_ACCEPTANCE
+#if XR_SO_ACCEPTANCE || UNITY_EDITOR
         internal ScanSceneView OpenSyntheticReviewFixture()
         {
             _scanReview=ScanReviewFixture.Create();

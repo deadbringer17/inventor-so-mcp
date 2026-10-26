@@ -262,6 +262,7 @@ namespace InventorXrSo.Unity.Scene
         }
         public void Cursor(SketchFrame frame, CadPoint point, CadPoint? start, SketchShape shape)
         {
+            if (_cursor == null) return; // Scene teardown can precede native editor cleanup.
             if (frame == null) { _cursor.positionCount = 0; return; }
             CadPoint[] points;
             if (start.HasValue && (point-start.Value).Length > 0.00001)

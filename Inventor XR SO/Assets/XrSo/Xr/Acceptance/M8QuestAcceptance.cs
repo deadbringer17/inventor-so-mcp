@@ -1,4 +1,4 @@
-#if XR_SO_ACCEPTANCE
+#if XR_SO_ACCEPTANCE || UNITY_EDITOR
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;

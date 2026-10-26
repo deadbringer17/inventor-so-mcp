@@ -1,4 +1,4 @@
-#if XR_SO_ACCEPTANCE
+#if XR_SO_ACCEPTANCE || UNITY_EDITOR
 using System;
 using System.Globalization;
 using System.Linq;
@@ -683,11 +683,13 @@ namespace InventorXrSo.Xr
                 flat.Changed += watch;
                 try
                 {
+                    display.Snap(); // Settle the pose before aiming: Snap can otherwise move the mesh away from the ray.
                     var center = model.TransformPoint(display.LocalBounds.center);
                     hand.SetPositionAndRotation(center + Vector3.back * 0.5f, Quaternion.identity);
                     Check(display.HitTest(new Ray(hand.position, hand.forward)), "the synthetic ray hits the flat pattern");
-                    display.Snap();
                     var rootBefore = display.MeshRoot.position;   // world: on the work plane the mesh root no longer lives in the model frame
+                    // Capture the invariant after the awaited native preflight, so a bench tween during that wait is not attributed to Grip.
+                    var modelBeforePosition = model.position; var modelBeforeRotation = model.rotation; var modelBeforeScale = model.localScale;
                     var delta = new Vector3(0.05f, 0.02f, 0f);
                     Frame(true, false, false, false, false, false);   // release first: grab starts are edge based
                     Frame(true, true, false, true, false, false);
@@ -697,8 +699,8 @@ namespace InventorXrSo.Xr
                     var expected = rootBefore + delta;
                     Check(Vector3.Distance(display.MeshRoot.position, expected) < 1e-3f,
                         "synthetic Grip moved the flat mesh root by the hand displacement");
-                    Check(Vector3.Distance(model.position, savedPosition) < 1e-5f && Quaternion.Angle(model.rotation, savedRotation) < 1e-3f
-                        && Vector3.Distance(model.localScale, savedScale) < 1e-6f, "the model view transform is unchanged");
+                    Check(Vector3.Distance(model.position, modelBeforePosition) < 1e-5f && Quaternion.Angle(model.rotation, modelBeforeRotation) < 1e-3f
+                        && Vector3.Distance(model.localScale, modelBeforeScale) < 1e-6f, "the model view transform is unchanged by synthetic Grip");
                     Frame(true, false, false, false, false, false);
                     var moved = display.MeshRoot.position;
                     hand.position += delta; Frame(true, false, false, false, false, false);

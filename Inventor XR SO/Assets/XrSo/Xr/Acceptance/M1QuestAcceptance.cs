@@ -1,4 +1,4 @@
-#if XR_SO_ACCEPTANCE
+#if XR_SO_ACCEPTANCE || UNITY_EDITOR
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -30,6 +30,7 @@ namespace InventorXrSo.Xr
             "AppController._server",
             "AppController._home",
             "AppController._inspect",
+            "AppController._assembly",
             "AppController._catalog",
             "AppController._selection",
             "AppController._selecting",
@@ -92,8 +93,8 @@ namespace InventorXrSo.Xr
             Call(App, "RefreshHome");
             var home = Read<HomePanel>(App, "_home");
             Check(home != null, "Home panel exists");
-            var title = Read<Text>(home, "_title").text;
-            var body = Read<Text>(home, "_body").text;
+            var title = Read<TMPro.TextMeshProUGUI>(home, "_title").text;
+            var body = Read<TMPro.TextMeshProUGUI>(home, "_body").text;
             Check(title == UiText.AppTitle, "Home title is the app title");
             Check(body.Contains(UiText.PcLabel + server.Host + ":" + server.Port), "Home shows the PC address");
             Check(body.Contains(UiText.BackendLabel + UiText.VersionLabel(caps.ServerVersion)), "Home shows the backend version");
@@ -300,6 +301,9 @@ namespace InventorXrSo.Xr
                 Check(home.InvokeVoiceAction(UiText.RealityCapture) && capture.Active, "repeated entry works");
                 Check(capture.Panel.InvokeVoiceAction(UiText.ReturnHome) && !capture.Active, "repeated return works");
                 Call(App, "EnterSession", EnvironmentMode.StudioVr);
+                // The assembly context owns CAD picking on entry; park authoring to check inspection restoration.
+                Check(Read<AssemblyWorkspace>(App, "_assembly").Active && !ray.CanPick, "assembly context restores its input ownership");
+                Call(App, "CloseAuthoring");
                 Check(!capture.Active && view.gameObject.activeSelf && shell.Palette.gameObject.activeSelf && input.enabled && ray.CanPick,
                     "returning to CAD restores its shell and input");
                 Check(Session.Scene.Graph.Revision == revision, "section navigation does not change the CAD revision");

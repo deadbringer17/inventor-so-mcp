@@ -64,9 +64,13 @@ namespace InventorXrSo.Tests
             public Exception PreviewError, CommitError;
             public FlatPatternException FlatFailure;
             public TaskCompletionSource<DesignPreview> PendingPreview;
+            public TaskCompletionSource<SheetMetalContext> PendingSheet;
+            public int SheetReads;
 
             public Task<SheetMetalContext> GetSheetMetalContextAsync(DocumentState state, CancellationToken ct)
             {
+                SheetReads++;
+                if (PendingSheet != null) { var pending = PendingSheet; PendingSheet = null; return pending.Task; }
                 var rules = @"{""rule"":""Default_mm"",""active"":true},{""rule"":""Alu_1mm"",""active"":false}"
                     + string.Concat(Enumerable.Range(0, ExtraRules).Select(i => @",{""rule"":""Extra_" + i + @""",""active"":false}"));
                 var json = SheetMetal ? JObject.Parse(@"{""is_sheet_metal"":true,""rule"":""Default_mm"",""thickness_mm"":2.0,
@@ -196,6 +200,24 @@ namespace InventorXrSo.Tests
         }
 
         // M5-01
+        [UnityTest] public IEnumerator ClosingInactiveWorkspaceRestartsCancelledSheetSubtypeDiscovery()
+        {
+            var pending = new TaskCompletionSource<SheetMetalContext>();
+            _backend.PendingSheet = pending;
+            _workspace.Bind(_backend, _backend);
+            _workspace.SetScene(_scene);
+            _workspace.SetOnline(true);
+            int firstRead = _backend.SheetReads;
+            Assert.False(_workspace.IsPrimary, "subtype is not known while the first native read is pending");
+            _workspace.Close(); // Initial Part routing closes the other workspaces before subtype discovery completes.
+            Assert.Greater(_backend.SheetReads, firstRead);
+            Assert.True(_workspace.IsPrimary, "sheet discovery resumes without needing another document/revision event");
+            pending.SetResult(SheetMetalContext.Parse(JObject.Parse("{\"is_sheet_metal\":false}"), _backend.State));
+            yield return null;
+            Assert.True(_workspace.IsPrimary, "the cancelled generation cannot overwrite the newer subtype read");
+            Assert.Zero(_backend.Previews); Assert.Zero(_backend.Commits);
+        }
+
         [Test] public void SheetMetalPartIsPrimaryAndOrdinaryPartIsNot()
         {
             Assert.True(_workspace.IsPrimary); Assert.True(_workspace.Mode.CanWrite);

@@ -81,6 +81,21 @@ namespace InventorXrSo.Tests
     }
     public partial class DesignWorkspaceTests
     {
+        [Test] public void NativePreviewSurvivesSameRevisionSceneRefreshButNotARevisionChange()
+        {
+            OpenNative(); Do("sketch.native.SketchLineCmd"); Commit(0,0,10,10); Do(CommitIds.Preview);
+            var preview = _view.GetComponent<DesignPreviewView>();
+            var plan = preview.PlanId;
+            Assert.True(Enabled(CommitIds.Apply));
+            _view.Show(_scene); _workspace.SetScene(_scene);
+            Assert.True(_workspace.NativeEditor.HasDraft);
+            Assert.True(preview.IsShowing); Assert.AreEqual(plan, preview.PlanId);
+            Assert.True(Enabled(CommitIds.Apply), "same-revision scene delivery must not cancel a validated native preview");
+            _workspace.SetDocumentState(new DocumentState(_backend.State.DocumentId,"r_new","v_new"));
+            Assert.False(Enabled(CommitIds.Apply)); Assert.False(preview.IsShowing);
+            Assert.Zero(_backend.Commits);
+        }
+
 
         [TestCase(false)][TestCase(true)]
         public void SplineFinishesAtTwoPointsAndUndoRestoresTheMinimumGuard(bool control)
@@ -1052,12 +1067,14 @@ namespace InventorXrSo.Tests
             Assert.AreEqual(0,_backend.Commits);
         }
         [Test]
-        public void NativeSceneRebuildRevokesRenderingProofWithoutDiscardingOperation()
+        public void NativeSceneRebuildWithDifferentRevisionRevokesRenderingProofWithoutDiscardingOperation()
         {
             OpenNative(); Do("sketch.native.SketchLineCmd"); Commit(0,0,10,10); Do(CommitIds.Preview);
-            _view.Show(_scene); _workspace.SetScene(_scene);
+            _backend.State = new DocumentState(_backend.State.DocumentId,"r_new","v_new");
+            var changed = NativeSketchTestData.Scene(_backend.State,_backend.Model);
+            _view.Show(changed); _workspace.SetScene(changed);
             Assert.False(Enabled(CommitIds.Apply)); Assert.True(_workspace.NativeEditor.HasDraft);
-            Do("sketch.editor.confirm"); Do(CommitIds.Preview); Assert.True(Enabled(CommitIds.Apply));
+            Do("sketch.editor.refresh"); Do("sketch.editor.confirm"); Do(CommitIds.Preview); Assert.True(Enabled(CommitIds.Apply));
         }
         [Test]
         public void NativeAnglePromptUsesDegreesAndPartialSnapshotRefusesCreation()
@@ -1123,6 +1140,21 @@ namespace InventorXrSo.Tests
     }
     public partial class LamieraWorkspaceTests
     {
+        [Test] public void NativePreviewSurvivesSameRevisionSceneRefreshButNotARevisionChange()
+        {
+            OpenNative(); Do("sketch.native.SketchLineCmd"); CommitNative(0,0,10,10); Do(CommitIds.Preview);
+            var preview = PreviewView;
+            var plan = preview.PlanId;
+            Assert.True(Enabled(CommitIds.Apply));
+            _view.Show(_scene); _workspace.SetScene(_scene);
+            Assert.True(_workspace.NativeEditor.HasDraft);
+            Assert.True(preview.IsShowing); Assert.AreEqual(plan, preview.PlanId);
+            Assert.True(Enabled(CommitIds.Apply), "same-revision scene delivery must not cancel a validated native preview");
+            _workspace.SetDocumentState(new DocumentState(_backend.State.DocumentId,"r_new","v_new"));
+            Assert.False(Enabled(CommitIds.Apply)); Assert.False(preview.IsShowing);
+            Assert.Zero(_backend.Commits);
+        }
+
 
         [TestCase(false)][TestCase(true)]
         public void SplineFinishesAtTwoPointsAndUndoRestoresTheMinimumGuard(bool control)
