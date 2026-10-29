@@ -32,7 +32,9 @@ four per positive case and two per refusal. Preparation/cleanup comparison
 excludes only the target document Dirty/DatabaseRevisionId after legitimate
 fixture writes. All other captured contents remain exact. Original disk files
 are never overwritten. Worker/module/PID/start and ordinary installation
-attestations are archived by `run-spline-tension-edit99.ps1`.
+attestations are archived by `scripts/run-s1-spline-tension99.ps1` from the
+repository root. `scripts/verify-s1-spline-tension99.ps1` independently checks
+the saved matrix, sidecar hashes, rollback, revisions and sampled oracle geometry.
 
 This is a bounded plugin test, not full spline parity. Desktop controls,
 constraints/handles, associative updates, persistence, Core HTTPS, Unity,

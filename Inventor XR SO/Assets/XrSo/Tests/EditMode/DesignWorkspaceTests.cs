@@ -50,8 +50,9 @@ namespace InventorXrSo.Tests
             public bool NativePartial, NativeOverlap, NativeNoCapabilities, NativeNoCopy, NativeCurves,NativeDimensions,NativeAngular,NativeConstraints,NativePatterns;
             public JArray LastOperations;
             public int NativeSplineFitMethod=26369;
+            public bool NativeTension;
             public Task<NativeSketchSnapshot> GetNativeSketchAsync(DocumentState state,string id,CancellationToken ct)
-                => Task.FromResult(NativeSketchTestData.Snapshot(state,id,NativePartial,NativeOverlap,!NativeNoCapabilities,NativeCurves,NativeDimensions,NativeAngular,NativeConstraints,NativePatterns,!NativeNoCopy,NativeSplineFitMethod));
+                => Task.FromResult(NativeSketchTestData.Snapshot(state,id,NativePartial,NativeOverlap,!NativeNoCapabilities,NativeCurves,NativeDimensions,NativeAngular,NativeConstraints,NativePatterns,!NativeNoCopy,NativeSplineFitMethod,NativeTension ? 50 : (int?)null));
             public Exception PreviewError, CommitError;
             public TaskCompletionSource<DocumentState> PendingMutation, PendingState;
             public TaskCompletionSource<DesignPreview> PendingPreview;

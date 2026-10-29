@@ -131,6 +131,9 @@ namespace InventorXrSo.Core.Backend
             _data = (JObject)data.DeepClone();
             Type = (string)data["type"];
             if (string.IsNullOrWhiteSpace(Type)) throw new FormatException("Tipo nativo mancante.");
+            if (Type == "spline" && data["tension"]?.Type == JTokenType.Integer
+                && int.TryParse(data["tension"].ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int tension)
+                && tension >= 0 && tension <= 100) SplineTension = tension;
             Supported = (bool?)data["supported"] == true;
             if(data["text_bounds_mm"]!=null)
             {
@@ -249,6 +252,7 @@ namespace InventorXrSo.Core.Backend
         public string SelectionState { get; }
         public string StructuralOwnerImageId { get; }
         public bool Selectable => Supported && SelectionState=="editable";
+        public int? SplineTension { get; }
         public bool CanSelectSubpart(SketchSubpart part)=>Selectable && !_structuralSubparts.ContainsKey(part)
             && (part==SketchSubpart.Entity || _anchors.ContainsKey(part));
         internal IEnumerable<string> StructuralImageOwners=>_structuralSubparts.Values.Concat(StructuralOwnerImageId==null ? Array.Empty<string>() : new[]{StructuralOwnerImageId});

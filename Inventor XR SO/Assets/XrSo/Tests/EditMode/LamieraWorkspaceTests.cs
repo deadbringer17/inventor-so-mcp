@@ -57,10 +57,12 @@ namespace InventorXrSo.Tests
             public bool SheetMetal = true, FlatExists;
             public int Bodies = 1, Previews, Commits, HistoryCalls, FlatMeshes, ExtraRules, ExtraSketches;
             public JArray LastOperations;
+            public bool NativeOverlap;
             public bool NativePartial,NativeDimensions,NativeConstraints,NativePatterns,NativeCurves;
             public int NativeSplineFitMethod=26369;
+            public bool NativeTension;
             public Task<NativeSketchSnapshot> GetNativeSketchAsync(DocumentState state,string id,CancellationToken ct)
-                => Task.FromResult(NativeSketchTestData.Snapshot(state,id,NativePartial,curves:NativeCurves,dimensions:NativeDimensions,constraints:NativeConstraints,patterns:NativePatterns,splineFitMethod:NativeSplineFitMethod));
+                => Task.FromResult(NativeSketchTestData.Snapshot(state,id,NativePartial,overlap:NativeOverlap,curves:NativeCurves,dimensions:NativeDimensions,constraints:NativeConstraints,patterns:NativePatterns,splineFitMethod:NativeSplineFitMethod,splineTension:NativeTension ? 50 : (int?)null));
             public Exception PreviewError, CommitError;
             public FlatPatternException FlatFailure;
             public TaskCompletionSource<DesignPreview> PendingPreview;

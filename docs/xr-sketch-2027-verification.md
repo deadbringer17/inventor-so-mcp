@@ -1,10 +1,43 @@
 # S1 — Schizzo XR: implementazione e verifica
 
-Aggiornamento: 24 ottobre 2026, Europe/Rome.
+Aggiornamento: 28 ottobre 2026, Europe/Rome.
 Spec: [S1](superpowers/specs/2026-10-06-schizzo-parita-inventor-2027-design.md).
 Piano: [fasi F0–F7](superpowers/plans/2026-10-06-schizzo-parita-inventor-2027.md).
 
 **Implementazione parziale in corso. Nessuna dichiarazione di parità completa.**
+L'[incremento 102](s1-spline-point-verification102.md) completa la matrice PC
+dei punti spline sul candidato 98 congelato: **128 casi, 14 rifiuti e 540 stati
+raw**, verifica offline del sottoinsieme PASS, cinque copie alterate rifiutate.
+Fixture/installazione ripristinate e processo Inventor dell'utente preservato.
+Non introduce UI dei punti, maniglie o un PASS complessivo S1. Regressioni
+complete **4.528 PASS**; APK 102 QA/ordinario ricompilati e ispezionati
+(ARM64 IL2CPP, 16 runner nel QA e zero nell'ordinario). Tentativo fallito e
+diagnostica di pubblicazione conservati; chiusura verbale il 29 ottobre.
+
+L'[incremento 101](s1-spline-tension-xr101.md) aggiunge la modifica tensione
+nell'editor Parte/Lamiera: interi 0–100, bozza con riferimenti attuali,
+Anteprima/Applica e recupero tramite riselezione. Core 1.393, backend 1.926,
+Capture.Worker 16, Unity EditMode 1.193 PASS; dopo l'ultimo adeguamento della
+snapshot passano nuovamente Core completo e 57 EditMode mirati. Il simulatore
+PC con Inventor reale passa **20 casi, 1.392 asserzioni**, lasciando S1 PARTIAL.
+Cleanup e manifest ripristinati; processo Inventor dell'utente preservato al
+cleanup. APK 101 QA/ordinario compilati e ispezionati (ARM64 IL2CPP, 16 runner
+nel QA e zero nell'ordinario). Al controllo finale dopo le build Inventor
+risulta chiuso, causa non osservata; installazione originale verificata.
+Dettagli, limiti e attestazioni nel verbale.
+
+L'[incremento 100](s1-spline-closure-xr100.md) collega la creazione di spline
+aperte/chiuse all'editor condiviso Parte/Lamiera, con scelta congelata nella
+bozza e recupero dell'input CV non valido. Core 1.355, backend 1.926,
+Capture.Worker 16 e Unity EditMode 1.179 PASS, poi 19 mirati sui successivi
+adeguamenti del runner. Meta XR Simulator + Inventor reale: otto casi spline
+PASS, 692 asserzioni; S1 resta PARTIAL. Fixture/installazione ripristinate,
+APK QA/ordinario ARM64 IL2CPP compilati e ispezionati (16 runner nel QA,
+zero nell'ordinario); esiti e tentativi precedenti nel verbale 100.
+Il [collaudo nativo della tensione 99](s1-spline-tension-edit99.md) passa
+60 casi, 16 rifiuti e 272 stati raw, anche nel controllo offline del
+sottoinsieme. Installazione ordinaria ripristinata. La successiva integrazione
+nell'editor XR è verificata separatamente nell'incremento 101.
 L'[audit PC dei 77 comandi](s1-pc-command-status95.md) conta 54 implementazioni
 parziali e 23 assenti; questi conteggi non sono percentuali di completamento.
 La [chiusura delle spline 96](s1-spline-closure96.md) ha superato la matrice
@@ -14,15 +47,16 @@ nel producer, ma il verificatore rileva osservazioni mancanti dal report
 del secondo aggiornamento. Corretta la registrazione nella sonda; nuova
 matrice completa da eseguire, nessun PASS offline r3 attribuito.
 La [modifica dei punti spline 98](s1-spline-point-edit98.md) è implementata nel
-plugin sperimentale; prova nativa r2 terminata incompleta: 98 casi passati,
-arresto al caso 99 per UnauthorizedAccessException, rifiuti non eseguiti.
+plugin sperimentale; la vecchia prova nativa r2 terminava incompleta: 98 casi
+passati, arresto al caso 99 per UnauthorizedAccessException, rifiuti non eseguiti.
 Cleanup e ripristino dell'installazione ordinaria verificati. Il precedente
 r1 si fermava sul confronto richiesta/punto risolto di una spline approssimante.
+Il successivo collaudo completo del medesimo candidato è nel verbale 102.
 La [ricerca tensione 97](s1-spline-tension97.md) completa 60 osservazioni,
 60 Abort esatti e sette alterazioni rifiutate dal verificatore offline.
 La [modifica tensione 99](s1-spline-tension-edit99.md) è implementata nel plugin:
-38 test specifici e 1.908 bridge passati, build riuscite; percorso prodotto
-ancora da collaudare in Inventor.
+38 test specifici e 1.908 bridge passati nella consegna iniziale, build
+riuscite; il successivo collaudo nativo del sottoinsieme è riportato sopra.
 
 La tavolozza ampliata e le basi dell'editor nativo sono presenti; le nuove
 creazioni sono sperimentali e verificate direttamente sul 2027. I 77 comandi
@@ -1385,3 +1419,14 @@ opzioni Formato/Parametri residue; Modifica, Serie e proiezioni associative; imp
 contesti avanzati; storico; runner dedicato e prove Quest. I 38 casi di creazione
 native non chiudono i gate di equivalenza geometrica/topologica/parametrica:
 servono confronti dell'oggetto nativo e un secondo aggiornamento delle dipendenze.
+
+
+### S1 — Punti spline nell’editor XR, incremento 103 (29 ottobre 2026)
+
+Collegato `spline_point_update` all’editor condiviso Parte/Lamiera: selezione
+spline intera + punto nativo, destinazione X/Y o sul foglio, bozza, Anteprima e
+Applica espliciti. Ordine dei pick libero, riferimenti wire ordinati; controllo
+Core di capacità/tipi/revisione e riselezione dopo refresh. L’appartenenza del
+punto viene verificata nativamente dal plugin, senza dedurla dalla vicinanza.
+Esiti e limiti nel [verbale 103](s1-spline-point-xr103.md). La verifica PC 102
+resta evidenza separata; S1 e la prova fisica Quest restano aperti.

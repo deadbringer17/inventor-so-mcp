@@ -34,9 +34,10 @@ Solo successivamente una transazione separata costruisce una spline oracle
 nativa con stessa definizione iniziale e muove il medesimo ruolo con `MoveTo`.
 Confronto geometrico a `1e-5 mm`, dominio a `1e-10`, proprietà native esatte;
 gli input fit possono essere approssimati dall'API e non vengono presunti uguali
-ai fit point risolti. La destinazione deve comunque essere raggiunta entro
-`1e-5 mm` da prodotto e oracle: una differenza è un fallimento diagnosticato,
-non un motivo per aumentare la tolleranza. La chiusura risultante viene
+ai fit point risolti. La posizione effettiva di prodotto e oracle deve
+corrispondere entro `1e-5 mm`; gli scarti di entrambi dalla richiesta vengono
+registrati separatamente. Non si dichiara posizionamento esatto rispetto alla
+richiesta e non si aumenta la tolleranza del confronto nativo. La chiusura risultante viene
 confrontata con l'API; nessun setter la ripristina dopo il movimento.
 Le righe espongono `initial_closed`, `actual_after_closed`, `oracle_after_closed`
 e `closure_preserved`: equivalenza API non equivale a parità completa
@@ -83,8 +84,16 @@ Comandi riservati al coordinatore, in slot seriale dopo le altre prove native:
 
 ```powershell
 dotnet build bridge/tests/S1SplinePointEditOwnedHost98 -c Debug
-pwsh -NoProfile -File artifacts/s1-verification/run-spline-point-edit98.ps1 -Run r1 -AddinAssembly artifacts/s1-verification/increment98/producer-r1/Inventor.So.AddIn.dll
+pwsh -NoProfile -File scripts/run-s1-spline-point98.ps1 -OutputDirectory artifacts/simulator/punti98-nuovo -AddinAssembly artifacts/s1-verification/increment98/producer-r1/Inventor.So.AddIn.dll
+pwsh -NoProfile -File scripts/verify-s1-spline-point98.ps1 -EvidenceDirectory artifacts/simulator/punti98-nuovo/worker
 ```
+
+Il wrapper versionato conserva il manifest originale byte per byte e controlla
+anche `stopped.json`: processo QA assente, zero documenti posseduti prima di
+Quit e processi preesistenti preservati. Il verificatore offline controlla
+combinazioni univoche, sidecar/hash, rollback, prima snapshot e confronto
+con l'oracle registrato. Non esegue Inventor e non ricostruisce proprietà native
+non presenti nelle evidenze. Esiti del nuovo collaudo: [incremento 102](../../../docs/s1-spline-point-verification102.md).
 
 ## Limiti aperti
 

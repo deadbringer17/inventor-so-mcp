@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using InventorXrSo.Core.Backend;
 using InventorXrSo.Core.Ui;
 using InventorXrSo.Core.Voice;
@@ -14,12 +15,25 @@ namespace InventorXrSo.Unity.Ui
         private NativeSketchSnapshot _splineSnapshot;
         private string _splineVariant, _splineLabel;
         private int _splineFitMethod;
+        private bool _splineClosed;
         private bool SplineCurrent => _splinePoints!=null && !_disposed && _ready() && Session.CanEdit
             && ReferenceEquals(_splineSnapshot,Session.Snapshot);
         private bool SplineActionsReady => SplineCurrent && !(_palette()?.KeypadVisible ?? _prompt?.Editing ?? false);
 
         private IEnumerable<XrAction> SplineActions()
         {
+            var snapshot = Session.Snapshot;
+            yield return new XrAction("sketch.spline.point", "Modifica punto spline", SketchCommandCatalog.TabPrefix+"Modifica",
+                () => ReferenceEquals(snapshot, Session.Snapshot) && SplinePointSelection(), PromptSplinePointEdit,
+                () => "Seleziona una spline intera e un punto nativo; Anteprima ne verifica l'appartenenza alla spline.");
+            yield return new XrAction("sketch.spline.tension", "Modifica tensione spline", SketchCommandCatalog.TabPrefix+"Modifica",
+                () => ReferenceEquals(snapshot, Session.Snapshot) && SplineTensionSelection(), PromptSplineTension,
+                () => "Seleziona una sola spline interpolata intera nello schizzo aggiornato; il backend deve supportarne la tensione.");
+            yield return new XrAction("sketch.spline.closed","Spline chiusa",SplineInputTab,
+                ()=>SplineActionsReady,
+                ()=>{_splineClosed=!_splineClosed;_notice(_splineClosed ? "Spline chiusa: punti conservati." : "Spline aperta: punti conservati.");_changed();},
+                ()=>"Completa o annulla il campo numerico prima di cambiare la chiusura.",
+                kind:XrActionKind.Toggle,isOn:()=>SplineCurrent && _splineClosed);
             if(_splinePoints!=null && _splineVariant=="spline_fit")
                 foreach(var method in new[] {(26369,"Norme"),(26370,"Energia minima"),(26371,"AutoCAD")})
                 {
@@ -39,11 +53,73 @@ namespace InventorXrSo.Unity.Ui
             yield return new XrAction("sketch.spline.cancel","Annulla spline",SplineInputTab,
                 ()=>SplineActionsReady,()=>{CancelPrompt();_notice("Spline annullata.");_changed();},()=>"Completa o annulla il campo numerico.");
         }
+        private bool SplinePointSelection(bool reconfirming = false) => CanSelect && (!Session.HasDraft || reconfirming)
+            && NativeSketchSplinePointRules.TrySelection(Session.Snapshot, Selected, out _, out _);
+
+        private void PromptSplinePointEdit()
+        {
+            if (!SplinePointSelection() || !NativeSketchSplinePointRules.TrySelection(Session.Snapshot, Selected, out var curve, out var point)) return;
+            var snapshot = Session.Snapshot;
+            snapshot.Entities.Single(e => e.Reference?.EntityId == point.EntityId).TryGetSubpartPoint(SketchSubpart.Point, out var position);
+            CancelCandidates(); int generation = ++_promptGeneration;
+            var values = new[] { position.X, position.Y }; int index = 0;
+            bool Current() => !_disposed && generation == _promptGeneration && _ready() && Session.CanEdit
+                && ReferenceEquals(snapshot, Session.Snapshot);
+            void Finish(CadPoint destination)
+            {
+                if (!Current()) return;
+                CloseCoordinateField();
+                Session.SetOperation(NativeSketchSplinePointRules.Variant, new JObject {
+                    ["references"] = new JArray(curve.ToJson(), point.ToJson()),
+                    ["position_mm"] = new JArray(destination.X, destination.Y) });
+                _notice("Punto spline pronto: Anteprima verifica l'appartenenza nativa, poi Applica."); _changed();
+            }
+            void Field()
+            {
+                var entry = new NumericEntry("sketch.spline.point."+(index == 0 ? "x" : "y"), QuantityUnit.Millimeters, values[index], -100000, 100000);
+                _prompt = entry;
+                entry.Committed += () =>
+                {
+                    if (!Current() || _prompt != entry) return;
+                    values[index] = entry.Value;
+                    if (++index == 1) Field(); else Finish(new CadPoint(values[0], values[1]));
+                };
+                if (_palette() != null) _palette().ShowKeypad(entry, "Punto spline • destinazione "+(index == 0 ? "X" : "Y")+" mm"); else entry.BeginEdit();
+                ArmCoordinatePick(snapshot, generation, Finish);
+                _notice("Indica la destinazione sul foglio con Trigger oppure inserisci X/Y. Anteprima verifica che il punto appartenga alla spline.");
+                _changed();
+            }
+            Field();
+        }
+        private bool SplineTensionSelection(bool reconfirming = false) => CanSelect && (!Session.HasDraft || reconfirming)
+            && Selected.Count == 1 && NativeSketchSplineTensionRules.TryGetTension(Session.Snapshot, Selected[0], out _);
+
+        private void PromptSplineTension()
+        {
+            if (!SplineTensionSelection()) return;
+            var snapshot = Session.Snapshot; var target = Selected.Single();
+            NativeSketchSplineTensionRules.TryGetTension(snapshot, target, out int tension);
+            CancelCandidates(); int generation = ++_promptGeneration;
+            var entry = new NumericEntry("sketch.spline.tension.input", QuantityUnit.None, tension, 0, 100, integerOnly: true);
+            _prompt = entry;
+            entry.Committed += () =>
+            {
+                if (_disposed || generation != _promptGeneration || _prompt != entry || !_ready() || !Session.CanEdit
+                    || !ReferenceEquals(snapshot, Session.Snapshot) || !NativeSketchSplineTensionRules.TryGetTension(snapshot, target, out _)) return;
+                _prompt = null;
+                Session.SetOperation(NativeSketchSplineTensionRules.Variant, new JObject {
+                    ["references"] = new JArray(target.ToJson()), ["tension"] = (int)entry.Value });
+                _notice("Tensione spline pronta: Anteprima, poi Applica."); _changed();
+            };
+            if (_palette() != null) _palette().ShowKeypad(entry, "Tensione spline • intero 0–100"); else entry.BeginEdit();
+            _changed();
+        }
         private void StartSpline(string variant,string label)
         {
             if(!CanCreate || !Session.Snapshot.SupportsVariant(variant)) return;
             CancelCandidates();++_promptGeneration;
             _splinePoints=new List<CadPoint>();_splineSnapshot=Session.Snapshot;_splineVariant=variant;_splineLabel=label;
+            _splineClosed=false;
             _splineFitMethod=variant=="spline_fit" ? _splineSnapshot.SplineFitMethod.Value : 0;
             _palette()?.ShowTabGroup(new[] {SplineInputTab},true);ArmSplinePoint();
         }
@@ -84,8 +160,14 @@ namespace InventorXrSo.Unity.Ui
         {
             if(!SplineActionsReady || _splinePoints.Count<2) return;
             var points=new JArray();foreach(var point in _splinePoints) points.Add(new JArray(point.X,point.Y));
-            string variant=_splineVariant;int method=_splineFitMethod;CancelPrompt();
-            var options=new JObject {["points_mm"]=points};
+            if(_splineVariant=="spline_control" && !_splineClosed && _splinePoints[0].X==_splinePoints[_splinePoints.Count-1].X
+                && _splinePoints[0].Y==_splinePoints[_splinePoints.Count-1].Y)
+            {
+                _notice("Il primo e l'ultimo punto coincidono: attiva Spline chiusa oppure rimuovi l'ultimo punto.");
+                return;
+            }
+            string variant=_splineVariant;int method=_splineFitMethod;bool closed=_splineClosed;CancelPrompt();
+            var options=new JObject {["points_mm"]=points,["closed"]=closed};
             if(variant=="spline_fit") options["fit_method"]=method;
             try {Session.SetOperation(variant,options);_notice("Spline pronta: Anteprima, poi Applica.");}
             catch(Exception ex) {_notice(ex.Message);}
