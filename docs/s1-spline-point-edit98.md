@@ -1,7 +1,12 @@
 # S1 — Modifica dei punti spline nel plugin, incremento 98
 
-24 ottobre 2026. Implementazione sperimentale PC, matrice nativa incompleta.
+Implementazione del 24 ottobre 2026. Aggiornamento 28 ottobre: matrice nativa
+del candidato congelato completata nell'[incremento 102](s1-spline-point-verification102.md):
+**128 casi, 14 rifiuti, 540 stati raw**, verifica offline PASS del sottoinsieme
+e cinque alterazioni rifiutate. I precedenti tentativi incompleti restano sotto.
 Nessun gate S1 chiuso e nessuna parità completa dichiarata.
+Il successivo [incremento XR 103](s1-spline-point-xr103.md) collega il comando
+all’editor condiviso Parte/Lamiera; gli esiti nativi sotto restano distinti.
 
 `edit_sketch/spline_point_update` modifica il punto nativo esistente tramite
 `SketchPoint.MoveTo`. Non ricrea la spline, non elimina vincoli e non crea
@@ -22,9 +27,9 @@ identità o prove di ownership. Gli alias nativi dell'estremo di chiusura
 sono ammessi quando identità e chiave coincidono. Proiezioni, geometrie
 derivate, blocchi ed estremi strutturali di maniglie/immagini sono rifiutati
 prima della scrittura. Il contratto è pubblicato nel solo tier sperimentale;
-l'editor Unity non è stato collegato a questa operazione.
+alla consegna 98 l'editor Unity non era ancora collegato a questa operazione.
 
-## Evidenza attuale
+## Evidenza della consegna iniziale
 
 - 47 test della policy passati: input, congelamento, identità opache e
   riferimenti/documenti/revisioni incoerenti. Non sono prove Inventor.

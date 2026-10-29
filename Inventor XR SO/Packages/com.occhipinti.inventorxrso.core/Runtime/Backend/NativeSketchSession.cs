@@ -41,6 +41,8 @@ namespace InventorXrSo.Core.Backend
             ? Same(_parameterBaseline, Snapshot.State) : _draft.OfType<JObject>()
             .All(operation=>Snapshot.SupportsVariant((string)operation["arguments"]?["variant"])
                 && CopySupported((string)operation["arguments"]?["variant"],operation["arguments"]?["options"])
+                && ((string)operation["arguments"]?["variant"]!=NativeSketchSplinePointRules.Variant || NativeSketchSplinePointRules.OptionsCurrent(Snapshot,operation["arguments"]?["options"] as JObject))
+                && ((string)operation["arguments"]?["variant"]!=NativeSketchSplineTensionRules.Variant || NativeSketchSplineTensionRules.OptionsCurrent(Snapshot,operation["arguments"]?["options"] as JObject))
                 && ((string)operation["arguments"]?["variant"]!="arc_tangent" || NativeSketchTangentArcRules.OptionsCurrent(Snapshot,operation["arguments"]?["options"] as JObject))
                 && ReferencesCurrent(operation["arguments"]?["options"]?["references"],(string)operation["arguments"]?["variant"])));
         public bool NeedsReferenceSelection => CanEdit && HasDraft && Mutation.Status==DesignStatus.Empty && !CanConfirmDraft
@@ -53,6 +55,12 @@ namespace InventorXrSo.Core.Backend
                 throw new InvalidOperationException("Select two fresh curve picks before reconfirming an operation with corner solutions.");
             if((string)_draft[0]["arguments"]["variant"]=="arc_tangent")
                 options=NativeSketchTangentArcRules.ReconfirmOptions(Snapshot,options,selected.ToArray());
+            else if((string)_draft[0]["arguments"]["variant"]==NativeSketchSplinePointRules.Variant)
+            {
+                if(!NativeSketchSplinePointRules.TrySelection(Snapshot,selected,out var curve,out var point))
+                    throw new ArgumentException("Seleziona una spline intera e un punto nativo attuali.");
+                options["references"]=new JArray(curve.ToJson(),point.ToJson());
+            }
             else options["references"]=new JArray(selected.Select(reference=>reference.ToJson()));
             SetOperation((string)_draft[0]["arguments"]["variant"],options);
         }
@@ -154,6 +162,10 @@ namespace InventorXrSo.Core.Backend
             if(!CopySupported(variant,options)) throw new InvalidOperationException("Il backend collegato non dichiara la copia durante la rotazione.");
             if(variant=="line_midpoint") NativeSketchMidpointRules.Roles(options);
             if(variant=="arc_tangent") NativeSketchTangentArcRules.ValidateOptions(Snapshot,options);
+            if(variant==NativeSketchSplinePointRules.Variant && !NativeSketchSplinePointRules.OptionsCurrent(Snapshot,options))
+                throw new ArgumentException("Seleziona una spline intera e un punto nativo attuali, con una destinazione X/Y finita.");
+            if(variant==NativeSketchSplineTensionRules.Variant && !NativeSketchSplineTensionRules.OptionsCurrent(Snapshot,options))
+                throw new ArgumentException("Seleziona una spline interpolata intera della revisione corrente e una tensione intera da 0 a 100.");
             if((variant=="dimension_update" || variant=="dimension_delete" || variant=="constraint_delete") && options["references"]==null)
                 throw new InvalidOperationException("Select the existing native dimension or constraint.");
             if(!ReferencesCurrent(options["references"],variant)) throw new InvalidOperationException("Select native entities from the current sketch snapshot.");

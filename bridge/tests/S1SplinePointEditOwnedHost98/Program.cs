@@ -192,6 +192,9 @@ internal static partial class Program
     private static JObject Error73(Exception error)
     {
         var value = new JObject { ["phase"] = Phase, ["type"] = error.GetType().FullName, ["hresult"] = error.HResult };
+        // Method names only: no arguments, source paths, exception messages or credentials.
+        value["managed_frames"]=new JArray(new StackTrace(error,false).GetFrames().Take(12).Select(frame=>
+            {var method=frame.GetMethod();return method?.DeclaringType?.FullName+"."+method?.Name;}));
         if (error is HostFailure73) value["assertion"] = error.Message;
         return value;
     }

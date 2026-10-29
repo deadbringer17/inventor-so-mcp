@@ -190,6 +190,8 @@ namespace InventorXrSo.Unity.Ui
                 if(variant=="line_midpoint") return MidpointSelection(NativeSketchMidpointRules.Roles((JObject)Session.Draft[0]["arguments"]["options"]),true);
                 if(variant=="dimension_update" || variant=="dimension_delete") return DimensionEditSelection(variant,true);
                 if(variant=="constraint_delete") return ConstraintDeleteSelection(true);
+                if(variant==NativeSketchSplinePointRules.Variant) return SplinePointSelection(true);
+                if(variant==NativeSketchSplineTensionRules.Variant) return SplineTensionSelection(true);
                 if(variant=="text_update" || variant=="text_delete") return TextSelection(variant,true)!=null;
                 if(variant=="offset_distance" || variant=="offset_point") return OffsetSelection(variant,true);
                 if(variant=="pattern_update" || variant=="pattern_delete") return PatternEditSelection(variant,true);
@@ -285,6 +287,7 @@ namespace InventorXrSo.Unity.Ui
             switch(type) { case "line": return "linea"; case "circle": return "cerchio"; case "arc": return "arco";
                 case "ellipse": return "ellisse"; case "point": return "punto"; case "text": return "testo";
                 case "constraint": return "vincolo";
+                case "control_point_spline": return "spline a vertici di controllo";
                 case "spline_fit": case "spline_control": case "spline": return "spline"; default: return type; }
         }
         public void CancelPrompt()

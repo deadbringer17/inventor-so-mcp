@@ -33,14 +33,14 @@ namespace InventorXrSo.Tests
             var normal=model.TransformDirection(CadCoordinates.ToLocal(frame.Normal)).normalized;
             hand.SetPositionAndRotation(target+normal*0.3f,Quaternion.LookRotation(-normal));
         }
-        public static NativeSketchSnapshot Snapshot(DocumentState state,string id,bool partial=false,bool overlap=false,bool capabilities=true,bool curves=false,bool dimensions=false,bool angular=false,bool constraints=false,bool patterns=false,bool copy=true,int splineFitMethod=26369)
+        public static NativeSketchSnapshot Snapshot(DocumentState state,string id,bool partial=false,bool overlap=false,bool capabilities=true,bool curves=false,bool dimensions=false,bool angular=false,bool constraints=false,bool patterns=false,bool copy=true,int splineFitMethod=26369,int? splineTension=null)
         {
             var json=new JObject
             {
             ["schema_version"]=1,["document_id"]=state.DocumentId,["revision"]=state.Revision,["sketch_id"]=id,
             ["sketch_name"]="Existing",["partial"]=partial,["spline_fit_method"]=splineFitMethod,
             ["supported_variants"]=new JArray("line","line_midpoint","rectangle_two_points","rectangle_three_points","rectangle_center_two_points","rectangle_center_three_points","polygon",
-                "circle_center","point","arc_three_points","arc_center","ellipse","spline_fit","spline_control",
+                "spline_point_update","circle_center","point","arc_three_points","arc_center","ellipse","spline_fit","spline_control",
                 "slot_center_to_center","slot_overall","slot_center","slot_three_point_arc","slot_center_arc",
                 "format_construction","format_centerline","format_hole_center","transform_move","transform_copy","transform_rotate","transform_stretch","offset_distance","offset_point","constraint_ground","constraint_horizontal","constraint_vertical","constraint_coincident","constraint_tangent","constraint_smooth",
                 "pattern_rectangular","pattern_circular","pattern_update","pattern_delete",
@@ -68,6 +68,11 @@ namespace InventorXrSo.Tests
                     ["strokes_mm"]=new JArray(100,0,110,10),["center_mm"]=new JArray(100,10)});
                 ((JArray)json["entities"]).Add(new JObject {["id"]="ent_spline",["type"]="spline",["supported"]=true,
                     ["strokes_mm"]=new JArray(200,0,220,10),["start_mm"]=new JArray(200,0),["end_mm"]=new JArray(220,10)});
+            }
+            if(splineTension.HasValue && curves)
+            {
+                ((JObject)((JArray)json["entities"]).Single(e=>(string)e["type"]=="spline"))["tension"]=splineTension.Value;
+                if(capabilities) ((JArray)json["supported_variants"]).Add(NativeSketchSplineTensionRules.Variant);
             }
             return NativeSketchSnapshot.Parse(json,state,id);
         }

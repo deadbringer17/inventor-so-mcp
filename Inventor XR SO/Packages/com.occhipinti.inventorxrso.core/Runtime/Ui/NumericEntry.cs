@@ -13,10 +13,13 @@ namespace InventorXrSo.Core.Ui
         public static readonly double[] Steps = { 0.1, 1, 10 };
         private int _step = 1;
 
-        public NumericEntry(string id, QuantityUnit unit, double value, double min, double max)
+        public NumericEntry(string id, QuantityUnit unit, double value, double min, double max, bool integerOnly = false)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("id campo vuoto");
             if (double.IsNaN(min) || double.IsNaN(max) || min > max) throw new ArgumentException("intervallo non valido");
+            if (integerOnly && (double.IsNaN(value) || double.IsInfinity(value) || double.IsInfinity(min) || double.IsInfinity(max) || value != Math.Truncate(value)
+                || min != Math.Truncate(min) || max != Math.Truncate(max))) throw new ArgumentException("Intervallo e valore iniziale devono essere interi.");
+            IntegerOnly = integerOnly;
             Id = id; Unit = unit; Min = min; Max = max;
             Value = Math.Max(min, Math.Min(max, value));
         }
@@ -25,6 +28,7 @@ namespace InventorXrSo.Core.Ui
         public QuantityUnit Unit { get; }
         public double Min { get; }
         public double Max { get; }
+        public bool IntegerOnly { get; }
         public double Value { get; private set; }
         public double Step => Steps[_step];
         public bool Editing => Buffer != null;
@@ -39,7 +43,7 @@ namespace InventorXrSo.Core.Ui
 
         public void CycleStep(int direction)
         {
-            int next = Math.Max(0, Math.Min(Steps.Length - 1, _step + Math.Sign(direction)));
+            int next = Math.Max(IntegerOnly ? 1 : 0, Math.Min(Steps.Length - 1, _step + Math.Sign(direction)));
             if (next == _step) return;
             _step = next;
             Changed?.Invoke();
@@ -81,6 +85,7 @@ namespace InventorXrSo.Core.Ui
             if (!Editing) return false;
             var parsed = ItalianNumberParser.Parse(Buffer, Min, Max);
             if (!parsed.Ok) { reason = parsed.Reason; return false; }
+            if (IntegerOnly && parsed.Value != Math.Truncate(parsed.Value)) { reason = "Inserisci un numero intero."; return false; }
             Value = parsed.Value;
             Buffer = null;
             Changed?.Invoke();
@@ -114,6 +119,7 @@ namespace InventorXrSo.Core.Ui
                 reason = $"Fuori intervallo {Format(Min)}–{Format(Max)}.";
                 return false;
             }
+            if (IntegerOnly && value != Math.Truncate(value)) { reason = "Inserisci un numero intero."; return false; }
             if (value == Value) return true;
             Value = value;
             Changed?.Invoke();

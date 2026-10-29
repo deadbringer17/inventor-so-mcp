@@ -2,6 +2,49 @@
 
 Target: Inventor 2027 x64. Full functional scope remains the 80-point assessment in `analisi-spec-inventor-so-mcp.md`; the work below does not replace it with a smaller goal.
 
+## S1 — spline XR e tensione nativa — 2026-10-28
+
+L'[incremento 102](s1-spline-point-verification102.md) completa il collaudo PC
+del candidato punti spline 98: **128 casi, 14 rifiuti, 540 stati raw**,
+controllo offline del sottoinsieme PASS e cinque copie alterate rifiutate.
+Corretti tooling di pubblicazione e classificazione del cleanup; candidato
+CAD e tolleranze invariati. Istanza QA chiusa e processo Inventor dell'utente
+preservato. Regressioni complete: **4.528 PASS**; APK 102 QA/ordinario
+ricompilati e ispezionati ARM64 IL2CPP, 16 runner nel QA e zero nell'ordinario.
+Editor XR dei punti, maniglie, dipendenze, persistenza e parità complessiva S1
+restano aperti. Chiusura del verbale 102: 29 ottobre.
+
+L'[incremento 101](s1-spline-tension-xr101.md) collega anche **Modifica tensione
+spline** all'editor Parte/Lamiera: valore nativo iniziale, interi 0–100,
+selezione intera attuale e Anteprima/Applica espliciti. Core **1.393**, backend
+**1.926**, Capture.Worker **16**, Unity EditMode **1.193 PASS**; Core completo
+ripetuto e **57 EditMode mirati PASS** dopo l'ultimo adeguamento della snapshot.
+Meta XR Simulator + Inventor reale: **20 casi PASS, 1.392 asserzioni**
+(otto creazioni e dodici modifiche tensione), verdetto S1 **PARTIAL**.
+Cleanup verificato con host a PID dedicato; processo Inventor dell'utente
+preservato al cleanup. APK 101 QA/ordinario compilati e ispezionati:
+ARM64 IL2CPP, 16 runner nel QA e zero nell'ordinario. Al controllo finale
+dopo le build Inventor risulta chiuso, causa non osservata; manifest e DLL
+originali verificati. Dettagli e hash nel verbale 101.
+
+La creazione aperta/chiusa è ora collegata all'editor XR condiviso
+Parte/Lamiera: scelta locale, punti conservati, bozza congelata e
+Anteprima/Applica espliciti. I 14 nuovi casi EditMode portano Unity a
+**1.179 PASS**; Core **1.355**, backend **1.926**, Capture.Worker **16 PASS**.
+Meta XR Simulator + Inventor nativo: **otto casi spline PASS, 692 asserzioni**,
+con fixture/installazione ripristinate; il verdetto S1 resta PARTIAL. Dopo gli
+adeguamenti del runner passano anche 19 EditMode mirati. APK QA/ordinario
+compilati e ispezionati: ARM64 IL2CPP, 16 runner nel QA e zero nell'ordinario;
+nessuna esecuzione hardware:
+[incremento 100](s1-spline-closure-xr100.md).
+
+La modifica tensione sperimentale già presente nel plugin passa la matrice
+nativa 99: **60 casi, 16 rifiuti, 272 stati raw**, preview/rollback, prima
+snapshot e oracle API indipendente. Controllo offline del sottoinsieme PASS;
+processo di prova chiuso e manifest/DLL ordinari ripristinati.
+[Evidenze e limiti](s1-spline-tension-edit99.md). La matrice punti 98 è
+completata separatamente nel 102; dipendenze e parità completa S1 restano aperti.
+
 ## M10 icone Inventor — 2026-10-06
 
 Migrazione software estesa ai sei provider XR: **34 immagini native/46 azioni**,
@@ -536,3 +579,14 @@ Defects found and fixed in this round:
 Final regression on that build: part 64/64, assembly and drawing 50/50, XR 10/10, extra 29/29, assembly extras 20/20, HTTP host 22/22, all 15 smoke scripts (smoke-projection hit one TIMEOUT on drawing creation after a long run, then passed twice in 15-23 s). Unit suite 865 passing.
 
 Not verified: `selection_changed` comes from `UserInputEvents.OnSelect`, which Inventor raises for interactive picks only; an API `SelectSet.Select` does not raise it, so it needs a person clicking in Inventor. No real headset session (the viewer reports VR not supported in a desktop browser).
+
+
+### S1 — Punti spline nell’editor XR, incremento 103 (29 ottobre 2026)
+
+Collegato `spline_point_update` all’editor condiviso Parte/Lamiera: selezione
+spline intera + punto nativo, destinazione X/Y o sul foglio, bozza, Anteprima e
+Applica espliciti. Ordine dei pick libero, riferimenti wire ordinati; controllo
+Core di capacità/tipi/revisione e riselezione dopo refresh. L’appartenenza del
+punto viene verificata nativamente dal plugin, senza dedurla dalla vicinanza.
+Esiti e limiti nel [verbale 103](s1-spline-point-xr103.md). La verifica PC 102
+resta evidenza separata; S1 e la prova fisica Quest restano aperti.

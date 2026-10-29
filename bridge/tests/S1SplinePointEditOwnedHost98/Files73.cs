@@ -9,6 +9,15 @@ using Path = System.IO.Path;
 
 internal static partial class Program
 {
+    private static int MetadataRetryCount73, MetadataMaximumAttempt73;
+    private static void WaitPublication73(string name,int attempt)
+    {
+        Evidence["metadata_publication_retry_count"]=++MetadataRetryCount73;
+        MetadataMaximumAttempt73=Math.Max(MetadataMaximumAttempt73,attempt+1);
+        Evidence["metadata_publication_maximum_attempt"]=MetadataMaximumAttempt73;
+        Evidence["metadata_publication_last_retry_file"]=name;
+        Thread.Sleep(20);
+    }
     private static void CreatePrivateDirectory73(string path)
     {
         if (Directory.Exists(path) || File.Exists(path)) throw new HostFailure73("Owned directory already exists.");
@@ -37,6 +46,8 @@ internal static partial class Program
     {
         if (Path.GetFileName(name) != name || name == "bootstrap.json") throw new HostFailure73("Public evidence filename is invalid.");
         string path = Path.Combine(Settings.OutputDirectory, name);
+        string previousPhase=Phase;bool published=false;
+        Phase="publish_metadata:"+name;
         // Names come from fixed code only. No arbitrary stdio path or content is accepted.
         string temporary=path+".publish-"+Guid.NewGuid().ToString("N")+".tmp";
         try
@@ -44,15 +55,15 @@ internal static partial class Program
             File.WriteAllText(temporary,value.ToString(Formatting.Indented),new UTF8Encoding(false));
             for(int attempt=0;;attempt++)
             {
-                try { File.Move(temporary,path,true); break; }
-                catch(IOException error) when(attempt<50 && (error.HResult==unchecked((int)0x80070020)||error.HResult==unchecked((int)0x80070021)))
-                { Thread.Sleep(20); } // Metadata publication only; never repeat a CAD operation.
-                catch(UnauthorizedAccessException error) when(attempt<50 && error.HResult==unchecked((int)0x80070005)
+                try { File.Move(temporary,path,true); published=true; break; }
+                catch(IOException error) when(attempt<250 && (error.HResult==unchecked((int)0x80070020)||error.HResult==unchecked((int)0x80070021)))
+                { WaitPublication73(name,attempt); } // Metadata publication only; never repeat a CAD operation.
+                catch(UnauthorizedAccessException error) when(attempt<250 && error.HResult==unchecked((int)0x80070005)
                     && File.Exists(path) && (File.GetAttributes(path)&FileAttributes.ReparsePoint)==0)
-                { Thread.Sleep(20); } // Windows can report a reader denying replacement as access denied.
+                { WaitPublication73(name,attempt); } // Windows can report a reader denying replacement as access denied.
             }
         }
-        finally { if(File.Exists(temporary)) File.Delete(temporary); }
+        finally { if(File.Exists(temporary)) File.Delete(temporary);if(published)Phase=previousPhase; }
     }
     private static void WriteBootstrap73()
     {
